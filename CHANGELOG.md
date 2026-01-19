@@ -5,7 +5,13 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.5] - 2026-01-19
+## [0.4.0] - 2026-01-20
+- **Feature**: Added **Internationalization (i18n)** support. Extension is now available in English and Russian.
+- **Feature**: Added **Scheduled Local Backups**. Configure backup interval, custom path, and retention policy to keep your conversations safe automatically.
+- **Feature**: Added `Antigravity Storage: Backup All Conversations` command for one-click full backup.
+- **Dev**: Added automated testing infrastructure with Jest.
+
+## [0.3.6] - 2026-01-19
 - **Feature**: Added `Backup All Conversations` command for one-click local zip backup.
 - **Feature**: Added `Resolve Conflict Copies` command with UI to handle sync conflicts.
 - **Refactor**: Optimized `SyncManager` architecture for better maintainability.

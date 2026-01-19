@@ -8,6 +8,7 @@ import { GoogleAuthProvider } from './googleAuth';
 import { SyncManager } from './sync';
 import { formatRelativeTime, getConversationsAsync } from './utils';
 import { resolveConflictsCommand } from './conflicts';
+import { BackupManager } from './backup';
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
@@ -20,6 +21,7 @@ const CONV_DIR = path.join(STORAGE_ROOT, 'conversations');
 // Global instances for sync
 let authProvider: GoogleAuthProvider;
 let syncManager: SyncManager;
+let backupManager: BackupManager;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log(`Congratulations, "${EXT_NAME}" is now active!`);
@@ -32,12 +34,26 @@ export async function activate(context: vscode.ExtensionContext) {
     syncManager = new SyncManager(context, authProvider);
     await syncManager.initialize();
 
+    // Initialize Backup Manager
+    backupManager = new BackupManager(context, STORAGE_ROOT);
+    backupManager.initialize();
+
     // Register existing commands
     context.subscriptions.push(
         vscode.commands.registerCommand(`${EXT_NAME}.export`, exportConversations),
         vscode.commands.registerCommand(`${EXT_NAME}.import`, importConversations),
         vscode.commands.registerCommand(`${EXT_NAME}.rename`, renameConversation),
         vscode.commands.registerCommand(`${EXT_NAME}.backupAll`, backupAll),
+        vscode.commands.registerCommand(`${EXT_NAME}.triggerBackup`, async () => {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: vscode.l10n.t('Performing scheduled backup...'),
+                cancellable: false
+            }, async () => {
+                const path = await backupManager.backupNow();
+                vscode.window.showInformationMessage(vscode.l10n.t('Backup created at: {0}', path));
+            });
+        }),
         vscode.commands.registerCommand(`${EXT_NAME}.resolveConflicts`, () => resolveConflictsCommand(BRAIN_DIR, CONV_DIR))
     );
 
@@ -49,11 +65,11 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand(`${EXT_NAME}.syncNow`, async () => {
             if (!syncManager.isReady()) {
                 const setupNow = await vscode.window.showWarningMessage(
-                    'Sync is not configured. Would you like to set it up now?',
-                    'Setup Sync',
-                    'Cancel'
+                    vscode.l10n.t('Sync is not configured. Would you like to set it up now?'),
+                    vscode.l10n.t('Setup Sync'),
+                    vscode.l10n.t('Cancel')
                 );
-                if (setupNow === 'Setup Sync') {
+                if (setupNow === vscode.l10n.t('Setup Sync')) {
                     await syncManager.setup();
                 }
                 return;
@@ -61,40 +77,40 @@ export async function activate(context: vscode.ExtensionContext) {
 
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: 'Syncing conversations...',
+                title: vscode.l10n.t('Syncing conversations...'),
                 cancellable: false
             }, async () => {
                 const result = await syncManager.syncNow();
 
                 if (result.success) {
                     const message = [];
-                    if (result.pushed.length) message.push(`${result.pushed.length} pushed`);
-                    if (result.pulled.length) message.push(`${result.pulled.length} pulled`);
+                    if (result.pushed.length) message.push(vscode.l10n.t('{0} pushed', result.pushed.length));
+                    if (result.pulled.length) message.push(vscode.l10n.t('{0} pulled', result.pulled.length));
 
                     if (message.length) {
-                        vscode.window.showInformationMessage(`Sync complete: ${message.join(', ')}`);
+                        vscode.window.showInformationMessage(vscode.l10n.t('Sync complete: {0}', message.join(', ')));
                     } else {
-                        vscode.window.showInformationMessage('Sync complete: Everything is up to date');
+                        vscode.window.showInformationMessage(vscode.l10n.t('Sync complete: Everything is up to date'));
                     }
                 } else {
-                    vscode.window.showErrorMessage(`Sync failed: ${result.errors.join(', ')}`);
+                    vscode.window.showErrorMessage(vscode.l10n.t('Sync failed: {0}', result.errors.join(', ')));
                 }
 
                 // Handle conflicts
                 for (const conflict of result.conflicts) {
                     const choice = await vscode.window.showWarningMessage(
-                        `Conflict detected for conversation. Local and remote versions differ.`,
+                        vscode.l10n.t('Conflict detected for conversation. Local and remote versions differ.'),
                         { modal: true },
-                        'Keep Local',
-                        'Keep Remote',
-                        'Keep Both'
+                        vscode.l10n.t('Keep Local'),
+                        vscode.l10n.t('Keep Remote'),
+                        vscode.l10n.t('Keep Both')
                     );
 
-                    if (choice === 'Keep Local') {
+                    if (choice === vscode.l10n.t('Keep Local')) {
                         await syncManager.resolveConflict(conflict, 'keepLocal');
-                    } else if (choice === 'Keep Remote') {
+                    } else if (choice === vscode.l10n.t('Keep Remote')) {
                         await syncManager.resolveConflict(conflict, 'keepRemote');
-                    } else if (choice === 'Keep Both') {
+                    } else if (choice === vscode.l10n.t('Keep Both')) {
                         await syncManager.resolveConflict(conflict, 'keepBoth');
                     }
                 }
@@ -102,19 +118,19 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.syncManage`, async () => {
             if (!syncManager.isEnabled()) {
-                vscode.window.showWarningMessage('Sync is not enabled. Please set up sync first.');
+                vscode.window.showWarningMessage(vscode.l10n.t('Sync is not enabled. Please set up sync first.'));
                 return;
             }
             await syncManager.manageConversations();
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.syncDisconnect`, async () => {
             const confirm = await vscode.window.showWarningMessage(
-                'Are you sure you want to disconnect from Google Drive sync?',
+                vscode.l10n.t('Are you sure you want to disconnect from Google Drive sync?'),
                 { modal: true },
-                'Disconnect',
-                'Cancel'
+                vscode.l10n.t('Disconnect'),
+                vscode.l10n.t('Cancel')
             );
-            if (confirm === 'Disconnect') {
+            if (confirm === vscode.l10n.t('Disconnect')) {
                 await syncManager.disconnect();
             }
         })
@@ -123,14 +139,14 @@ export async function activate(context: vscode.ExtensionContext) {
     // Create status bar items for export/import
     const exportButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     exportButton.text = "$(export) AG Export";
-    exportButton.tooltip = "Export Antigravity Conversations";
+    exportButton.tooltip = vscode.l10n.t("Export Antigravity Conversations");
     exportButton.command = `${EXT_NAME}.export`;
     exportButton.show();
     context.subscriptions.push(exportButton);
 
     const importButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
     importButton.text = "$(import) AG Import";
-    importButton.tooltip = "Import Antigravity Conversations";
+    importButton.tooltip = vscode.l10n.t("Import Antigravity Conversations");
     importButton.command = `${EXT_NAME}.import`;
     importButton.show();
     context.subscriptions.push(importButton);
@@ -145,12 +161,12 @@ async function exportConversations() {
     const items = await getConversationsAsync(BRAIN_DIR);
 
     if (items.length === 0) {
-        vscode.window.showInformationMessage('No conversations found to export.');
+        vscode.window.showInformationMessage(vscode.l10n.t('No conversations found to export.'));
         return;
     }
 
     const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select conversations to export (use Space to select multiple)',
+        placeHolder: vscode.l10n.t('Select conversations to export (use Space to select multiple)'),
         canPickMany: true
     });
 
@@ -166,7 +182,7 @@ async function exportConversations() {
     const saveUri = await vscode.window.showSaveDialog({
         defaultUri: defaultUri,
         filters: { 'Antigravity Archive': ['zip'] },
-        saveLabel: 'Export'
+        saveLabel: vscode.l10n.t('Export')
     });
 
     if (!saveUri) return;
@@ -175,7 +191,7 @@ async function exportConversations() {
 
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Exporting ${selected.length} conversation(s)...`,
+        title: vscode.l10n.t('Exporting {0} conversation(s)...', selected.length),
         cancellable: false
     }, async () => {
         return new Promise<void>((resolve, reject) => {
@@ -184,13 +200,13 @@ async function exportConversations() {
 
             output.on('close', () => {
                 vscode.window.showInformationMessage(
-                    `Exported ${selected.length} conversation(s) to ${destPath}`
+                    vscode.l10n.t('Exported {0} conversation(s) to {1}', selected.length, destPath)
                 );
                 resolve();
             });
 
             archive.on('error', (err) => {
-                vscode.window.showErrorMessage(`Export failed: ${err.message}`);
+                vscode.window.showErrorMessage(vscode.l10n.t('Export failed: {0}', err.message));
                 reject(err);
             });
 
@@ -220,73 +236,46 @@ async function exportConversations() {
 
 // BACKUP: One-click backup of all conversations
 async function backupAll() {
-    // 1. Get all conversations without prompting
+    // 1. Get all conversations without prompting (just to check if empty)
     const conversations = await getConversationsAsync(BRAIN_DIR);
     if (conversations.length === 0) {
-        vscode.window.showInformationMessage('No conversations found to backup.');
+        vscode.window.showInformationMessage(vscode.l10n.t('No conversations found to backup.'));
         return;
     }
 
-    // 2. Ask for save location (default to antigravity-backup-{date}.zip)
+    // 2. Ask for save location
     const defaultName = `antigravity-backup-${new Date().toISOString().slice(0, 10)}.zip`;
     const uri = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(path.join(os.homedir(), defaultName)),
         filters: { 'Antigravity Archive': ['zip'] },
-        saveLabel: 'Create Backup'
+        saveLabel: vscode.l10n.t('Create Backup')
     });
 
     if (!uri) return;
 
-    // 3. Create Archive (Reuse logic similar to export, but simplified)
+    // 3. Create Archive using BackupManager
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Backing up ${conversations.length} conversations...`,
+        title: vscode.l10n.t('Backing up {0} conversations...', conversations.length),
         cancellable: false
     }, async (progress) => {
-        return new Promise<void>((resolve, reject) => {
-            const output = fs.createWriteStream(uri.fsPath);
-            const archive = archiver('zip', { zlib: { level: 9 } });
+        try {
+            const filePath = await backupManager.backupNow(uri.fsPath);
 
-            output.on('close', () => {
-                const size = archive.pointer();
-                const sizeMB = (size / 1024 / 1024).toFixed(2);
-                vscode.window.showInformationMessage(
-                    `Backup complete! (${sizeMB} MB)`,
-                    'Open Folder'
-                ).then(selection => {
-                    if (selection === 'Open Folder') {
-                        vscode.env.openExternal(vscode.Uri.file(path.dirname(uri.fsPath)));
-                    }
-                });
-                resolve();
-            });
+            const stats = fs.statSync(filePath);
+            const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
 
-            archive.on('error', (err: any) => {
-                vscode.window.showErrorMessage(`Backup failed: ${err.message}`);
-                reject(err);
-            });
-
-            archive.pipe(output);
-
-            // Add all conversations
-            for (const conv of conversations) {
-                const id = conv.id;
-
-                // Add brain directory
-                const sourceBrainDir = path.join(BRAIN_DIR, id);
-                if (fs.existsSync(sourceBrainDir)) {
-                    archive.directory(sourceBrainDir, `brain/${id}`);
+            vscode.window.showInformationMessage(
+                vscode.l10n.t('Backup complete! ({0} MB)', sizeMB),
+                vscode.l10n.t('Open Folder')
+            ).then(selection => {
+                if (selection === vscode.l10n.t('Open Folder')) {
+                    vscode.env.openExternal(vscode.Uri.file(path.dirname(filePath)));
                 }
-
-                // Add conversation .pb file
-                const convFile = path.join(CONV_DIR, `${id}.pb`);
-                if (fs.existsSync(convFile)) {
-                    archive.file(convFile, { name: `conversations/${id}.pb` });
-                }
-            }
-
-            archive.finalize();
-        });
+            });
+        } catch (err: any) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Backup failed: {0}', err.message));
+        }
     });
 }
 
@@ -296,7 +285,7 @@ async function importConversations() {
         canSelectFiles: true,
         canSelectMany: true,
         filters: { 'Antigravity Archive': ['zip'] },
-        openLabel: 'Import'
+        openLabel: vscode.l10n.t('Import')
     });
 
     if (!uris || uris.length === 0) return;
@@ -306,7 +295,7 @@ async function importConversations() {
 
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Importing ${uris.length} archive(s)...`,
+        title: vscode.l10n.t('Importing {0} archive(s)...', uris.length),
         cancellable: false
     }, async (progress) => {
         for (const uri of uris) {
@@ -334,24 +323,24 @@ async function importConversations() {
                             if (fs.existsSync(existingDir)) {
                                 // Conflict! Ask user
                                 const choice = await vscode.window.showWarningMessage(
-                                    `Conversation "${id}" already exists.`,
+                                    vscode.l10n.t('Conversation "{0}" already exists.', id),
                                     { modal: true },
-                                    'Overwrite',
-                                    'Rename',
-                                    'Skip'
+                                    vscode.l10n.t('Overwrite'),
+                                    vscode.l10n.t('Rename'),
+                                    vscode.l10n.t('Skip')
                                 );
 
-                                if (choice === 'Skip') {
+                                if (choice === vscode.l10n.t('Skip')) {
                                     skippedCount++;
                                     continue;
-                                } else if (choice === 'Rename') {
+                                } else if (choice === vscode.l10n.t('Rename')) {
                                     const newId = await vscode.window.showInputBox({
-                                        prompt: 'Enter new conversation ID',
+                                        prompt: vscode.l10n.t('Enter new conversation ID'),
                                         value: `${id}-imported`,
                                         validateInput: (value) => {
-                                            if (!value) return 'ID cannot be empty';
+                                            if (!value) return vscode.l10n.t('ID cannot be empty');
                                             if (fs.existsSync(path.join(BRAIN_DIR, value))) {
-                                                return 'This ID already exists';
+                                                return vscode.l10n.t('This ID already exists');
                                             }
                                             return null;
                                         }
@@ -390,21 +379,21 @@ async function importConversations() {
                     fs.rmSync(tempDir, { recursive: true, force: true });
                 }
             } catch (e: any) {
-                vscode.window.showErrorMessage(`Failed to import ${path.basename(zipPath)}: ${e.message}`);
+                vscode.window.showErrorMessage(vscode.l10n.t('Failed to import {0}: {1}', path.basename(zipPath), e.message));
             }
         }
     });
 
-    const message = `Imported ${importedCount} conversation(s)` +
-        (skippedCount > 0 ? `, skipped ${skippedCount}` : '');
+    const message = vscode.l10n.t('Imported {0} conversation(s)', importedCount) +
+        (skippedCount > 0 ? vscode.l10n.t(', skipped {0}', skippedCount) : '');
 
     const choice = await vscode.window.showInformationMessage(
-        `${message}. Reload window to refresh?`,
-        'Reload',
-        'Later'
+        vscode.l10n.t('{0}. Reload window to refresh?', message),
+        vscode.l10n.t('Reload'),
+        vscode.l10n.t('Later')
     );
 
-    if (choice === 'Reload') {
+    if (choice === vscode.l10n.t('Reload')) {
         vscode.commands.executeCommand('workbench.action.reloadWindow');
     }
 }
@@ -414,21 +403,21 @@ async function renameConversation() {
     const items = await getConversationsAsync(BRAIN_DIR);
 
     if (items.length === 0) {
-        vscode.window.showInformationMessage('No conversations found.');
+        vscode.window.showInformationMessage(vscode.l10n.t('No conversations found.'));
         return;
     }
 
     const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select conversation to rename'
+        placeHolder: vscode.l10n.t('Select conversation to rename')
     });
 
     if (!selected) return;
 
     const currentTitle = selected.label;
     const newTitle = await vscode.window.showInputBox({
-        prompt: 'Enter new title',
+        prompt: vscode.l10n.t('Enter new title'),
         value: currentTitle,
-        validateInput: (value) => value ? null : 'Title cannot be empty'
+        validateInput: (value) => value ? null : vscode.l10n.t('Title cannot be empty')
     });
 
     if (!newTitle || newTitle === currentTitle) return;
@@ -450,9 +439,9 @@ async function renameConversation() {
         }
 
         fs.writeFileSync(taskPath, content, 'utf8');
-        vscode.window.showInformationMessage(`Renamed to "${newTitle}"`);
+        vscode.window.showInformationMessage(vscode.l10n.t('Renamed to "{0}"', newTitle));
     } catch (e: any) {
-        vscode.window.showErrorMessage(`Rename failed: ${e.message}`);
+        vscode.window.showErrorMessage(vscode.l10n.t('Rename failed: {0}', e.message));
     }
 }
 

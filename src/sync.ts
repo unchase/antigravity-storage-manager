@@ -15,13 +15,16 @@ const BRAIN_DIR = path.join(STORAGE_ROOT, 'brain');
 const CONV_DIR = path.join(STORAGE_ROOT, 'conversations');
 
 export interface SyncConfig {
-    enabled: boolean;
+    enabled: boolean; // Deprecated, use autoSync? No, enabled is overall switch
     machineId: string;
     machineName: string;
     selectedConversations: string[] | 'all';
     autoSync: boolean;
     syncInterval: number; // ms
     lastSync: string | null;
+    showStatusBar: boolean;
+    silent: boolean;
+    masterPasswordHash: string; // Add this
 }
 
 export interface SyncResult {
@@ -120,129 +123,6 @@ export class SyncManager {
     /**
      * Setup sync for the first time
      */
-    async setup(): Promise<boolean> {
-        try {
-            // Step 1: Sign in to Google
-            if (!this.authProvider.isAuthenticated()) {
-                await vscode.window.withProgress({
-                    location: vscode.ProgressLocation.Notification,
-                    title: 'Signing in to Google...',
-                    cancellable: false
-                }, async () => {
-                    await this.authProvider.signIn();
-                });
-            }
-
-            // Step 2: Check if sync folder exists
-            const syncExists = await this.driveService.checkSyncFolderExists();
-
-            let isNewSetup = true;
-            if (syncExists) {
-                // Ask if they want to join existing sync
-                const choice = await vscode.window.showInformationMessage(
-                    'An existing sync folder was found in your Google Drive. Would you like to join it?',
-                    { modal: true },
-                    'Join Existing',
-                    'Create New'
-                );
-
-                if (choice === 'Join Existing') {
-                    isNewSetup = false;
-                } else if (choice !== 'Create New') {
-                    return false; // Cancelled
-                }
-            }
-
-            // Step 3: Get or set master password
-            if (isNewSetup) {
-                // New setup - create password
-                const password = await vscode.window.showInputBox({
-                    prompt: 'Create a Master Password for encryption (remember this password!)',
-                    password: true,
-                    validateInput: (value) => {
-                        if (!value || value.length < 8) {
-                            return 'Password must be at least 8 characters';
-                        }
-                        return null;
-                    }
-                });
-
-                if (!password) {
-                    return false;
-                }
-
-                // Confirm password
-                const confirmPassword = await vscode.window.showInputBox({
-                    prompt: 'Confirm Master Password',
-                    password: true,
-                    validateInput: (value) => {
-                        if (value !== password) {
-                            return 'Passwords do not match';
-                        }
-                        return null;
-                    }
-                });
-
-                if (!confirmPassword) {
-                    return false;
-                }
-
-                this.masterPassword = password;
-                await this.context.secrets.store(`${EXT_NAME}.sync.masterPassword`, password);
-
-                // Create initial manifest
-                await this.createInitialManifest();
-            } else {
-                // Joining existing - verify password
-                const password = await vscode.window.showInputBox({
-                    prompt: 'Enter the Master Password for this sync',
-                    password: true
-                });
-
-                if (!password) {
-                    return false;
-                }
-
-                // Verify password against manifest
-                const verified = await this.verifyPassword(password);
-                if (!verified) {
-                    vscode.window.showErrorMessage('Incorrect password. Please try again.');
-                    return false;
-                }
-
-                this.masterPassword = password;
-                await this.context.secrets.store(`${EXT_NAME}.sync.masterPassword`, password);
-            }
-
-            // Step 4: Create/update config
-            this.config = {
-                enabled: true,
-                machineId: crypto.generateMachineId(),
-                machineName: os.hostname(),
-                selectedConversations: 'all',
-                autoSync: true,
-                syncInterval: 5 * 60 * 1000, // 5 minutes
-                lastSync: null
-            };
-            await this.saveConfig();
-
-            // Step 5: Update machine state
-            await this.updateMachineState();
-
-            // Step 6: Start auto-sync
-            if (this.config.autoSync) {
-                this.startAutoSync();
-            }
-
-            this.updateStatusBar('idle');
-            vscode.window.showInformationMessage('Google Drive sync setup complete!');
-            return true;
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Sync setup failed: ${error.message}`);
-            return false;
-        }
-    }
-
     /**
      * Create initial manifest in Google Drive
      */
@@ -313,7 +193,7 @@ export class SyncManager {
                 pushed: [],
                 pulled: [],
                 conflicts: [],
-                errors: ['Sync already in progress']
+                errors: [vscode.l10n.t('Sync already in progress')]
             };
         }
 
@@ -323,7 +203,7 @@ export class SyncManager {
                 pushed: [],
                 pulled: [],
                 conflicts: [],
-                errors: ['Sync not configured or not authenticated']
+                errors: [vscode.l10n.t('Sync not configured or not authenticated')]
             };
         }
 
@@ -344,17 +224,14 @@ export class SyncManager {
             // Lock for 5 minutes (default)
             const acquired = await this.driveService.acquireLock(machineId);
             if (!acquired) {
-                // Check if we should override lock based on time? 
-                // driveService.acquireLock already handles expiry checking.
-                // If false, it means someone else holds a valid lock.
-                throw new Error('Sync is currently locked by another machine. Please try again later.');
+                throw new Error(vscode.l10n.t('Sync is currently locked by another machine. Please try again later.'));
             }
 
             try {
                 // Get remote manifest
                 const remoteManifest = await this.ensureRemoteManifest();
                 if (!remoteManifest) {
-                    throw new Error('Could not retrieve remote manifest');
+                    throw new Error(vscode.l10n.t('Could not retrieve remote manifest'));
                 }
 
                 // Get local conversations
@@ -406,6 +283,10 @@ export class SyncManager {
      * Push a single conversation to Google Drive
      */
     async pushConversation(conversationId: string): Promise<void> {
+        if (!this.masterPassword) {
+            throw new Error(vscode.l10n.t('Encryption password not set'));
+        }
+
         // Create a temporary zip
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-sync-'));
         const zipPath = path.join(tempDir, `${conversationId}.zip`);
@@ -455,10 +336,14 @@ export class SyncManager {
      * Pull a single conversation from Google Drive
      */
     async pullConversation(conversationId: string): Promise<void> {
+        if (!this.masterPassword) {
+            throw new Error(vscode.l10n.t('Encryption password not set'));
+        }
+
         // Download encrypted data
         const encrypted = await this.driveService.downloadConversation(conversationId);
         if (!encrypted) {
-            throw new Error(`Conversation ${conversationId} not found in Drive`);
+            throw new Error(vscode.l10n.t('Conversation {0} not found in Drive', conversationId));
         }
 
         // Decrypt
@@ -496,6 +381,10 @@ export class SyncManager {
      * Resolve a sync conflict
      */
     async resolveConflict(conflict: SyncConflict, resolution: ConflictResolution): Promise<void> {
+        if (!this.masterPassword) {
+            throw new Error(vscode.l10n.t('Encryption password not set'));
+        }
+
         switch (resolution) {
             case 'keepLocal':
                 await this.pushConversation(conflict.conversationId);
@@ -572,12 +461,34 @@ export class SyncManager {
         // Get current manifest, update entry, save back
         // This is a simplified version - in production you'd want locking
         const now = new Date().toISOString();
-
         const local = this.getLocalConversations().find(c => c.id === conversationId);
-        const title = local?.title || conversationId;
 
-        // For now, just ensure the conversation is uploaded
-        // Manifest updates would be handled in a more sophisticated way
+        let manifest = await this.getDecryptedManifest();
+        if (!manifest) {
+            // Should not happen if we pushed, but safeguard
+            return;
+        }
+
+        const existingIdx = manifest.conversations.findIndex(c => c.id === conversationId);
+        const entry: SyncedConversation = {
+            id: conversationId,
+            title: local?.title || conversationId,
+            lastModified: now,
+            hash: hash,
+            modifiedBy: this.config!.machineId
+        };
+
+        if (existingIdx >= 0) {
+            manifest.conversations[existingIdx] = entry;
+        } else {
+            manifest.conversations.push(entry);
+        }
+
+        manifest.lastModified = now;
+
+        const manifestJson = JSON.stringify(manifest, null, 2);
+        const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
+        await this.driveService.updateManifest(encrypted);
     }
 
     /**
@@ -606,6 +517,50 @@ export class SyncManager {
         );
 
         await this.driveService.updateMachineState(this.config.machineId, encrypted);
+    }
+
+    /**
+     * Update status bar item
+     */
+    private updateStatusBar(status: 'idle' | 'syncing' | 'error' | 'ok', text?: string) {
+        if (!this.statusBarItem) return;
+
+        if (!this.config?.showStatusBar) {
+            this.statusBarItem.hide();
+            return;
+        }
+
+        switch (status) {
+            case 'idle':
+                this.statusBarItem.text = "$(cloud) AG Sync";
+                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Idle");
+                this.statusBarItem.backgroundColor = undefined;
+                break;
+            case 'syncing':
+                this.statusBarItem.text = "$(sync~spin) AG Syncing...";
+                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Syncing...");
+                this.statusBarItem.backgroundColor = undefined;
+                break;
+            case 'error':
+                this.statusBarItem.text = "$(error) AG Sync";
+                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Error (Click to retry)");
+                this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+                break;
+            case 'ok':
+                this.statusBarItem.text = "$(check) AG Sync";
+                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Up to date");
+                this.statusBarItem.backgroundColor = undefined;
+                // Revert to idle after 5 seconds
+                setTimeout(() => {
+                    if (!this.isSyncing) this.updateStatusBar('idle');
+                }, 5000);
+                break;
+        }
+
+        if (text) {
+            this.statusBarItem.tooltip = text;
+        }
+        this.statusBarItem.show();
     }
 
     /**
@@ -683,62 +638,127 @@ export class SyncManager {
     }
 
     /**
-     * Update status bar
+     * Setup wizard
      */
-    private updateStatusBar(status: 'idle' | 'syncing' | 'error'): void {
-        if (!this.statusBarItem) return;
+    async setup(): Promise<void> {
+        // 1. Check if we need to authenticate
+        try {
+            await this.authProvider.getAccessToken();
+        } catch (e: any) {
+            const answer = await vscode.window.showInformationMessage(
+                vscode.l10n.t("To sync conversations, you need to sign in with Google."),
+                vscode.l10n.t("Sign In"),
+                vscode.l10n.t("Cancel")
+            );
 
-        const showStatusBar = vscode.workspace.getConfiguration(EXT_NAME).get('sync.showStatusBar', true);
+            if (answer !== vscode.l10n.t("Sign In")) return;
 
-        if (!showStatusBar || !this.config?.enabled) {
-            this.statusBarItem.hide();
-            return;
+            try {
+                await this.authProvider.signIn();
+            } catch (err: any) {
+                vscode.window.showErrorMessage(vscode.l10n.t("Login failed: {0}", err.message));
+                return;
+            }
         }
 
-        switch (status) {
-            case 'idle':
-                this.statusBarItem.text = '$(cloud) AG Sync';
-                this.statusBarItem.tooltip = `Last sync: ${this.config?.lastSync || 'Never'}`;
-                this.statusBarItem.backgroundColor = undefined;
-                break;
-            case 'syncing':
-                this.statusBarItem.text = '$(sync~spin) AG Syncing...';
-                this.statusBarItem.tooltip = 'Synchronizing...';
-                this.statusBarItem.backgroundColor = undefined;
-                break;
-            case 'error':
-                this.statusBarItem.text = '$(cloud-offline) AG Sync Error';
-                this.statusBarItem.tooltip = 'Click to retry sync';
-                this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-                break;
+        // 2. Set Master Password
+        const password = await vscode.window.showInputBox({
+            prompt: vscode.l10n.t("Create a Master Password to encrypt your data"),
+            password: true,
+            validateInput: (value) =>
+                value && value.length >= 8 ? null : vscode.l10n.t("Password must be at least 8 characters")
+        });
+
+        if (!password) return;
+
+        // 3. Confirm Password
+        const confirm = await vscode.window.showInputBox({
+            prompt: vscode.l10n.t("Confirm Master Password"),
+            password: true,
+            validateInput: (value) =>
+                value === password ? null : vscode.l10n.t("Passwords do not match")
+        });
+
+        if (!confirm) return;
+
+        // Save password securely
+        await this.context.secrets.store('ag-sync-master-password', password);
+
+        // check machine name
+        let machineName = this.config?.machineName;
+        if (!machineName) {
+            // ask for machine name
+            machineName = await vscode.window.showInputBox({
+                prompt: vscode.l10n.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
+                value: os.hostname(),
+                validateInput: (val) => val ? null : vscode.l10n.t("Machine name cannot be empty")
+            }) || os.hostname();
         }
 
-        this.statusBarItem.show();
+        // Initialize config
+        this.config = {
+            enabled: true,
+            machineId: require('crypto').randomUUID(),
+            machineName: machineName,
+            masterPasswordHash: 'temp', // We don't store hash yet, we verify against remote or create new
+            lastSync: new Date().toISOString(),
+            autoSync: true,
+            syncInterval: 300000,
+            showStatusBar: true,
+            selectedConversations: 'all',
+            silent: false
+        };
+
+        await this.saveConfig();
+
+        // 4. Create or Get Master Manifest
+        try {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: vscode.l10n.t("Setting up sync storage..."),
+                cancellable: false
+            }, async () => {
+                await this.driveService.ensureSyncFolders();
+
+                // Try to get existing manifest
+                let manifest = await this.getDecryptedManifest();
+
+                if (manifest) {
+                    // Check if we need to verify password against it?
+                    // Actually getDecryptedManifest uses the password we just stored.
+                    // If it succeeds, password is correct.
+                    vscode.window.showInformationMessage(vscode.l10n.t("Found existing sync data! Joined as '{0}'.", this.config!.machineName));
+                } else {
+                    // Create new
+                    await this.createInitialManifest();
+                    vscode.window.showInformationMessage(vscode.l10n.t("Sync set up successfully!"));
+                }
+            });
+
+            this.updateStatusBar('idle');
+            this.startAutoSync();
+
+        } catch (error: any) {
+            vscode.window.showErrorMessage(vscode.l10n.t("Setup failed: {0}", error.message));
+        }
     }
 
     /**
-     * Disconnect sync (sign out and clear config)
+     * Disconnect sync
      */
     async disconnect(): Promise<void> {
         this.stopAutoSync();
-        await this.authProvider.signOut();
-        await this.context.secrets.delete(`${EXT_NAME}.sync.masterPassword`);
-
-        this.config = {
-            enabled: false,
-            machineId: '',
-            machineName: '',
-            selectedConversations: 'all',
-            autoSync: false,
-            syncInterval: 5 * 60 * 1000,
-            lastSync: null
-        };
-        await this.saveConfig();
-
-        this.masterPassword = null;
-        this.updateStatusBar('idle');
-
-        vscode.window.showInformationMessage('Disconnected from Google Drive sync');
+        this.config = null;
+        await this.context.globalState.update('ag-sync-config', undefined);
+        await this.context.secrets.delete('ag-sync-master-password');
+        this.updateStatusBar('idle'); // or hide
+        if (!this.statusBarItem) {
+            this.statusBarItem.hide();
+        } else {
+            // re-init status bar for empty state or hide it
+            this.statusBarItem.hide();
+        }
+        vscode.window.showInformationMessage(vscode.l10n.t("Disconnected from sync. Local data is kept safe."));
     }
 
     /**
@@ -775,12 +795,12 @@ export class SyncManager {
                     console.log('Remote manifest not found, attempting to recreate...');
                     await this.createInitialManifest();
                 } catch (e: any) {
-                    throw new Error(`Failed to get or create remote manifest: ${e.message}`);
+                    throw new Error(vscode.l10n.t("Failed to get or create remote manifest: {0}", e.message));
                 }
 
                 const retryManifest = await this.getDecryptedManifest();
                 if (!retryManifest) {
-                    throw new Error('Failed to get remote manifest after recreation attempt');
+                    throw new Error(vscode.l10n.t("Failed to get remote manifest after recreation attempt"));
                 }
                 remoteManifest = retryManifest;
             }

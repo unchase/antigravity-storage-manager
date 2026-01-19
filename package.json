@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Export and Import Antigravity/Cline conversation history with a single click. Backup your AI conversations to zip files and restore them anytime.",
-    "version": "0.3.5",
+    "version": "0.4.0",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -52,61 +52,61 @@
         "commands": [
             {
                 "command": "antigravity-storage-manager.export",
-                "title": "Export Conversations",
+                "title": "%antigravity.command.export%",
                 "icon": "$(export)",
-                "category": "Antigravity Storage"
+                "category": "%antigravity.submenu.label%"
             },
             {
                 "command": "antigravity-storage-manager.import",
-                "title": "Import Conversations",
+                "title": "%antigravity.command.import%",
                 "icon": "$(import)",
-                "category": "Antigravity Storage"
+                "category": "%antigravity.submenu.label%"
             },
             {
                 "command": "antigravity-storage-manager.rename",
-                "title": "Rename Conversation",
+                "title": "%antigravity.command.rename%",
                 "icon": "$(edit)",
-                "category": "Antigravity Storage"
+                "category": "%antigravity.submenu.label%"
             },
             {
                 "command": "antigravity-storage-manager.backupAll",
-                "title": "Backup All Conversations",
-                "category": "Antigravity Storage"
+                "title": "%antigravity.command.backupAll%",
+                "category": "%antigravity.submenu.label%"
             },
             {
                 "command": "antigravity-storage-manager.resolveConflicts",
-                "title": "Resolve Conflict Copies",
-                "category": "Antigravity Storage"
+                "title": "%antigravity.command.resolveConflicts%",
+                "category": "%antigravity.submenu.label%"
             },
             {
                 "command": "antigravity-storage-manager.syncSetup",
-                "title": "Setup Google Drive Sync",
+                "title": "%antigravity.command.syncSetup%",
                 "icon": "$(cloud)",
-                "category": "Antigravity Storage"
+                "category": "%antigravity.submenu.label%"
             },
             {
                 "command": "antigravity-storage-manager.syncNow",
-                "title": "Sync Now",
+                "title": "%antigravity.command.syncNow%",
                 "icon": "$(sync)",
-                "category": "Antigravity Storage"
+                "category": "%antigravity.submenu.label%"
             },
             {
                 "command": "antigravity-storage-manager.syncManage",
-                "title": "Manage Synced Conversations",
+                "title": "%antigravity.command.syncManage%",
                 "icon": "$(list-unordered)",
-                "category": "Antigravity Storage"
+                "category": "%antigravity.submenu.label%"
             },
             {
                 "command": "antigravity-storage-manager.syncDisconnect",
-                "title": "Disconnect Google Drive Sync",
+                "title": "%antigravity.command.syncDisconnect%",
                 "icon": "$(sign-out)",
-                "category": "Antigravity Storage"
+                "category": "%antigravity.submenu.label%"
             }
         ],
         "submenus": [
             {
                 "id": "antigravity-storage-manager.submenu",
-                "label": "Antigravity Storage"
+                "label": "%antigravity.submenu.label%"
             }
         ],
         "menus": {
@@ -192,42 +192,62 @@
             ]
         },
         "configuration": {
-            "title": "Antigravity Storage Manager",
+            "title": "%antigravity.config.title%",
             "properties": {
                 "antigravity-storage-manager.sync.autoSync": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Automatically sync conversations on startup and at regular intervals"
+                    "description": "%antigravity.config.autoSync%"
                 },
                 "antigravity-storage-manager.sync.syncInterval": {
                     "type": "number",
                     "default": 300000,
-                    "description": "Auto-sync interval in milliseconds (default: 5 minutes)"
+                    "description": "%antigravity.config.syncInterval%"
                 },
                 "antigravity-storage-manager.sync.showStatusBar": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Show sync status in the status bar"
+                    "description": "%antigravity.config.showStatusBar%"
                 },
                 "antigravity-storage-manager.sync.silent": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Suppress success notifications for auto-sync"
+                    "description": "%antigravity.config.silent%"
                 },
                 "antigravity-storage-manager.sync.machineName": {
                     "type": "string",
                     "default": "",
-                    "description": "Custom name for this machine (defaults to hostname if empty)"
+                    "description": "%antigravity.config.machineName%"
                 },
                 "antigravity-storage-manager.google.clientId": {
                     "type": "string",
                     "default": "",
-                    "description": "Google Cloud OAuth2 Client ID (Desktop App)"
+                    "description": "%antigravity.config.clientId%"
                 },
                 "antigravity-storage-manager.google.clientSecret": {
                     "type": "string",
                     "default": "",
-                    "description": "Google Cloud OAuth2 Client Secret"
+                    "description": "%antigravity.config.clientSecret%"
+                },
+                "antigravity-storage-manager.backup.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%antigravity.config.backupEnabled%"
+                },
+                "antigravity-storage-manager.backup.interval": {
+                    "type": "number",
+                    "default": 24,
+                    "description": "%antigravity.config.backupInterval%"
+                },
+                "antigravity-storage-manager.backup.path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "%antigravity.config.backupPath%"
+                },
+                "antigravity-storage-manager.backup.retention": {
+                    "type": "number",
+                    "default": 10,
+                    "description": "%antigravity.config.backupRetention%"
                 }
             }
         }
@@ -239,13 +259,18 @@
         "watch": "npx tsc -watch -p ./",
         "pretest": "npm run compile && npm run lint",
         "lint": "eslint src --ext ts",
-        "test": "node ./out/test/runTest.js"
+        "test": "node ./out/test/runTest.js",
+        "test:unit": "jest"
     },
     "devDependencies": {
+        "@types/jest": "^30.0.0",
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.96.0",
         "@vscode/vsce": "^3.7.1",
         "esbuild": "^0.27.2",
+        "jest": "^30.2.0",
+        "jest-mock-vscode": "^4.10.0",
+        "ts-jest": "^29.4.6",
         "typescript": "^5.3.0"
     },
     "dependencies": {

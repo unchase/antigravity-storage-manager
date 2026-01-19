@@ -59,20 +59,20 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
     }
 
     if (conflicts.length === 0) {
-        vscode.window.showInformationMessage('No detected conflict copies found.');
+        vscode.window.showInformationMessage(vscode.l10n.t('No detected conflict copies found.'));
         return;
     }
 
     // 2. Show QuickPick to select a conflict pair to resolve
     const items = conflicts.map(c => ({
         label: `$(diff) ${c.title}`,
-        description: `Conflict copy from ${formatRelativeTime(c.lastModified.toISOString())}`,
-        detail: `Original ID: ${c.originalId} | Conflict ID: ${c.conflictId}`,
+        description: vscode.l10n.t("Conflict copy from {0}", formatRelativeTime(c.lastModified.toISOString())),
+        detail: vscode.l10n.t("Original ID: {0} | Conflict ID: {1}", c.originalId, c.conflictId),
         conflict: c
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: `Found ${conflicts.length} conflict copies. Select one to resolve.`
+        placeHolder: vscode.l10n.t("Found {0} conflict copies. Select one to resolve.", conflicts.length)
     });
 
     if (!selected) return;
@@ -80,15 +80,19 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
     const c = selected.conflict;
 
     // 3. Show Action Options
+    const keepOriginal = vscode.l10n.t('Keep Original (Delete Copy)');
+    const keepConflict = vscode.l10n.t('Keep Conflict (Overwrite Original)');
+    const cancel = vscode.l10n.t('Cancel');
+
     const action = await vscode.window.showWarningMessage(
-        `Resolve conflict for "${c.title}"?`,
-        { modal: true, detail: `Conflict copy: ${c.conflictId}\nOriginal: ${c.originalId}` },
-        'Keep Original (Delete Copy)',
-        'Keep Conflict (Overwrite Original)',
-        'Cancel'
+        vscode.l10n.t("Resolve conflict for \"{0}\"?", c.title),
+        { modal: true, detail: vscode.l10n.t("Conflict copy: {0}\nOriginal: {1}", c.conflictId, c.originalId) },
+        keepOriginal,
+        keepConflict,
+        cancel
     );
 
-    if (action === 'Keep Original (Delete Copy)') {
+    if (action === keepOriginal) {
         try {
             // Delete conflict folder
             fs.rmSync(path.join(brainDir, c.conflictId), { recursive: true, force: true });
@@ -96,11 +100,11 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
             const pbPath = path.join(convDir, `${c.conflictId}.pb`);
             if (fs.existsSync(pbPath)) fs.unlinkSync(pbPath);
 
-            vscode.window.showInformationMessage(`Conflict resolved: Start version kept.`);
+            vscode.window.showInformationMessage(vscode.l10n.t("Conflict resolved: Start version kept."));
         } catch (e: any) {
-            vscode.window.showErrorMessage(`Failed to delete conflict copy: ${e.message}`);
+            vscode.window.showErrorMessage(vscode.l10n.t("Failed to delete conflict copy: {0}", e.message));
         }
-    } else if (action === 'Keep Conflict (Overwrite Original)') {
+    } else if (action === keepConflict) {
         try {
             // 1. Delete original folder
             const originalPath = path.join(brainDir, c.originalId);
@@ -116,9 +120,9 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
             if (fs.existsSync(originalPb)) fs.unlinkSync(originalPb);
             if (fs.existsSync(conflictPb)) fs.renameSync(conflictPb, originalPb);
 
-            vscode.window.showInformationMessage(`Conflict resolved: Conflict version kept.`);
+            vscode.window.showInformationMessage(vscode.l10n.t("Conflict resolved: Conflict version kept."));
         } catch (e: any) {
-            vscode.window.showErrorMessage(`Failed to overwrite original: ${e.message}`);
+            vscode.window.showErrorMessage(vscode.l10n.t("Failed to overwrite original: {0}", e.message));
         }
     }
 }
