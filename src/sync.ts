@@ -402,7 +402,7 @@ export class SyncManager {
             case 'keepRemote':
                 await this.pullConversation(conflict.conversationId);
                 break;
-            case 'keepBoth':
+            case 'keepBoth': {
                 // Create a copy with -conflict suffix
                 const newId = `${conflict.conversationId}-conflict-${Date.now()}`;
 
@@ -435,6 +435,7 @@ export class SyncManager {
                 // Then push local
                 await this.pushConversation(conflict.conversationId);
                 break;
+            }
         }
     }
 
@@ -473,7 +474,7 @@ export class SyncManager {
         const now = new Date().toISOString();
         const local = this.getLocalConversations().find(c => c.id === conversationId);
 
-        let manifest = await this.getDecryptedManifest();
+        const manifest = await this.getDecryptedManifest();
         if (!manifest) {
             // Should not happen if we pushed, but safeguard
             return;
@@ -615,7 +616,9 @@ export class SyncManager {
                         title = match[1].trim();
                     }
                     hash = crypto.computeHash(Buffer.from(content));
-                } catch { }
+                } catch {
+                    // Ignore error reading task.md
+                }
             }
 
             const stats = fs.statSync(dirPath);
@@ -726,6 +729,7 @@ export class SyncManager {
         // Initialize config
         this.config = {
             enabled: true,
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
             machineId: require('crypto').randomUUID(),
             machineName: machineName,
             masterPasswordHash: 'temp', // We don't store hash yet, we verify against remote or create new
@@ -751,7 +755,7 @@ export class SyncManager {
 
                 // Try to get existing manifest
                 this.reportProgress(progress, vscode.l10n.t('Checking for existing backup...'));
-                let manifest = await this.getDecryptedManifest();
+                const manifest = await this.getDecryptedManifest();
 
                 if (manifest) {
                     vscode.window.showInformationMessage(vscode.l10n.t("Found existing sync data! Joined as '{0}'.", this.config!.machineName));

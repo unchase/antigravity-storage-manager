@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
-import { getConversationsAsync, formatRelativeTime, ConversationItem } from './utils';
-import { SyncManager } from './sync';
+
+import { formatRelativeTime } from './utils';
 
 /**
  * Handle manual conflict resolution
@@ -43,7 +42,9 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
                         const m = content.match(/^#\s*Task:?\s*(.*)$/im);
                         if (m && m[1]) title = m[1].trim();
                     }
-                } catch { }
+                } catch {
+                    // ignore
+                }
 
                 const stats = fs.statSync(path.join(brainDir, dir));
 

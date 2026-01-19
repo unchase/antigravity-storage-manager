@@ -1,4 +1,5 @@
 import { google, drive_v3 } from 'googleapis';
+import { Readable } from 'stream';
 import { GoogleAuthProvider } from './googleAuth';
 
 const SYNC_FOLDER_NAME = 'AntigravitySync';
@@ -455,7 +456,7 @@ export class GoogleDriveService {
                     await this.drive.files.delete({ fileId });
                 } catch (e) {
                     // Invalid lock file or download failed - assume we can take over
-                    try { await this.drive.files.delete({ fileId }); } catch { }
+                    try { await this.drive.files.delete({ fileId }); } catch { /* ignore */ }
                 }
             }
 
@@ -523,7 +524,6 @@ export class GoogleDriveService {
  * Convert a Buffer to a readable stream
  */
 function bufferToStream(buffer: Buffer): NodeJS.ReadableStream {
-    const { Readable } = require('stream');
     const stream = new Readable();
     stream.push(buffer);
     stream.push(null);
