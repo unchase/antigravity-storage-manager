@@ -4,6 +4,8 @@ import * as path from 'path';
 import * as os from 'os';
 import archiver from 'archiver';
 import extract from 'extract-zip';
+import { GoogleAuthProvider } from './googleAuth';
+import { SyncManager } from './sync';
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
@@ -15,17 +17,108 @@ interface ConversationItem extends vscode.QuickPickItem {
     id: string;
 }
 
-export function activate(context: vscode.ExtensionContext) {
+// Global instances for sync
+let authProvider: GoogleAuthProvider;
+let syncManager: SyncManager;
+
+export async function activate(context: vscode.ExtensionContext) {
     console.log(`Congratulations, "${EXT_NAME}" is now active!`);
 
-    // Register commands
+    // Initialize Google Auth Provider
+    authProvider = new GoogleAuthProvider(context);
+    await authProvider.initialize();
+
+    // Initialize Sync Manager
+    syncManager = new SyncManager(context, authProvider);
+    await syncManager.initialize();
+
+    // Register existing commands
     context.subscriptions.push(
         vscode.commands.registerCommand(`${EXT_NAME}.export`, exportConversations),
         vscode.commands.registerCommand(`${EXT_NAME}.import`, importConversations),
         vscode.commands.registerCommand(`${EXT_NAME}.rename`, renameConversation)
     );
 
-    // Create status bar items
+    // Register sync commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand(`${EXT_NAME}.syncSetup`, async () => {
+            await syncManager.setup();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.syncNow`, async () => {
+            if (!syncManager.isReady()) {
+                const setupNow = await vscode.window.showWarningMessage(
+                    'Sync is not configured. Would you like to set it up now?',
+                    'Setup Sync',
+                    'Cancel'
+                );
+                if (setupNow === 'Setup Sync') {
+                    await syncManager.setup();
+                }
+                return;
+            }
+
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'Syncing conversations...',
+                cancellable: false
+            }, async () => {
+                const result = await syncManager.syncNow();
+
+                if (result.success) {
+                    const message = [];
+                    if (result.pushed.length) message.push(`${result.pushed.length} pushed`);
+                    if (result.pulled.length) message.push(`${result.pulled.length} pulled`);
+
+                    if (message.length) {
+                        vscode.window.showInformationMessage(`Sync complete: ${message.join(', ')}`);
+                    } else {
+                        vscode.window.showInformationMessage('Sync complete: Everything is up to date');
+                    }
+                } else {
+                    vscode.window.showErrorMessage(`Sync failed: ${result.errors.join(', ')}`);
+                }
+
+                // Handle conflicts
+                for (const conflict of result.conflicts) {
+                    const choice = await vscode.window.showWarningMessage(
+                        `Conflict detected for conversation. Local and remote versions differ.`,
+                        { modal: true },
+                        'Keep Local',
+                        'Keep Remote',
+                        'Keep Both'
+                    );
+
+                    if (choice === 'Keep Local') {
+                        await syncManager.resolveConflict(conflict, 'keepLocal');
+                    } else if (choice === 'Keep Remote') {
+                        await syncManager.resolveConflict(conflict, 'keepRemote');
+                    } else if (choice === 'Keep Both') {
+                        await syncManager.resolveConflict(conflict, 'keepBoth');
+                    }
+                }
+            });
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.syncManage`, async () => {
+            if (!syncManager.isEnabled()) {
+                vscode.window.showWarningMessage('Sync is not enabled. Please set up sync first.');
+                return;
+            }
+            await syncManager.manageConversations();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.syncDisconnect`, async () => {
+            const confirm = await vscode.window.showWarningMessage(
+                'Are you sure you want to disconnect from Google Drive sync?',
+                { modal: true },
+                'Disconnect',
+                'Cancel'
+            );
+            if (confirm === 'Disconnect') {
+                await syncManager.disconnect();
+            }
+        })
+    );
+
+    // Create status bar items for export/import
     const exportButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     exportButton.text = "$(export) AG Export";
     exportButton.tooltip = "Export Antigravity Conversations";

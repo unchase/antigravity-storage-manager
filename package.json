@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Export and Import Antigravity/Cline conversation history with a single click. Backup your AI conversations to zip files and restore them anytime.",
-    "version": "0.2.3",
+    "version": "0.3.0",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -36,7 +36,9 @@
         "export",
         "import",
         "conversation",
-        "history"
+        "history",
+        "sync",
+        "google-drive"
     ],
     "activationEvents": [
         "onStartupFinished"
@@ -48,19 +50,43 @@
                 "command": "antigravity-storage-manager.export",
                 "title": "Export Conversations",
                 "icon": "$(export)",
-                "category": "Antigravity"
+                "category": "Antigravity Storage"
             },
             {
                 "command": "antigravity-storage-manager.import",
                 "title": "Import Conversations",
                 "icon": "$(import)",
-                "category": "Antigravity"
+                "category": "Antigravity Storage"
             },
             {
                 "command": "antigravity-storage-manager.rename",
                 "title": "Rename Conversation",
                 "icon": "$(edit)",
-                "category": "Antigravity"
+                "category": "Antigravity Storage"
+            },
+            {
+                "command": "antigravity-storage-manager.syncSetup",
+                "title": "Setup Google Drive Sync",
+                "icon": "$(cloud)",
+                "category": "Antigravity Storage"
+            },
+            {
+                "command": "antigravity-storage-manager.syncNow",
+                "title": "Sync Now",
+                "icon": "$(sync)",
+                "category": "Antigravity Storage"
+            },
+            {
+                "command": "antigravity-storage-manager.syncManage",
+                "title": "Manage Synced Conversations",
+                "icon": "$(list-unordered)",
+                "category": "Antigravity Storage"
+            },
+            {
+                "command": "antigravity-storage-manager.syncDisconnect",
+                "title": "Disconnect Google Drive Sync",
+                "icon": "$(sign-out)",
+                "category": "Antigravity Storage"
             }
         ],
         "submenus": [
@@ -79,6 +105,18 @@
                 },
                 {
                     "command": "antigravity-storage-manager.rename"
+                },
+                {
+                    "command": "antigravity-storage-manager.syncSetup"
+                },
+                {
+                    "command": "antigravity-storage-manager.syncNow"
+                },
+                {
+                    "command": "antigravity-storage-manager.syncManage"
+                },
+                {
+                    "command": "antigravity-storage-manager.syncDisconnect"
                 }
             ],
             "antigravity-storage-manager.submenu": [
@@ -93,6 +131,22 @@
                 {
                     "command": "antigravity-storage-manager.rename",
                     "group": "2_manage@1"
+                },
+                {
+                    "command": "antigravity-storage-manager.syncSetup",
+                    "group": "3_sync@1"
+                },
+                {
+                    "command": "antigravity-storage-manager.syncNow",
+                    "group": "3_sync@2"
+                },
+                {
+                    "command": "antigravity-storage-manager.syncManage",
+                    "group": "3_sync@3"
+                },
+                {
+                    "command": "antigravity-storage-manager.syncDisconnect",
+                    "group": "3_sync@4"
                 }
             ],
             "view/title": [
@@ -122,6 +176,26 @@
                     "group": "z_commands"
                 }
             ]
+        },
+        "configuration": {
+            "title": "Antigravity Storage Manager",
+            "properties": {
+                "antigravity-storage-manager.sync.autoSync": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically sync conversations on startup and at regular intervals"
+                },
+                "antigravity-storage-manager.sync.syncInterval": {
+                    "type": "number",
+                    "default": 300000,
+                    "description": "Auto-sync interval in milliseconds (default: 5 minutes)"
+                },
+                "antigravity-storage-manager.sync.showStatusBar": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show sync status in the status bar"
+                }
+            }
         }
     },
     "scripts": {
@@ -143,6 +217,7 @@
     "dependencies": {
         "@types/archiver": "^7.0.0",
         "archiver": "^7.0.1",
-        "extract-zip": "^2.0.1"
+        "extract-zip": "^2.0.1",
+        "googleapis": "^144.0.0"
     }
 }

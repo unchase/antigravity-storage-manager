@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=antigravity.antigravity-storage-manager">
-    <img src="https://img.shields.io/visual-studio-marketplace/v/antigravity.antigravity-storage-manager" alt="VS Marketplace Version">
+  <a href="https://marketplace.visualstudio.com/items?itemName=unchase.antigravity-storage-manager">
+    <img src="https://img.shields.io/visual-studio-marketplace/v/unchase.antigravity-storage-manager" alt="VS Marketplace Version">
   </a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=antigravity.antigravity-storage-manager">
-    <img src="https://img.shields.io/visual-studio-marketplace/i/antigravity.antigravity-storage-manager" alt="VS Marketplace Installs">
+  <a href="https://marketplace.visualstudio.com/items?itemName=unchase.antigravity-storage-manager">
+    <img src="https://img.shields.io/visual-studio-marketplace/i/unchase.antigravity-storage-manager" alt="VS Marketplace Installs">
   </a>
   <a href="https://github.com/unchase/antigravity-storage-manager/blob/master/LICENSE">
     <img src="https://img.shields.io/github/license/unchase/antigravity-storage-manager" alt="License">
@@ -33,34 +33,57 @@ If you find this extension useful, consider supporting the development:
 
 ## Features
 
+- ☁️ **Google Drive Sync** — Automatically sync conversations between devices
+- 🔒 **End-to-End Encryption** — All synced data is encrypted using AES-256-GCM
 - 📦 **Export Conversations** — Select one or multiple conversations and save them to a ZIP archive
 - 📥 **Import Conversations** — Restore conversations from ZIP archives with conflict resolution
 - ✏️ **Rename Conversations** — Change conversation titles directly from VS Code
-- 🔄 **Conflict Resolution** — Choose to Overwrite, Rename, or Skip when importing duplicates
-- 🎯 **Status Bar Integration** — Quick access buttons in the VS Code status bar
+- 🔄 **Conflict Resolution** — Smart detection and resolution of sync conflicts
+- 🎯 **Status Bar Integration** — Quick access to Export, Import, and Sync
 - 🎨 **Command Palette** — All commands available via `Ctrl+Shift+P`
 
 ---
 
-## How It Works
+## Google Drive Synchronization (New!)
+
+Keep your conversations synchronized across multiple machines using your Google Drive.
+
+### Setup Sync
+1. Run command `Antigravity Storage: Setup Google Drive Sync`
+2. **Create a Master Password**: This password is used to encrypt your data. You must use the same password on all machines.
+3. **Authenticate**: Log in with your Google account.
+4. **Done!** Conversations will automatically sync in the background.
+
+### Security
+- **Zero Knowledge**: All data is encrypted locally before being uploaded.
+- **Master Password**: Only you know the password. It is stored securely in your OS keychain.
+- **Limited Access**: The extension only accesses files it created (app-specific folder).
+
+### Manual Sync
+- Click the **AG Sync** button in the status bar
+- Or run `Antigravity Storage: Sync Now`
+
+### Manage Sync
+- Run `Antigravity Storage: Manage Synced Conversations` to choose which conversations to sync.
+- Default: All conversations are synchronized.
+
+---
+
+## How It Works (Export/Import)
 
 ### 1. Quick Access via Status Bar
+ 
+The extension adds **AG Export**, **AG Import**, and **AG Sync** buttons to your VS Code status bar:
 
-The extension adds **AG Export** and **AG Import** buttons to your VS Code status bar for one-click access:
-
-![Status Bar Buttons](screenshots/status-bar.png)
+![Status Bar Buttons](screenshots/status-bar-sync.png)
 
 ### 2. Command Palette Integration
 
-All commands are available through the Command Palette (`Ctrl+Shift+P`). Just type "Antigravity" to see all available actions:
-
-![Command Palette](screenshots/command-palette.png)
+All commands are available through the Command Palette (`Ctrl+Shift+P`). Just type "Antigravity Storage" to see all available actions.
 
 ### 3. Multi-Select Export
 
-When exporting, you can select **multiple conversations at once** using the Space key. The list shows conversation IDs and their last modification dates:
-
-![Export Dialog](screenshots/export-dialog.png)
+When exporting, you can select **multiple conversations at once** using the Space key.
 
 ---
 
@@ -72,43 +95,17 @@ When exporting, you can select **multiple conversations at once** using the Spac
 3. Search for "Antigravity Storage Manager"
 4. Click Install
 
-### From VSIX
-1. Download the `.vsix` file from [Releases](https://github.com/unchase/antigravity-storage-manager/releases)
-2. Open VS Code
-3. Press `Ctrl+Shift+P` → "Extensions: Install from VSIX..."
-4. Select the downloaded file
-
----
-
-## Usage
-
-### Export Conversations
-1. Press `Ctrl+Shift+P` and type "Antigravity: Export Conversations"
-2. Select one or more conversations (use Space to multi-select)
-3. Choose save location for the ZIP file
-
-### Import Conversations
-1. Press `Ctrl+Shift+P` and type "Antigravity: Import Conversations"
-2. Select one or more ZIP files
-3. If a conversation already exists, choose: **Overwrite**, **Rename**, or **Skip**
-
-### Rename Conversation
-1. Press `Ctrl+Shift+P` and type "Antigravity: Rename Conversation"
-2. Select the conversation to rename
-3. Enter the new title
-
----
-
-## Requirements
-
+### Requirements
 - VS Code 1.96.0 or higher
-- Antigravity or Cline extension (optional, for sidebar integration)
+- Google Account (for synchronization)
 
 ## Data Location
 
-Conversations are stored in:
+Conversations are stored locally in:
 - **Brain data:** `~/.gemini/antigravity/brain/`
 - **Conversation files:** `~/.gemini/antigravity/conversations/`
+
+Synced data is stored in your Google Drive in the `AntigravitySync` folder.
 
 ## Contributing
 
