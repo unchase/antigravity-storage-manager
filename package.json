@@ -264,7 +264,7 @@
     "scripts": {
         "compile": "node esbuild.js",
         "compile:production": "node esbuild.js --production",
-        "package": "npm run compile:production && node node_modules/@vscode/vsce/vsce package --no-dependencies",
+        "package": "node esbuild.js --production && node node_modules/@vscode/vsce/vsce package --no-dependencies",
         "watch": "npx tsc -watch -p ./",
         "pretest": "npm run compile && npm run lint",
         "lint": "eslint src",
