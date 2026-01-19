@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+
+# VS Code Extension
+*.vsix
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test
+.vscode-test/
+coverage/

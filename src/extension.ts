@@ -1,0 +1,342 @@
+import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import archiver from 'archiver';
+import extract from 'extract-zip';
+
+// Configuration
+const EXT_NAME = 'antigravity-storage-manager';
+const STORAGE_ROOT = path.join(os.homedir(), '.gemini', 'antigravity');
+const BRAIN_DIR = path.join(STORAGE_ROOT, 'brain');
+const CONV_DIR = path.join(STORAGE_ROOT, 'conversations');
+
+interface ConversationItem extends vscode.QuickPickItem {
+    id: string;
+}
+
+export function activate(context: vscode.ExtensionContext) {
+    console.log(`Congratulations, "${EXT_NAME}" is now active!`);
+
+    // Register commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand(`${EXT_NAME}.export`, exportConversations),
+        vscode.commands.registerCommand(`${EXT_NAME}.import`, importConversations),
+        vscode.commands.registerCommand(`${EXT_NAME}.rename`, renameConversation)
+    );
+
+    // Create status bar items
+    const exportButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    exportButton.text = "$(export) AG Export";
+    exportButton.tooltip = "Export Antigravity Conversations";
+    exportButton.command = `${EXT_NAME}.export`;
+    exportButton.show();
+    context.subscriptions.push(exportButton);
+
+    const importButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+    importButton.text = "$(import) AG Import";
+    importButton.tooltip = "Import Antigravity Conversations";
+    importButton.command = `${EXT_NAME}.import`;
+    importButton.show();
+    context.subscriptions.push(importButton);
+}
+
+// Helper: Get all conversations with metadata
+function getConversations(): ConversationItem[] {
+    if (!fs.existsSync(BRAIN_DIR)) {
+        return [];
+    }
+
+    const dirs = fs.readdirSync(BRAIN_DIR).filter(d => {
+        try {
+            return fs.statSync(path.join(BRAIN_DIR, d)).isDirectory();
+        } catch { return false; }
+    });
+
+    const items: ConversationItem[] = [];
+
+    for (const id of dirs) {
+        const dirPath = path.join(BRAIN_DIR, id);
+        const taskPath = path.join(dirPath, 'task.md');
+        let label = id;
+
+        if (fs.existsSync(taskPath)) {
+            try {
+                const content = fs.readFileSync(taskPath, 'utf8');
+                const match = content.match(/^#\s*Task:?\s*(.*)$/im);
+                if (match && match[1]) {
+                    label = match[1].trim();
+                }
+            } catch (e) {
+                console.error(`Error reading ${taskPath}:`, e);
+            }
+        }
+
+        try {
+            const stats = fs.statSync(dirPath);
+            items.push({
+                label: label,
+                description: id,
+                detail: `Last modified: ${stats.mtime.toLocaleString()}`,
+                id: id
+            });
+        } catch (e) {
+            console.error(`Error stat-ing ${dirPath}:`, e);
+        }
+    }
+
+    // Sort by recent first
+    items.sort((a, b) => {
+        const dateA = new Date(a.detail!.replace('Last modified: ', ''));
+        const dateB = new Date(b.detail!.replace('Last modified: ', ''));
+        return dateB.getTime() - dateA.getTime();
+    });
+
+    return items;
+}
+
+// EXPORT: Multi-select
+async function exportConversations() {
+    const items = getConversations();
+
+    if (items.length === 0) {
+        vscode.window.showInformationMessage('No conversations found to export.');
+        return;
+    }
+
+    const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select conversations to export (use Space to select multiple)',
+        canPickMany: true
+    });
+
+    if (!selected || selected.length === 0) return;
+
+    // Determine filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const defaultName = selected.length === 1
+        ? `${selected[0].id}.zip`
+        : `antigravity-export-${timestamp}.zip`;
+
+    const defaultUri = vscode.Uri.file(path.join(os.homedir(), 'Desktop', defaultName));
+    const saveUri = await vscode.window.showSaveDialog({
+        defaultUri: defaultUri,
+        filters: { 'Antigravity Archive': ['zip'] },
+        saveLabel: 'Export'
+    });
+
+    if (!saveUri) return;
+
+    const destPath = saveUri.fsPath;
+
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Exporting ${selected.length} conversation(s)...`,
+        cancellable: false
+    }, async () => {
+        return new Promise<void>((resolve, reject) => {
+            const output = fs.createWriteStream(destPath);
+            const archive = archiver('zip', { zlib: { level: 9 } });
+
+            output.on('close', () => {
+                vscode.window.showInformationMessage(
+                    `Exported ${selected.length} conversation(s) to ${destPath}`
+                );
+                resolve();
+            });
+
+            archive.on('error', (err) => {
+                vscode.window.showErrorMessage(`Export failed: ${err.message}`);
+                reject(err);
+            });
+
+            archive.pipe(output);
+
+            // Add all selected conversations
+            for (const conv of selected) {
+                const id = conv.id;
+
+                // Add brain directory
+                const sourceBrainDir = path.join(BRAIN_DIR, id);
+                if (fs.existsSync(sourceBrainDir)) {
+                    archive.directory(sourceBrainDir, `brain/${id}`);
+                }
+
+                // Add conversation .pb file
+                const convFile = path.join(CONV_DIR, `${id}.pb`);
+                if (fs.existsSync(convFile)) {
+                    archive.file(convFile, { name: `conversations/${id}.pb` });
+                }
+            }
+
+            archive.finalize();
+        });
+    });
+}
+
+// IMPORT: Multi-file with conflict resolution
+async function importConversations() {
+    const uris = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectMany: true,
+        filters: { 'Antigravity Archive': ['zip'] },
+        openLabel: 'Import'
+    });
+
+    if (!uris || uris.length === 0) return;
+
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Importing ${uris.length} archive(s)...`,
+        cancellable: false
+    }, async (progress) => {
+        for (const uri of uris) {
+            const zipPath = uri.fsPath;
+            progress.report({ message: path.basename(zipPath) });
+
+            try {
+                // First extract to temp to check for conflicts
+                const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-import-'));
+
+                try {
+                    await extract(zipPath, { dir: tempDir });
+
+                    // Check for brain directories (conversation IDs)
+                    const brainDir = path.join(tempDir, 'brain');
+                    if (fs.existsSync(brainDir)) {
+                        const convIds = fs.readdirSync(brainDir).filter(d =>
+                            fs.statSync(path.join(brainDir, d)).isDirectory()
+                        );
+
+                        for (const id of convIds) {
+                            const existingDir = path.join(BRAIN_DIR, id);
+                            let targetId = id;
+
+                            if (fs.existsSync(existingDir)) {
+                                // Conflict! Ask user
+                                const choice = await vscode.window.showWarningMessage(
+                                    `Conversation "${id}" already exists.`,
+                                    { modal: true },
+                                    'Overwrite',
+                                    'Rename',
+                                    'Skip'
+                                );
+
+                                if (choice === 'Skip') {
+                                    skippedCount++;
+                                    continue;
+                                } else if (choice === 'Rename') {
+                                    const newId = await vscode.window.showInputBox({
+                                        prompt: 'Enter new conversation ID',
+                                        value: `${id}-imported`,
+                                        validateInput: (value) => {
+                                            if (!value) return 'ID cannot be empty';
+                                            if (fs.existsSync(path.join(BRAIN_DIR, value))) {
+                                                return 'This ID already exists';
+                                            }
+                                            return null;
+                                        }
+                                    });
+
+                                    if (!newId) {
+                                        skippedCount++;
+                                        continue;
+                                    }
+                                    targetId = newId;
+                                }
+                                // else Overwrite - continue with same ID
+                            }
+
+                            // Copy brain directory
+                            const sourceBrain = path.join(brainDir, id);
+                            const destBrain = path.join(BRAIN_DIR, targetId);
+
+                            if (fs.existsSync(destBrain)) {
+                                fs.rmSync(destBrain, { recursive: true, force: true });
+                            }
+                            fs.cpSync(sourceBrain, destBrain, { recursive: true });
+
+                            // Copy .pb file if exists
+                            const sourcePb = path.join(tempDir, 'conversations', `${id}.pb`);
+                            if (fs.existsSync(sourcePb)) {
+                                const destPb = path.join(CONV_DIR, `${targetId}.pb`);
+                                fs.copyFileSync(sourcePb, destPb);
+                            }
+
+                            importedCount++;
+                        }
+                    }
+                } finally {
+                    // Cleanup temp
+                    fs.rmSync(tempDir, { recursive: true, force: true });
+                }
+            } catch (e: any) {
+                vscode.window.showErrorMessage(`Failed to import ${path.basename(zipPath)}: ${e.message}`);
+            }
+        }
+    });
+
+    const message = `Imported ${importedCount} conversation(s)` +
+        (skippedCount > 0 ? `, skipped ${skippedCount}` : '');
+
+    const choice = await vscode.window.showInformationMessage(
+        `${message}. Reload window to refresh?`,
+        'Reload',
+        'Later'
+    );
+
+    if (choice === 'Reload') {
+        vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+}
+
+// RENAME: Change conversation title
+async function renameConversation() {
+    const items = getConversations();
+
+    if (items.length === 0) {
+        vscode.window.showInformationMessage('No conversations found.');
+        return;
+    }
+
+    const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select conversation to rename'
+    });
+
+    if (!selected) return;
+
+    const currentTitle = selected.label;
+    const newTitle = await vscode.window.showInputBox({
+        prompt: 'Enter new title',
+        value: currentTitle,
+        validateInput: (value) => value ? null : 'Title cannot be empty'
+    });
+
+    if (!newTitle || newTitle === currentTitle) return;
+
+    const taskPath = path.join(BRAIN_DIR, selected.id, 'task.md');
+
+    try {
+        let content = '';
+        if (fs.existsSync(taskPath)) {
+            content = fs.readFileSync(taskPath, 'utf8');
+            // Replace existing Task header
+            if (content.match(/^#\s*Task:?\s*.*$/im)) {
+                content = content.replace(/^#\s*Task:?\s*.*$/im, `# Task: ${newTitle}`);
+            } else {
+                content = `# Task: ${newTitle}\n\n${content}`;
+            }
+        } else {
+            content = `# Task: ${newTitle}\n`;
+        }
+
+        fs.writeFileSync(taskPath, content, 'utf8');
+        vscode.window.showInformationMessage(`Renamed to "${newTitle}"`);
+    } catch (e: any) {
+        vscode.window.showErrorMessage(`Rename failed: ${e.message}`);
+    }
+}
+
+export function deactivate() { }

@@ -1,0 +1,107 @@
+{
+    "name": "antigravity-storage-manager",
+    "displayName": "Antigravity Storage Manager",
+    "description": "Export and Import Antigravity/Cline conversation history with a single click. Backup your AI conversations to zip files and restore them anytime.",
+    "version": "0.2.0",
+    "publisher": "antigravity",
+    "author": {
+        "name": "unchase"
+    },
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/unchase/antigravity-storage-manager"
+    },
+    "bugs": {
+        "url": "https://github.com/unchase/antigravity-storage-manager/issues"
+    },
+    "homepage": "https://github.com/unchase/antigravity-storage-manager#readme",
+    "engines": {
+        "vscode": "^1.96.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "keywords": [
+        "antigravity",
+        "cline",
+        "claude",
+        "ai",
+        "backup",
+        "export",
+        "import",
+        "conversation",
+        "history"
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "antigravity-storage-manager.export",
+                "title": "AG: Export Conversations",
+                "icon": "$(export)",
+                "category": "Antigravity"
+            },
+            {
+                "command": "antigravity-storage-manager.import",
+                "title": "AG: Import Conversations",
+                "icon": "$(import)",
+                "category": "Antigravity"
+            },
+            {
+                "command": "antigravity-storage-manager.rename",
+                "title": "AG: Rename Conversation",
+                "icon": "$(edit)",
+                "category": "Antigravity"
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "antigravity-storage-manager.export",
+                    "when": "view == roo-cline.SidebarProvider",
+                    "group": "navigation@7"
+                },
+                {
+                    "command": "antigravity-storage-manager.import",
+                    "when": "view == roo-cline.SidebarProvider",
+                    "group": "navigation@8"
+                },
+                {
+                    "command": "antigravity-storage-manager.export",
+                    "when": "view == claude-dev.SidebarProvider",
+                    "group": "navigation@7"
+                },
+                {
+                    "command": "antigravity-storage-manager.import",
+                    "when": "view == claude-dev.SidebarProvider",
+                    "group": "navigation@8"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "compile": "node esbuild.js",
+        "compile:production": "node esbuild.js --production",
+        "package": "npm run compile && node node_modules/@vscode/vsce/vsce package --no-dependencies",
+        "watch": "npx tsc -watch -p ./",
+        "pretest": "npm run compile && npm run lint",
+        "lint": "eslint src --ext ts",
+        "test": "node ./out/test/runTest.js"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@types/vscode": "^1.96.0",
+        "@vscode/vsce": "^3.7.1",
+        "esbuild": "^0.27.2",
+        "typescript": "^5.3.0"
+    },
+    "dependencies": {
+        "@types/archiver": "^7.0.0",
+        "archiver": "^7.0.1",
+        "extract-zip": "^2.0.1"
+    }
+}
