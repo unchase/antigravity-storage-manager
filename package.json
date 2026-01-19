@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Export and Import Antigravity/Cline conversation history with a single click. Backup your AI conversations to zip files and restore them anytime.",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "publisher": "antigravity",
     "author": {
         "name": "unchase"
@@ -42,24 +42,55 @@
         "commands": [
             {
                 "command": "antigravity-storage-manager.export",
-                "title": "AG: Export Conversations",
+                "title": "Export Conversations",
                 "icon": "$(export)",
                 "category": "Antigravity"
             },
             {
                 "command": "antigravity-storage-manager.import",
-                "title": "AG: Import Conversations",
+                "title": "Import Conversations",
                 "icon": "$(import)",
                 "category": "Antigravity"
             },
             {
                 "command": "antigravity-storage-manager.rename",
-                "title": "AG: Rename Conversation",
+                "title": "Rename Conversation",
                 "icon": "$(edit)",
                 "category": "Antigravity"
             }
         ],
+        "submenus": [
+            {
+                "id": "antigravity-storage-manager.submenu",
+                "label": "Antigravity Storage"
+            }
+        ],
         "menus": {
+            "commandPalette": [
+                {
+                    "command": "antigravity-storage-manager.export"
+                },
+                {
+                    "command": "antigravity-storage-manager.import"
+                },
+                {
+                    "command": "antigravity-storage-manager.rename"
+                }
+            ],
+            "antigravity-storage-manager.submenu": [
+                {
+                    "command": "antigravity-storage-manager.export",
+                    "group": "1_export@1"
+                },
+                {
+                    "command": "antigravity-storage-manager.import",
+                    "group": "1_export@2"
+                },
+                {
+                    "command": "antigravity-storage-manager.rename",
+                    "group": "2_manage@1"
+                }
+            ],
             "view/title": [
                 {
                     "command": "antigravity-storage-manager.export",
@@ -80,6 +111,11 @@
                     "command": "antigravity-storage-manager.import",
                     "when": "view == claude-dev.SidebarProvider",
                     "group": "navigation@8"
+                },
+                {
+                    "submenu": "antigravity-storage-manager.submenu",
+                    "when": "view == roo-cline.SidebarProvider || view == claude-dev.SidebarProvider",
+                    "group": "z_commands"
                 }
             ]
         }
