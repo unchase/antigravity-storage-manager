@@ -21,6 +21,14 @@
   </a>
 </p>
 
+## Support
+
+If you find this extension useful, consider supporting the development:
+
+<a href="https://www.patreon.com/unchase">
+  <img src="https://img.shields.io/badge/Patreon-Support-orange?logo=patreon" alt="Support on Patreon">
+</a>
+
 ---
 
 ## Features
