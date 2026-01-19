@@ -18,7 +18,16 @@ Thank you for your interest in contributing to this VS Code extension!
 
 2. **Install dependencies:**
    ```bash
-   npm install
+   npm install --ignore-scripts
+   ```
+
+   If standard `npm install` fails in your environment, use these commands to build manually:
+
+      ```bash
+   npm install --ignore-scripts
+   npm install @esbuild/win32-x64 --ignore-scripts --save-optional
+   node esbuild.js
+   node node_modules/@vscode/vsce/vsce package --no-dependencies
    ```
 
 3. **Build the extension:**

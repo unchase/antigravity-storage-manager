@@ -273,7 +273,10 @@ export class SyncManager {
             result.errors.push(error.message);
         } finally {
             this.isSyncing = false;
-            this.updateStatusBar(result.success ? 'idle' : 'error');
+            this.updateStatusBar(
+                result.success ? 'idle' : 'error',
+                result.success ? undefined : result.errors.join('\n')
+            );
         }
 
         return result;
@@ -724,15 +727,39 @@ export class SyncManager {
                 let manifest = await this.getDecryptedManifest();
 
                 if (manifest) {
-                    // Check if we need to verify password against it?
-                    // Actually getDecryptedManifest uses the password we just stored.
-                    // If it succeeds, password is correct.
                     vscode.window.showInformationMessage(vscode.l10n.t("Found existing sync data! Joined as '{0}'.", this.config!.machineName));
+
+                    // Ask user which conversations to sync
+                    if (manifest.conversations.length > 0) {
+                        const items = manifest.conversations.map(c => ({
+                            label: c.title || c.id,
+                            description: c.id,
+                            picked: true, // Default to all
+                            id: c.id
+                        }));
+
+                        const selected = await vscode.window.showQuickPick(items, {
+                            canPickMany: true,
+                            placeHolder: vscode.l10n.t('Select conversations to sync from Google Drive')
+                        });
+
+                        if (selected) {
+                            if (selected.length === items.length) {
+                                this.config!.selectedConversations = 'all';
+                            } else {
+                                this.config!.selectedConversations = selected.map(s => s.id);
+                            }
+                            await this.saveConfig();
+                        }
+                    }
                 } else {
                     // Create new
                     await this.createInitialManifest();
                     vscode.window.showInformationMessage(vscode.l10n.t("Sync set up successfully!"));
                 }
+
+                // Trigger first sync
+                await this.syncNow();
             });
 
             this.updateStatusBar('idle');
@@ -917,6 +944,162 @@ export class SyncManager {
             await this.saveConfig();
             vscode.window.showInformationMessage('Sync selection updated');
         }
+    }
+
+    /**
+     * Show sync statistics/dashboard
+     */
+    async showStatistics(): Promise<void> {
+        if (!this.isReady()) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Sync is not configured'));
+            return;
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+            'antigravitySyncStats',
+            vscode.l10n.t('Antigravity Sync Statistics'),
+            vscode.ViewColumn.One,
+            { enableScripts: true }
+        );
+
+        panel.webview.html = this.getLoadingHtml();
+
+        try {
+            // Gather data
+            const localConversations = this.getLocalConversations();
+            const start = Date.now();
+            const remoteManifest = await this.getDecryptedManifest();
+
+            // Get machine states
+            const machineFiles = await this.driveService.listMachineStates();
+            const machines: Array<{ name: string; id: string; lastSync: string; isCurrent: boolean }> = [];
+
+            for (const file of machineFiles) {
+                let machineName = 'Unknown Device';
+                let lastSync = file.modifiedTime;
+
+                try {
+                    // Try to decrypt to get real name
+                    // The filename is ID.json.enc
+                    // We need to match file.id (Drive ID) or we can use the name (which is ID.json.enc)
+                    // file.name is "GUID.json.enc"
+                    const machineId = file.name.replace('.json.enc', '');
+
+                    if (machineId === this.config!.machineId) {
+                        machineName = this.config!.machineName;
+                        machines.push({
+                            name: machineName,
+                            id: machineId,
+                            lastSync: lastSync,
+                            isCurrent: true
+                        });
+                        continue;
+                    }
+
+                    // Download content
+                    const contentValues = await this.driveService.getMachineState(machineId);
+                    if (contentValues) {
+                        const decrypted = crypto.decrypt(contentValues, this.masterPassword!);
+                        const state: MachineState = JSON.parse(decrypted.toString());
+                        machineName = state.machineName;
+                        lastSync = state.lastSync;
+                    }
+                } catch (e) {
+                    console.error('Failed to process machine file:', file.name, e);
+                }
+
+                machines.push({
+                    name: machineName,
+                    id: file.name.replace('.json.enc', ''),
+                    lastSync: lastSync,
+                    isCurrent: false
+                });
+            }
+
+            // Render final HTML
+            panel.webview.html = this.getStatsHtml({
+                localCount: localConversations.length,
+                remoteCount: remoteManifest?.conversations.length || 0,
+                lastSync: this.config!.lastSync || 'Never',
+                machines: machines,
+                loadTime: Date.now() - start
+            });
+
+        } catch (error: any) {
+            panel.webview.html = `<html><body><h2>Error loading statistics</h2><p>${error.message}</p></body></html>`;
+        }
+    }
+
+    private getLoadingHtml(): string {
+        return `<!DOCTYPE html>
+        <html>
+        <body style="font-family: sans-serif; padding: 20px; color: var(--vscode-editor-foreground); background-color: var(--vscode-editor-background);">
+            <h2>Loading Sync Statistics...</h2>
+            <p>Fetching data from Google Drive...</p>
+        </body>
+        </html>`;
+    }
+
+    private getStatsHtml(data: { localCount: number; remoteCount: number; lastSync: string; machines: any[]; loadTime: number }): string {
+        const rows = data.machines.map(m => `
+            <tr style="${m.isCurrent ? 'background-color: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);' : ''}">
+                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${m.name} ${m.isCurrent ? '(This Machine)' : ''}</td>
+                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${m.id}</td>
+                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${new Date(m.lastSync).toLocaleString()}</td>
+            </tr>
+        `).join('');
+
+        return `<!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: var(--vscode-font-family); padding: 20px; color: var(--vscode-editor-foreground); background-color: var(--vscode-editor-background); }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                th { text-align: left; padding: 8px; border-bottom: 2px solid var(--vscode-panel-border); }
+                .card { background-color: var(--vscode-editor-lineHighlightBackground); padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+                .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+                .stat-value { font-size: 24px; font-weight: bold; }
+                .stat-label { opacity: 0.8; font-size: 14px; }
+            </style>
+        </head>
+        <body>
+            <h1>Sync Statistics</h1>
+            
+            <div class="grid">
+                <div class="card">
+                    <div class="stat-value">${data.localCount}</div>
+                    <div class="stat-label">Local Conversations</div>
+                </div>
+                <div class="card">
+                    <div class="stat-value">${data.remoteCount}</div>
+                    <div class="stat-label">Remote Conversations</div>
+                </div>
+                <div class="card">
+                    <div class="stat-value">${data.machines.length}</div>
+                    <div class="stat-label">Connected Machines</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div><strong>Last Sync:</strong> ${new Date(data.lastSync).toLocaleString()}</div>
+                <div style="font-size: 12px; opacity: 0.6; margin-top: 5px;">Data loaded in ${data.loadTime}ms</div>
+            </div>
+
+            <h3>Connected Machines</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Machine Name</th>
+                        <th>ID</th>
+                        <th>Last Sync State</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+        </body>
+        </html>`;
     }
 }
 

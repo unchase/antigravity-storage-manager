@@ -133,6 +133,9 @@ export async function activate(context: vscode.ExtensionContext) {
             if (confirm === vscode.l10n.t('Disconnect')) {
                 await syncManager.disconnect();
             }
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.showSyncStats`, async () => {
+            await syncManager.showStatistics();
         })
     );
 

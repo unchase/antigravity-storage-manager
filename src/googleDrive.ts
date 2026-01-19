@@ -198,6 +198,29 @@ export class GoogleDriveService {
     }
 
     /**
+     * List all machine state files
+     */
+    async listMachineStates(): Promise<DriveFile[]> {
+        if (!this.machinesFolderId) {
+            await this.ensureSyncFolders();
+        }
+
+        const query = `'${this.machinesFolderId}' in parents and trashed = false`;
+        const response = await this.drive.files.list({
+            q: query,
+            fields: 'files(id, name, modifiedTime)',
+            spaces: 'drive'
+        });
+
+        return (response.data.files || []).map((f: any) => ({
+            id: f.id!,
+            name: f.name!,
+            mimeType: 'application/json',
+            modifiedTime: f.modifiedTime!
+        }));
+    }
+
+    /**
      * Upload a conversation archive to Google Drive
      */
     async uploadConversation(conversationId: string, encryptedData: Buffer): Promise<string> {
