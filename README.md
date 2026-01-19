@@ -1,7 +1,7 @@
 # Antigravity Storage Manager
 
 <p align="center">
-  <img src="icon.png" alt="Antigravity Storage Manager" width="128" height="128">
+  <img src="banner.png" alt="Antigravity Storage Manager">
 </p>
 
 <p align="center">

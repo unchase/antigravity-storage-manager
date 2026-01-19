@@ -2,8 +2,8 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Export and Import Antigravity/Cline conversation history with a single click. Backup your AI conversations to zip files and restore them anytime.",
-    "version": "0.2.1",
-    "publisher": "antigravity",
+    "version": "0.2.2",
+    "publisher": "unchase",
     "author": {
         "name": "unchase"
     },
