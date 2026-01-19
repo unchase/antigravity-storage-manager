@@ -51,7 +51,10 @@ export interface LockFile {
  * Service for interacting with Google Drive API
  */
 export class GoogleDriveService {
-    private drive: drive_v3.Drive;
+
+    // private drive: drive_v3.Drive; // Removed static property
+    private _drive: drive_v3.Drive | null = null;
+    private lastAuthClient: any = null;
     private authProvider: GoogleAuthProvider;
     private syncFolderId: string | null = null;
     private machinesFolderId: string | null = null;
@@ -59,10 +62,20 @@ export class GoogleDriveService {
 
     constructor(authProvider: GoogleAuthProvider) {
         this.authProvider = authProvider;
-        this.drive = google.drive({
-            version: 'v3',
-            auth: authProvider.getOAuth2Client()
-        });
+        // Drive client is now initialized on demand via getter
+    }
+
+    private get drive(): drive_v3.Drive {
+        const currentClient = this.authProvider.getOAuth2Client();
+        if (!this._drive || this.lastAuthClient !== currentClient) {
+            console.log('GoogleDriveService: Re-initializing drive client with new credentials');
+            this._drive = google.drive({
+                version: 'v3',
+                auth: currentClient
+            });
+            this.lastAuthClient = currentClient;
+        }
+        return this._drive!;
     }
 
     /**
