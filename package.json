@@ -267,9 +267,9 @@
         "package": "npm run compile && node node_modules/@vscode/vsce/vsce package --no-dependencies",
         "watch": "npx tsc -watch -p ./",
         "pretest": "npm run compile && npm run lint",
-        "lint": "node node_modules/eslint/bin/eslint.js src",
+        "lint": "eslint src",
         "test": "node ./out/test/runTest.js",
-        "test:unit": "node node_modules/jest/bin/jest.js"
+        "test:unit": "jest"
     },
     "devDependencies": {
         "@eslint/js": "^9.39.2",
