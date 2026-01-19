@@ -125,6 +125,15 @@ export class GoogleAuthProvider {
      * Get the OAuth2 client for API calls
      */
     getOAuth2Client(): InstanceType<typeof google.auth.OAuth2> {
+        // Safety check: Ensure client has credentials if we have tokens
+        if (this.tokens && (!this.oauth2Client.credentials || !this.oauth2Client.credentials.access_token)) {
+            console.log('GoogleAuthProvider: Restoring credentials to OAuth2Client');
+            this.oauth2Client.setCredentials({
+                access_token: this.tokens.accessToken,
+                refresh_token: this.tokens.refreshToken,
+                expiry_date: this.tokens.expiryDate
+            });
+        }
         return this.oauth2Client;
     }
 
@@ -258,9 +267,32 @@ export class GoogleAuthProvider {
                 // Open the browser for authentication
                 vscode.env.openExternal(vscode.Uri.parse(authUrl));
 
-                vscode.window.showInformationMessage(
-                    'A browser window has opened for Google authentication. Please sign in and authorize access.'
-                );
+                vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: vscode.l10n.t('Signing in to Google...'),
+                    cancellable: true
+                }, async (progress, token) => {
+                    progress.report({ message: vscode.l10n.t('Please authorize access in the browser window') });
+
+                    // Wait for server to close (which happens on success or timeout)
+                    return new Promise<void>((resolveProgress) => {
+                        const checkInterval = setInterval(() => {
+                            if (!this.server) {
+                                clearInterval(checkInterval);
+                                resolveProgress();
+                            }
+                        }, 1000);
+
+                        token.onCancellationRequested(() => {
+                            if (this.server) {
+                                this.closeServer();
+                                reject(new Error('Authentication cancelled by user'));
+                            }
+                            clearInterval(checkInterval);
+                            resolveProgress();
+                        });
+                    });
+                });
             });
 
             // Timeout after 5 minutes

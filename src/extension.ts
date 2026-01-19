@@ -59,6 +59,30 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register sync commands
     context.subscriptions.push(
+        vscode.commands.registerCommand(`${EXT_NAME}.showMenu`, async () => {
+            const items = [
+                { label: '$(sync) Sync Now', description: 'Trigger immediate synchronization', command: `${EXT_NAME}.syncNow` },
+                { label: '$(graph) Show Statistics', description: 'View detailed sync status and history', command: `${EXT_NAME}.syncStats` },
+                { label: '$(cloud-upload) Setup Sync', description: 'Configure Google Drive synchronization', command: `${EXT_NAME}.syncSetup` },
+                { label: '$(archive) Backup Now', description: 'Create a local zip backup', command: `${EXT_NAME}.triggerBackup` },
+                { label: '$(arrow-down) Import Conversations', description: 'Import from archive', command: `${EXT_NAME}.import` },
+                { label: '$(arrow-up) Export Conversations', description: 'Export to archive', command: `${EXT_NAME}.export` },
+                { label: '$(settings-gear) Settings', description: 'Open extension settings', command: 'workbench.action.openSettings', args: [`@ext:${EXT_NAME}`] }
+            ];
+
+            const selected = await vscode.window.showQuickPick(items, {
+                placeHolder: vscode.l10n.t('Antigravity Storage Manager'),
+                title: vscode.l10n.t('Select an action')
+            });
+
+            if (selected) {
+                if (selected.args) {
+                    vscode.commands.executeCommand(selected.command, ...selected.args);
+                } else {
+                    vscode.commands.executeCommand(selected.command);
+                }
+            }
+        }),
         vscode.commands.registerCommand(`${EXT_NAME}.syncSetup`, async () => {
             await syncManager.setup();
         }),
@@ -79,8 +103,8 @@ export async function activate(context: vscode.ExtensionContext) {
                 location: vscode.ProgressLocation.Notification,
                 title: vscode.l10n.t('Syncing conversations...'),
                 cancellable: false
-            }, async () => {
-                const result = await syncManager.syncNow();
+            }, async (progress) => {
+                const result = await syncManager.syncNow(progress);
 
                 if (result.success) {
                     const message = [];

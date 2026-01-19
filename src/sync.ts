@@ -86,7 +86,7 @@ export class SyncManager {
             vscode.StatusBarAlignment.Right,
             98
         );
-        this.statusBarItem.command = `${EXT_NAME}.syncNow`;
+        this.statusBarItem.command = `${EXT_NAME}.showMenu`;
         this.context.subscriptions.push(this.statusBarItem);
         this.updateStatusBar('idle');
 
@@ -186,7 +186,7 @@ export class SyncManager {
     /**
      * Sync now - manual or automatic sync trigger
      */
-    async syncNow(): Promise<SyncResult> {
+    async syncNow(progress?: vscode.Progress<{ message?: string; increment?: number }>): Promise<SyncResult> {
         if (this.isSyncing) {
             return {
                 success: false,
@@ -220,6 +220,7 @@ export class SyncManager {
 
         try {
             // Try to acquire lock
+            this.reportProgress(progress, vscode.l10n.t('Acquiring sync lock...'));
             const machineId = this.config!.machineId;
             // Lock for 5 minutes (default)
             const acquired = await this.driveService.acquireLock(machineId);
@@ -229,6 +230,7 @@ export class SyncManager {
 
             try {
                 // Get remote manifest
+                this.reportProgress(progress, vscode.l10n.t('Fetching remote data...'));
                 const remoteManifest = await this.ensureRemoteManifest();
                 if (!remoteManifest) {
                     throw new Error(vscode.l10n.t('Could not retrieve remote manifest'));
@@ -285,7 +287,7 @@ export class SyncManager {
     /**
      * Push a single conversation to Google Drive
      */
-    async pushConversation(conversationId: string): Promise<void> {
+    async pushConversation(conversationId: string, progress?: vscode.Progress<{ message?: string; increment?: number }>): Promise<void> {
         if (!this.masterPassword) {
             throw new Error(vscode.l10n.t('Encryption password not set'));
         }
@@ -297,6 +299,7 @@ export class SyncManager {
         try {
             // Create zip archive
             await new Promise<void>((resolve, reject) => {
+                this.reportProgress(progress, vscode.l10n.t('Compressing {0}...', conversationId));
                 const output = fs.createWriteStream(zipPath);
                 const archive = archiver('zip', { zlib: { level: 9 } });
 
@@ -321,14 +324,16 @@ export class SyncManager {
             });
 
             // Read and encrypt
+            this.reportProgress(progress, vscode.l10n.t('Encrypting {0}...', conversationId));
             const zipData = fs.readFileSync(zipPath);
             const encrypted = crypto.encrypt(zipData, this.masterPassword!);
 
             // Upload to Drive
+            this.reportProgress(progress, vscode.l10n.t('Uploading {0}...', conversationId));
             await this.driveService.uploadConversation(conversationId, encrypted);
 
             // Update manifest
-            await this.updateManifestEntry(conversationId, crypto.computeHash(zipData));
+            await this.updateManifestEntry(conversationId, crypto.computeHash(zipData), zipData.length);
         } finally {
             // Cleanup
             fs.rmSync(tempDir, { recursive: true, force: true });
@@ -338,18 +343,20 @@ export class SyncManager {
     /**
      * Pull a single conversation from Google Drive
      */
-    async pullConversation(conversationId: string): Promise<void> {
+    async pullConversation(conversationId: string, progress?: vscode.Progress<{ message?: string; increment?: number }>): Promise<void> {
         if (!this.masterPassword) {
             throw new Error(vscode.l10n.t('Encryption password not set'));
         }
 
         // Download encrypted data
+        this.reportProgress(progress, vscode.l10n.t('Downloading {0}...', conversationId));
         const encrypted = await this.driveService.downloadConversation(conversationId);
         if (!encrypted) {
             throw new Error(vscode.l10n.t('Conversation {0} not found in Drive', conversationId));
         }
 
         // Decrypt
+        this.reportProgress(progress, vscode.l10n.t('Decrypting {0}...', conversationId));
         const zipData = crypto.decrypt(encrypted, this.masterPassword!);
 
         // Extract to temp
@@ -460,7 +467,7 @@ export class SyncManager {
     /**
      * Update a single entry in the manifest
      */
-    private async updateManifestEntry(conversationId: string, hash: string): Promise<void> {
+    private async updateManifestEntry(conversationId: string, hash: string, size?: number): Promise<void> {
         // Get current manifest, update entry, save back
         // This is a simplified version - in production you'd want locking
         const now = new Date().toISOString();
@@ -473,12 +480,19 @@ export class SyncManager {
         }
 
         const existingIdx = manifest.conversations.findIndex(c => c.id === conversationId);
+        const existing = existingIdx >= 0 ? manifest.conversations[existingIdx] : null;
+
         const entry: SyncedConversation = {
             id: conversationId,
             title: local?.title || conversationId,
             lastModified: now,
             hash: hash,
-            modifiedBy: this.config!.machineId
+            modifiedBy: this.config!.machineId,
+            size: size,
+            // Preserve creation info or set if new
+            createdAt: existing?.createdAt || now,
+            createdBy: existing?.createdBy || this.config!.machineId,
+            createdByName: existing?.createdByName || this.config!.machineName
         };
 
         if (existingIdx >= 0) {
@@ -536,17 +550,17 @@ export class SyncManager {
         switch (status) {
             case 'idle':
                 this.statusBarItem.text = "$(cloud) AG Sync";
-                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Idle");
+                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Storage Manager (Click for Menu)");
                 this.statusBarItem.backgroundColor = undefined;
                 break;
             case 'syncing':
                 this.statusBarItem.text = "$(sync~spin) AG Syncing...";
-                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Syncing...");
+                this.statusBarItem.tooltip = text || vscode.l10n.t("Antigravity Sync: Syncing...");
                 this.statusBarItem.backgroundColor = undefined;
                 break;
             case 'error':
                 this.statusBarItem.text = "$(error) AG Sync";
-                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Error (Click to retry)");
+                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Error (Click for Menu)");
                 this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
                 break;
             case 'ok':
@@ -560,10 +574,17 @@ export class SyncManager {
                 break;
         }
 
-        if (text) {
+        if (text && status !== 'syncing') {
             this.statusBarItem.tooltip = text;
         }
         this.statusBarItem.show();
+    }
+
+    private reportProgress(progress: vscode.Progress<{ message?: string; increment?: number } | undefined> | undefined, message: string) {
+        progress?.report({ message });
+        if (this.isSyncing) {
+            this.updateStatusBar('syncing', message);
+        }
     }
 
     /**
@@ -646,7 +667,10 @@ export class SyncManager {
     async setup(): Promise<void> {
         // 1. Check if we need to authenticate
         try {
-            await this.authProvider.getAccessToken();
+            const token = await this.authProvider.getAccessToken();
+            if (!token) {
+                throw new Error('Not signed in');
+            }
         } catch (e: any) {
             const answer = await vscode.window.showInformationMessage(
                 vscode.l10n.t("To sync conversations, you need to sign in with Google."),
@@ -686,6 +710,7 @@ export class SyncManager {
 
         // Save password securely
         await this.context.secrets.store('ag-sync-master-password', password);
+        this.masterPassword = password; // Set local instance for immediate use to avoid race condition/null error
 
         // check machine name
         let machineName = this.config?.machineName;
@@ -720,10 +745,12 @@ export class SyncManager {
                 location: vscode.ProgressLocation.Notification,
                 title: vscode.l10n.t("Setting up sync storage..."),
                 cancellable: false
-            }, async () => {
+            }, async (progress) => {
+                this.reportProgress(progress, vscode.l10n.t('Checking Google Drive folders...'));
                 await this.driveService.ensureSyncFolders();
 
                 // Try to get existing manifest
+                this.reportProgress(progress, vscode.l10n.t('Checking for existing backup...'));
                 let manifest = await this.getDecryptedManifest();
 
                 if (manifest) {
@@ -754,12 +781,13 @@ export class SyncManager {
                     }
                 } else {
                     // Create new
+                    this.reportProgress(progress, vscode.l10n.t('Creating initial backup...'));
                     await this.createInitialManifest();
                     vscode.window.showInformationMessage(vscode.l10n.t("Sync set up successfully!"));
                 }
 
                 // Trigger first sync
-                await this.syncNow();
+                await this.syncNow(progress);
             });
 
             this.updateStatusBar('idle');
@@ -779,10 +807,7 @@ export class SyncManager {
         await this.context.globalState.update('ag-sync-config', undefined);
         await this.context.secrets.delete('ag-sync-master-password');
         this.updateStatusBar('idle'); // or hide
-        if (!this.statusBarItem) {
-            this.statusBarItem.hide();
-        } else {
-            // re-init status bar for empty state or hide it
+        if (this.statusBarItem) {
             this.statusBarItem.hide();
         }
         vscode.window.showInformationMessage(vscode.l10n.t("Disconnected from sync. Local data is kept safe."));
@@ -845,15 +870,17 @@ export class SyncManager {
         convId: string,
         localConversations: Array<{ id: string; title: string; lastModified: string; hash: string }>,
         remoteManifest: SyncManifest,
-        result: SyncResult
+        result: SyncResult,
+        progress?: vscode.Progress<{ message?: string; increment?: number }>
     ): Promise<void> {
+        this.reportProgress(progress, vscode.l10n.t('Processing {0}...', convId));
         const local = localConversations.find(c => c.id === convId);
         const remote = remoteManifest.conversations.find(c => c.id === convId);
 
         if (local && !remote) {
             // Local only - push to remote
             try {
-                await this.pushConversation(convId);
+                await this.pushConversation(convId, progress);
                 result.pushed.push(convId);
             } catch (error: any) {
                 result.errors.push(`Failed to push ${convId}: ${error.message}`);
@@ -861,7 +888,7 @@ export class SyncManager {
         } else if (!local && remote) {
             // Remote only - pull to local
             try {
-                await this.pullConversation(convId);
+                await this.pullConversation(convId, progress);
                 result.pulled.push(convId);
             } catch (error: any) {
                 result.errors.push(`Failed to pull ${convId}: ${error.message}`);
@@ -875,7 +902,7 @@ export class SyncManager {
                 if (remote.modifiedBy === this.config!.machineId) {
                     // We modified it last, push
                     try {
-                        await this.pushConversation(convId);
+                        await this.pushConversation(convId, progress);
                         result.pushed.push(convId);
                     } catch (error: any) {
                         result.errors.push(`Failed to push ${convId}: ${error.message}`);
@@ -883,7 +910,7 @@ export class SyncManager {
                 } else if (localDate > remoteDate) {
                     // Local is newer
                     try {
-                        await this.pushConversation(convId);
+                        await this.pushConversation(convId, progress);
                         result.pushed.push(convId);
                     } catch (error: any) {
                         result.errors.push(`Failed to push ${convId}: ${error.message}`);
@@ -891,7 +918,7 @@ export class SyncManager {
                 } else if (remoteDate > localDate) {
                     // Remote is newer
                     try {
-                        await this.pullConversation(convId);
+                        await this.pullConversation(convId, progress);
                         result.pulled.push(convId);
                     } catch (error: any) {
                         result.errors.push(`Failed to pull ${convId}: ${error.message}`);
@@ -951,7 +978,14 @@ export class SyncManager {
      */
     async showStatistics(): Promise<void> {
         if (!this.isReady()) {
-            vscode.window.showErrorMessage(vscode.l10n.t('Sync is not configured'));
+            const result = await vscode.window.showWarningMessage(
+                vscode.l10n.t('Sync is not configured. Would you like to set it up now?'),
+                vscode.l10n.t('Setup Sync'),
+                vscode.l10n.t('Cancel')
+            );
+            if (result === vscode.l10n.t('Setup Sync')) {
+                this.setup();
+            }
             return;
         }
 
@@ -972,7 +1006,7 @@ export class SyncManager {
 
             // Get machine states
             const machineFiles = await this.driveService.listMachineStates();
-            const machines: Array<{ name: string; id: string; lastSync: string; isCurrent: boolean }> = [];
+            const machines: Array<{ name: string; id: string; lastSync: string; isCurrent: boolean; conversationStates: any[] }> = [];
 
             for (const file of machineFiles) {
                 let machineName = 'Unknown Device';
@@ -991,7 +1025,8 @@ export class SyncManager {
                             name: machineName,
                             id: machineId,
                             lastSync: lastSync,
-                            isCurrent: true
+                            isCurrent: true,
+                            conversationStates: this.getLocalConversations().map(c => ({ id: c.id })) // Current machine has these
                         });
                         continue;
                     }
@@ -1003,6 +1038,14 @@ export class SyncManager {
                         const state: MachineState = JSON.parse(decrypted.toString());
                         machineName = state.machineName;
                         lastSync = state.lastSync;
+                        machines.push({
+                            name: machineName,
+                            id: machineId,
+                            lastSync: lastSync,
+                            isCurrent: false,
+                            conversationStates: state.conversationStates || []
+                        });
+                        continue;
                     }
                 } catch (e) {
                     console.error('Failed to process machine file:', file.name, e);
@@ -1012,17 +1055,21 @@ export class SyncManager {
                     name: machineName,
                     id: file.name.replace('.json.enc', ''),
                     lastSync: lastSync,
-                    isCurrent: false
+                    isCurrent: false,
+                    conversationStates: []
                 });
             }
 
             // Render final HTML
             panel.webview.html = this.getStatsHtml({
+                localConversations,
+                remoteManifest: remoteManifest || { conversations: [] } as any,
                 localCount: localConversations.length,
                 remoteCount: remoteManifest?.conversations.length || 0,
                 lastSync: this.config!.lastSync || 'Never',
                 machines: machines,
-                loadTime: Date.now() - start
+                loadTime: Date.now() - start,
+                currentMachineId: this.config!.machineId
             });
 
         } catch (error: any) {
@@ -1040,14 +1087,72 @@ export class SyncManager {
         </html>`;
     }
 
-    private getStatsHtml(data: { localCount: number; remoteCount: number; lastSync: string; machines: any[]; loadTime: number }): string {
-        const rows = data.machines.map(m => `
+    private getStatsHtml(data: {
+        localConversations: any[];
+        remoteManifest: SyncManifest;
+        localCount: number;
+        remoteCount: number;
+        lastSync: string;
+        machines: any[];
+        loadTime: number;
+        currentMachineId: string;
+    }): string {
+        const machineRows = data.machines.map(m => `
             <tr style="${m.isCurrent ? 'background-color: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);' : ''}">
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${m.name} ${m.isCurrent ? '(This Machine)' : ''}</td>
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${m.id}</td>
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${new Date(m.lastSync).toLocaleString()}</td>
             </tr>
         `).join('');
+
+        // Build Conversation Table
+        const allIds = new Set([
+            ...data.localConversations.map(c => c.id),
+            ...data.remoteManifest.conversations.map(c => c.id)
+        ]);
+
+        const convRows = Array.from(allIds).map(id => {
+            const local = data.localConversations.find(c => c.id === id);
+            const remote = data.remoteManifest.conversations.find(c => c.id === id);
+
+            // Stats
+            const syncedOn = data.machines.filter(m => m.conversationStates.some((s: any) => s.id === id));
+            const syncedCount = syncedOn.length;
+            const isMultiSync = syncedCount > 1;
+
+            const originMachineId = remote?.createdBy || (local ? data.currentMachineId : 'unknown');
+            const originMachineName = remote?.createdByName || (local ? 'This Machine' : 'Unknown');
+            const isExternal = originMachineId !== data.currentMachineId;
+
+            const sizeStr = remote?.size ? (remote.size / 1024).toFixed(1) + ' KB' : '-';
+            const dateStr = remote?.lastModified ? new Date(remote.lastModified).toLocaleString() : (local ? new Date(local.lastModified).toLocaleString() : '-');
+
+            const statusBadges = [];
+            if (isMultiSync) statusBadges.push(`<span class="badge" style="background: var(--vscode-progressBar-background); color: white;">Synced on ${syncedCount}</span>`);
+            if (isExternal) statusBadges.push(`<span class="badge" style="background: var(--vscode-terminal-ansiCyan); color: black;">Imported</span>`);
+            if (!remote) statusBadges.push(`<span class="badge" style="background: var(--vscode-list-errorForeground); color: white;">Local Only</span>`);
+            if (!local) statusBadges.push(`<span class="badge" style="background: var(--vscode-list-warningForeground); color: white;">Remote Only</span>`);
+
+            return `
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
+                    <div><strong>${remote?.title || local?.title || id}</strong></div>
+                    <div style="font-size: 0.8em; opacity: 0.7;">${id}</div>
+                </td>
+                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${sizeStr}</td>
+                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
+                    <div>${dateStr}</div>
+                    <div style="font-size: 0.8em; opacity: 0.7;">by ${remote?.modifiedBy === data.currentMachineId ? 'Me' : (data.machines.find(m => m.id === remote?.modifiedBy)?.name || remote?.modifiedBy || 'Unknown')}</div>
+                </td>
+                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
+                    <div>${originMachineName}</div>
+                    <div style="font-size: 0.8em; opacity: 0.7;">${remote?.createdAt ? new Date(remote.createdAt).toLocaleDateString() : '-'}</div>
+                </td>
+                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
+                    ${statusBadges.join(' ')}
+                </td>
+            </tr>`;
+        }).join('');
 
         return `<!DOCTYPE html>
         <html>
@@ -1060,6 +1165,7 @@ export class SyncManager {
                 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
                 .stat-value { font-size: 24px; font-weight: bold; }
                 .stat-label { opacity: 0.8; font-size: 14px; }
+                .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; }
             </style>
         </head>
         <body>
@@ -1085,6 +1191,22 @@ export class SyncManager {
                 <div style="font-size: 12px; opacity: 0.6; margin-top: 5px;">Data loaded in ${data.loadTime}ms</div>
             </div>
 
+            <h3>Conversations</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title / ID</th>
+                        <th>Size (Remote)</th>
+                        <th>Last Modified</th>
+                        <th>Origin</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${convRows}
+                </tbody>
+            </table>
+
             <h3>Connected Machines</h3>
             <table>
                 <thead>
@@ -1095,7 +1217,7 @@ export class SyncManager {
                     </tr>
                 </thead>
                 <tbody>
-                    ${rows}
+                    ${machineRows}
                 </tbody>
             </table>
         </body>

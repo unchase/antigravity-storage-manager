@@ -29,6 +29,10 @@ export interface SyncedConversation {
     hash: string;
     modifiedBy: string; // machine ID
     fileId?: string; // Google Drive file ID
+    size?: number; // Size in bytes
+    createdAt?: string;
+    createdBy?: string; // machine ID
+    createdByName?: string; // machine name
 }
 
 export interface MachineState {

@@ -5,6 +5,37 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.11] - 2026-01-20
+- **Fix**: Resolved a potential error when disconnecting sync (null check fix).
+
+## [0.4.10] - 2026-01-20
+- **UI**: Consolidated all Antigravity commands into a single Status Bar menu. Clicking "AG Sync" now opens a quick access menu for Sync, Backup, Import/Export, and Settings.
+- **UX**: Status bar tooltip now shows real-time progress during sync (e.g., "Uploading [conversation]...").
+
+## [0.4.9] - 2026-01-20
+- **Feature**: Enhanced "Sync Statistics" dashboard with a detailed conversation list.
+    - View which conversations are synced on multiple machines.
+    - See modification dates, originator (machine that created it), and file sizes.
+    - Visual badges for Imported vs Local content.
+
+## [0.4.8] - 2026-01-20
+- **Fix**: Fixed issue where "Setting up sync storage..." would appear to hang during the initial sync.
+- **Improvement**: Setup wizard now shows detailed progress for the initial synchronization.
+
+## [0.4.7] - 2026-01-20
+- **Feature**: Added detailed progress reporting during sync (compressing, encrypting, uploading/downloading).
+
+## [0.4.6] - 2026-01-20
+- **Fix**: Resolved crash during setup ("password argument must be string") by initializing password in memory immediately.
+- **UX**: Authentication notification is now transient and closes automatically on success.
+- **UX**: "Show Sync Statistics" now prompts to Setup Sync if not configured.
+
+## [0.4.5] - 2026-01-20
+- **Fix**: Resolved issue where Setup would bypass authentication check, leading to errors.
+
+## [0.4.4] - 2026-01-20
+- **Fix**: Implemented aggressive credential restoration to prevent "No access token" errors in all sync scenarios.
+
 ## [0.4.3] - 2026-01-20
 - **Fix**: Fixed critical bug where reloading credentials would wipe active session tokens, causing authentication failures.
 
