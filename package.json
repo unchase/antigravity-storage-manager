@@ -2,13 +2,17 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Export and Import Antigravity/Cline conversation history with a single click. Backup your AI conversations to zip files and restore them anytime.",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
     },
     "icon": "icon.png",
     "license": "MIT",
+    "funding": {
+        "type": "patreon",
+        "url": "https://www.patreon.com/unchase"
+    },
     "repository": {
         "type": "git",
         "url": "https://github.com/unchase/antigravity-storage-manager"
@@ -62,6 +66,16 @@
                 "command": "antigravity-storage-manager.rename",
                 "title": "Rename Conversation",
                 "icon": "$(edit)",
+                "category": "Antigravity Storage"
+            },
+            {
+                "command": "antigravity-storage-manager.backupAll",
+                "title": "Backup All Conversations",
+                "category": "Antigravity Storage"
+            },
+            {
+                "command": "antigravity-storage-manager.resolveConflicts",
+                "title": "Resolve Conflict Copies",
                 "category": "Antigravity Storage"
             },
             {

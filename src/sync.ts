@@ -352,20 +352,9 @@ export class SyncManager {
 
             try {
                 // Get remote manifest
-                let remoteManifest = await this.getDecryptedManifest();
+                const remoteManifest = await this.ensureRemoteManifest();
                 if (!remoteManifest) {
-                    try {
-                        console.log('Remote manifest not found, attempting to recreate...');
-                        await this.createInitialManifest();
-                    } catch (e: any) {
-                        throw new Error(`Failed to get or create remote manifest: ${e.message}`);
-                    }
-
-                    const retryManifest = await this.getDecryptedManifest();
-                    if (!retryManifest) {
-                        throw new Error('Failed to get remote manifest after recreation attempt');
-                    }
-                    remoteManifest = retryManifest;
+                    throw new Error('Could not retrieve remote manifest');
                 }
 
                 // Get local conversations
@@ -376,84 +365,20 @@ export class SyncManager {
                     ? localConversations.map(c => c.id)
                     : this.config!.selectedConversations;
 
-                // Check for changes and conflicts
-                for (const convId of toSync) {
-                    const local = localConversations.find(c => c.id === convId);
-                    const remote = remoteManifest.conversations.find(c => c.id === convId);
-
-                    if (local && !remote) {
-                        // Local only - push to remote
-                        try {
-                            await this.pushConversation(convId);
-                            result.pushed.push(convId);
-                        } catch (error: any) {
-                            result.errors.push(`Failed to push ${convId}: ${error.message}`);
-                        }
-                    } else if (!local && remote) {
-                        // Remote only - pull to local
-                        try {
-                            await this.pullConversation(convId);
-                            result.pulled.push(convId);
-                        } catch (error: any) {
-                            result.errors.push(`Failed to pull ${convId}: ${error.message}`);
-                        }
-                    } else if (local && remote) {
-                        // Both exist - check for conflicts
-                        if (local.hash !== remote.hash) {
-                            const localDate = new Date(local.lastModified);
-                            const remoteDate = new Date(remote.lastModified);
-
-                            if (remote.modifiedBy === this.config!.machineId) {
-                                // We modified it last, push
-                                try {
-                                    await this.pushConversation(convId);
-                                    result.pushed.push(convId);
-                                } catch (error: any) {
-                                    result.errors.push(`Failed to push ${convId}: ${error.message}`);
-                                }
-                            } else if (localDate > remoteDate) {
-                                // Local is newer
-                                try {
-                                    await this.pushConversation(convId);
-                                    result.pushed.push(convId);
-                                } catch (error: any) {
-                                    result.errors.push(`Failed to push ${convId}: ${error.message}`);
-                                }
-                            } else if (remoteDate > localDate) {
-                                // Remote is newer
-                                try {
-                                    await this.pullConversation(convId);
-                                    result.pulled.push(convId);
-                                } catch (error: any) {
-                                    result.errors.push(`Failed to pull ${convId}: ${error.message}`);
-                                }
-                            } else {
-                                // Same time but different content - conflict
-                                result.conflicts.push({
-                                    conversationId: convId,
-                                    localModified: local.lastModified,
-                                    remoteModified: remote.lastModified,
-                                    localHash: local.hash,
-                                    remoteHash: remote.hash
-                                });
-                            }
-                        }
-                    }
-                }
-
-                // Pull any remote conversations not in local sync list
+                // Also include any remote conversations that we don't have locally
                 for (const remote of remoteManifest.conversations) {
                     if (!toSync.includes(remote.id)) {
                         const local = localConversations.find(c => c.id === remote.id);
                         if (!local) {
-                            try {
-                                await this.pullConversation(remote.id);
-                                result.pulled.push(remote.id);
-                            } catch (error: any) {
-                                result.errors.push(`Failed to pull ${remote.id}: ${error.message}`);
-                            }
+                            // It's a new remote conversation, we should sync it (pull)
+                            toSync.push(remote.id);
                         }
                     }
+                }
+
+                // Process each conversation
+                for (const convId of toSync) {
+                    await this.processSyncItem(convId, localConversations, remoteManifest, result);
                 }
 
                 // Update last sync time
@@ -463,12 +388,6 @@ export class SyncManager {
 
                 result.success = result.errors.length === 0;
 
-                // ... This is dangerous with large blocks.
-                // I'll assume the user wants me to rewrite the whole function or use a targeted approach.
-                // I will inject the lock ACQUIRE at the start of `try` block.
-                // And inject the lock RELEASE at the start of `finally` block before `isSyncing = false`.
-                // Actually `finally` block in `syncNow` handles status bar. 
-                // I should add a nested `try/finally` for the lock release.
             } finally {
                 await this.driveService.releaseLock(machineId);
             }
@@ -845,6 +764,105 @@ export class SyncManager {
     /**
      * Manage which conversations are synced
      */
+    /**
+     * Ensure remote manifest exists and is loaded
+     */
+    private async ensureRemoteManifest(): Promise<SyncManifest | null> {
+        try {
+            let remoteManifest = await this.getDecryptedManifest();
+            if (!remoteManifest) {
+                try {
+                    console.log('Remote manifest not found, attempting to recreate...');
+                    await this.createInitialManifest();
+                } catch (e: any) {
+                    throw new Error(`Failed to get or create remote manifest: ${e.message}`);
+                }
+
+                const retryManifest = await this.getDecryptedManifest();
+                if (!retryManifest) {
+                    throw new Error('Failed to get remote manifest after recreation attempt');
+                }
+                remoteManifest = retryManifest;
+            }
+            return remoteManifest;
+        } catch (error) {
+            console.error('ensureRemoteManifest failed:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Process a single conversation synchronization
+     */
+    private async processSyncItem(
+        convId: string,
+        localConversations: Array<{ id: string; title: string; lastModified: string; hash: string }>,
+        remoteManifest: SyncManifest,
+        result: SyncResult
+    ): Promise<void> {
+        const local = localConversations.find(c => c.id === convId);
+        const remote = remoteManifest.conversations.find(c => c.id === convId);
+
+        if (local && !remote) {
+            // Local only - push to remote
+            try {
+                await this.pushConversation(convId);
+                result.pushed.push(convId);
+            } catch (error: any) {
+                result.errors.push(`Failed to push ${convId}: ${error.message}`);
+            }
+        } else if (!local && remote) {
+            // Remote only - pull to local
+            try {
+                await this.pullConversation(convId);
+                result.pulled.push(convId);
+            } catch (error: any) {
+                result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+            }
+        } else if (local && remote) {
+            // Both exist - check for conflicts
+            if (local.hash !== remote.hash) {
+                const localDate = new Date(local.lastModified);
+                const remoteDate = new Date(remote.lastModified);
+
+                if (remote.modifiedBy === this.config!.machineId) {
+                    // We modified it last, push
+                    try {
+                        await this.pushConversation(convId);
+                        result.pushed.push(convId);
+                    } catch (error: any) {
+                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
+                    }
+                } else if (localDate > remoteDate) {
+                    // Local is newer
+                    try {
+                        await this.pushConversation(convId);
+                        result.pushed.push(convId);
+                    } catch (error: any) {
+                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
+                    }
+                } else if (remoteDate > localDate) {
+                    // Remote is newer
+                    try {
+                        await this.pullConversation(convId);
+                        result.pulled.push(convId);
+                    } catch (error: any) {
+                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+                    }
+                } else {
+                    // Same time but different content - conflict
+                    result.conflicts.push({
+                        conversationId: convId,
+                        localModified: local.lastModified,
+                        remoteModified: remote.lastModified,
+                        localHash: local.hash,
+                        remoteHash: remote.hash
+                    });
+                }
+            }
+        }
+    }
+
     async manageConversations(): Promise<void> {
         const conversations = await getConversationsAsync(BRAIN_DIR);
         const currentSelection = this.config?.selectedConversations;

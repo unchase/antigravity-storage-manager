@@ -7,6 +7,7 @@ import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
 import { SyncManager } from './sync';
 import { formatRelativeTime, getConversationsAsync } from './utils';
+import { resolveConflictsCommand } from './conflicts';
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
@@ -35,7 +36,9 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand(`${EXT_NAME}.export`, exportConversations),
         vscode.commands.registerCommand(`${EXT_NAME}.import`, importConversations),
-        vscode.commands.registerCommand(`${EXT_NAME}.rename`, renameConversation)
+        vscode.commands.registerCommand(`${EXT_NAME}.rename`, renameConversation),
+        vscode.commands.registerCommand(`${EXT_NAME}.backupAll`, backupAll),
+        vscode.commands.registerCommand(`${EXT_NAME}.resolveConflicts`, () => resolveConflictsCommand(BRAIN_DIR, CONV_DIR))
     );
 
     // Register sync commands
@@ -195,6 +198,78 @@ async function exportConversations() {
 
             // Add all selected conversations
             for (const conv of selected) {
+                const id = conv.id;
+
+                // Add brain directory
+                const sourceBrainDir = path.join(BRAIN_DIR, id);
+                if (fs.existsSync(sourceBrainDir)) {
+                    archive.directory(sourceBrainDir, `brain/${id}`);
+                }
+
+                // Add conversation .pb file
+                const convFile = path.join(CONV_DIR, `${id}.pb`);
+                if (fs.existsSync(convFile)) {
+                    archive.file(convFile, { name: `conversations/${id}.pb` });
+                }
+            }
+
+            archive.finalize();
+        });
+    });
+}
+
+// BACKUP: One-click backup of all conversations
+async function backupAll() {
+    // 1. Get all conversations without prompting
+    const conversations = await getConversationsAsync(BRAIN_DIR);
+    if (conversations.length === 0) {
+        vscode.window.showInformationMessage('No conversations found to backup.');
+        return;
+    }
+
+    // 2. Ask for save location (default to antigravity-backup-{date}.zip)
+    const defaultName = `antigravity-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+    const uri = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(path.join(os.homedir(), defaultName)),
+        filters: { 'Antigravity Archive': ['zip'] },
+        saveLabel: 'Create Backup'
+    });
+
+    if (!uri) return;
+
+    // 3. Create Archive (Reuse logic similar to export, but simplified)
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Backing up ${conversations.length} conversations...`,
+        cancellable: false
+    }, async (progress) => {
+        return new Promise<void>((resolve, reject) => {
+            const output = fs.createWriteStream(uri.fsPath);
+            const archive = archiver('zip', { zlib: { level: 9 } });
+
+            output.on('close', () => {
+                const size = archive.pointer();
+                const sizeMB = (size / 1024 / 1024).toFixed(2);
+                vscode.window.showInformationMessage(
+                    `Backup complete! (${sizeMB} MB)`,
+                    'Open Folder'
+                ).then(selection => {
+                    if (selection === 'Open Folder') {
+                        vscode.env.openExternal(vscode.Uri.file(path.dirname(uri.fsPath)));
+                    }
+                });
+                resolve();
+            });
+
+            archive.on('error', (err: any) => {
+                vscode.window.showErrorMessage(`Backup failed: ${err.message}`);
+                reject(err);
+            });
+
+            archive.pipe(output);
+
+            // Add all conversations
+            for (const conv of conversations) {
                 const id = conv.id;
 
                 // Add brain directory
