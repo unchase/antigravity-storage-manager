@@ -75,15 +75,19 @@ Keep your conversations synchronized across multiple machines using your Google 
  
 The extension adds **AG Export**, **AG Import**, and **AG Sync** buttons to your VS Code status bar:
 
-![Status Bar Buttons](screenshots/status-bar-sync.png)
+![Status Bar Buttons](screenshots/status-bar.png)
 
 ### 2. Command Palette Integration
 
 All commands are available through the Command Palette (`Ctrl+Shift+P`). Just type "Antigravity Storage" to see all available actions.
 
+![Command Palette](screenshots/command-palette.png)
+
 ### 3. Multi-Select Export
 
 When exporting, you can select **multiple conversations at once** using the Space key.
+
+![Export Dialog](screenshots/export-dialog.png)
 
 ---
 

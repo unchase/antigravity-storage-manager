@@ -10,6 +10,50 @@ This guide describes how to set up and use the **Google Drive Synchronization** 
 
 ---
 
+## Step 0: Google Cloud Configuration (Required)
+
+Because this is a developer extension, you must provide your own Google OAuth2 credentials.
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a **New Project** (e.g., "Antigravity Sync").
+
+   ![Create Project](images/gcp-01-new-project.png)
+
+3. Go to **APIs & Services > Library**, search for **Google Drive API**, and **Enable** it.
+
+   ![APIs & Services](images/gcp-02-apis-services.png) 
+   ![Search Drive API](images/gcp-03-search-drive.png)
+   ![Enable Drive API](images/gcp-04-enable-api.png)
+
+4. Go to **APIs & Services > OAuth consent screen**:
+   - Choose **External** (or Internal if you have a Workspace).
+   - Fill in required fields (App name, email).
+   - Add your email as a **Test User**.
+
+   ![OAuth Consent](images/gcp-05-create-app.png)
+
+5. Go to **APIs & Services > Credentials**:
+   - Click **Create Credentials > OAuth client ID**.
+
+     ![Create Button](images/gcp-06-create-btn.png)
+
+   - Application type: **Desktop app**.
+   - Name: "Antigravity Sync Client".
+   - Click **Create**.
+
+     ![Desktop App](images/gcp-07-desktop-app.png)
+
+6. Copy your **Client ID** and **Client Secret**.
+
+     ![Copy Secrets](images/gcp-08-secrets.png)
+
+7. In VS Code:
+   - Go to **Settings** (`Ctrl+,`).
+   - Search for `Antigravity`.
+   - Paste your **Client ID** and **Client Secret** into the respective fields.
+
+---
+
 ## Step 1: Setting Up the First Machine
 
 Start with the computer that has the conversations you want to sync.

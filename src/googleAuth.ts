@@ -4,13 +4,10 @@ import * as url from 'url';
 import { google } from 'googleapis';
 
 // OAuth2 Configuration
-// Note: These are placeholder values. In production, you should:
 // 1. Create a project in Google Cloud Console
 // 2. Enable Google Drive API
 // 3. Create OAuth2 credentials (Desktop App type)
-// 4. Replace these values with your actual credentials
-const CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';
-const CLIENT_SECRET = 'YOUR_CLIENT_SECRET';
+// 4. Enter Client ID and Secret in VS Code settings for this extension
 const REDIRECT_PORT = 47842;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 
@@ -38,11 +35,25 @@ export class GoogleAuthProvider {
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
-        this.oauth2Client = new google.auth.OAuth2(
-            CLIENT_ID,
-            CLIENT_SECRET,
-            REDIRECT_URI
-        );
+
+        // Load credentials from configuration
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
+        const clientId = config.get<string>('google.clientId');
+        const clientSecret = config.get<string>('google.clientSecret');
+
+        if (!clientId || !clientSecret || clientId.includes('YOUR_CLIENT_ID')) {
+            vscode.window.showErrorMessage(
+                'Google OAuth2 credentials are missing. Please set "antigravity-storage-manager.google.clientId" and "clientSecret" in VS Code settings.'
+            );
+            // Initialize with dummy values to prevent crash, checkAuth will fail gracefully
+            this.oauth2Client = new google.auth.OAuth2('', '', REDIRECT_URI);
+        } else {
+            this.oauth2Client = new google.auth.OAuth2(
+                clientId,
+                clientSecret,
+                REDIRECT_URI
+            );
+        }
 
         // Set up token refresh handler
         this.oauth2Client.on('tokens', (tokens) => {
