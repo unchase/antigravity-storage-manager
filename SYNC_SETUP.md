@@ -51,6 +51,7 @@ Because this is a developer extension, you must provide your own Google OAuth2 c
    - Go to **Settings** (`Ctrl+,`).
    - Search for `Antigravity`.
    - Paste your **Client ID** and **Client Secret** into the respective fields.
+     ![VS Code Settings](images/vscode-settings.png)
 
 ---
 
@@ -115,6 +116,17 @@ If you edit the same conversation on both computers while offline, a **Conflict*
 If you see this on a new machine, it means the password you entered doesn't match the one used to encrypt the data.
 - Run `Antigravity Storage: Disconnect Google Drive Sync`.
 - Run setup again and enter the correct password.
+
+### Error 403: access_denied (App not verified)
+If you see a screen saying **"Access blocked: application has not passed Google verification"**:
+1. Go to **Google Cloud Console** > **APIs & Services** > **OAuth consent screen** (or **Google Auth Platform**).
+2. In the left sidebar, click on **Audience**.
+
+   ![Audience Tab](images/gcp-09-audience.png)
+
+3. Scroll down to the **Test users** section and click **+ ADD USERS**.
+4. Enter your email address (the one you are trying to log in with).
+5. Save and try again.
 
 ### Resetting Everything
 If you lost your Master Password or want to start over:

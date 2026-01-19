@@ -28,32 +28,14 @@ interface StoredTokens {
  * Manages Google OAuth2 authentication for the extension
  */
 export class GoogleAuthProvider {
-    private oauth2Client: InstanceType<typeof google.auth.OAuth2>;
+    private oauth2Client!: InstanceType<typeof google.auth.OAuth2>;
     private context: vscode.ExtensionContext;
     private tokens: StoredTokens | null = null;
     private server: http.Server | null = null;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
-
-        // Load credentials from configuration
-        const config = vscode.workspace.getConfiguration(EXT_NAME);
-        const clientId = config.get<string>('google.clientId');
-        const clientSecret = config.get<string>('google.clientSecret');
-
-        if (!clientId || !clientSecret || clientId.includes('YOUR_CLIENT_ID')) {
-            vscode.window.showErrorMessage(
-                'Google OAuth2 credentials are missing. Please set "antigravity-storage-manager.google.clientId" and "clientSecret" in VS Code settings.'
-            );
-            // Initialize with dummy values to prevent crash, checkAuth will fail gracefully
-            this.oauth2Client = new google.auth.OAuth2('', '', REDIRECT_URI);
-        } else {
-            this.oauth2Client = new google.auth.OAuth2(
-                clientId,
-                clientSecret,
-                REDIRECT_URI
-            );
-        }
+        this.loadCredentials();
 
         // Set up token refresh handler
         this.oauth2Client.on('tokens', (tokens) => {
@@ -70,6 +52,34 @@ export class GoogleAuthProvider {
                     expiryDate: tokens.expiry_date || 0
                 });
             }
+        });
+    }
+
+    /**
+     * Load or reload credentials from configuration
+     */
+    public loadCredentials(): void {
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
+        const clientId = config.get<string>('google.clientId');
+        const clientSecret = config.get<string>('google.clientSecret');
+
+        // Preserve existing listeners if we are re-creating the client
+        const listeners = this.oauth2Client ? this.oauth2Client.listeners('tokens') : [];
+
+        if (!clientId || !clientSecret || clientId.includes('YOUR_CLIENT_ID')) {
+            // Initialize with dummy values to prevent crash, checkAuth will fail gracefully
+            this.oauth2Client = new google.auth.OAuth2('', '', REDIRECT_URI);
+        } else {
+            this.oauth2Client = new google.auth.OAuth2(
+                clientId,
+                clientSecret,
+                REDIRECT_URI
+            );
+        }
+
+        // Restore listeners
+        listeners.forEach(listener => {
+            this.oauth2Client.on('tokens', listener as any);
         });
     }
 
@@ -130,6 +140,9 @@ export class GoogleAuthProvider {
      * Refresh the access token using the refresh token
      */
     async refreshToken(): Promise<void> {
+        // Ensure we have the latest client secret
+        this.loadCredentials();
+
         if (!this.tokens?.refreshToken) {
             throw new Error('No refresh token available');
         }
@@ -154,6 +167,9 @@ export class GoogleAuthProvider {
      * Start the OAuth2 sign-in flow
      */
     async signIn(): Promise<void> {
+        // Reload credentials just in case they were updated
+        this.loadCredentials();
+
         return new Promise((resolve, reject) => {
             // Create a local HTTP server to receive the OAuth callback
             this.server = http.createServer(async (req, res) => {
