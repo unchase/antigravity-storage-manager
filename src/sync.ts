@@ -296,20 +296,7 @@ export class SyncManager {
      */
     private async downloadManifestRaw(): Promise<Buffer | null> {
         try {
-            const files = await this.driveService.listConversations();
-            // Actually need to get from parent folder, not conversations
-            // This is handled in driveService.getManifest() but we need raw bytes
-
-            // Use a workaround - download via the drive service
-            const manifest = await this.driveService.getManifest();
-            if (manifest) {
-                // Re-encrypt to get raw bytes (hacky but works for verification)
-                return crypto.encrypt(
-                    Buffer.from(JSON.stringify(manifest)),
-                    this.masterPassword!
-                );
-            }
-            return null;
+            return await this.driveService.getManifest();
         } catch {
             return null;
         }
@@ -352,9 +339,23 @@ export class SyncManager {
 
         try {
             // Get remote manifest
-            const remoteManifest = await this.getDecryptedManifest();
+            let remoteManifest = await this.getDecryptedManifest();
             if (!remoteManifest) {
-                throw new Error('Failed to get remote manifest');
+                // If remote manifest doesn't exist, it might be the first sync or it was deleted
+                // Try to recreate it if we have master password
+                try {
+                    console.log('Remote manifest not found, attempting to recreate...');
+                    await this.createInitialManifest();
+                } catch (e: any) {
+                    throw new Error(`Failed to get or create remote manifest: ${e.message}`);
+                }
+
+                // Try getting it again
+                const retryManifest = await this.getDecryptedManifest();
+                if (!retryManifest) {
+                    throw new Error('Failed to get remote manifest after recreation attempt');
+                }
+                remoteManifest = retryManifest;
             }
 
             // Get local conversations
@@ -605,17 +606,24 @@ export class SyncManager {
      * Get decrypted manifest from Drive
      */
     private async getDecryptedManifest(): Promise<SyncManifest | null> {
-        const query = `name = 'manifest.json.enc' and trashed = false`;
-
         try {
-            // This is a bit circular but works with the current API
             await this.driveService.ensureSyncFolders();
-            const encrypted = await this.driveService.downloadConversation('manifest.json');
-            // Actually need a different method... let's use a workaround
+            const encrypted = await this.driveService.getManifest();
 
-            // For now, return null and let caller handle
-            return null;
-        } catch {
+            if (!encrypted) {
+                return null;
+            }
+
+            const decrypted = crypto.decrypt(encrypted, this.masterPassword!);
+
+            try {
+                return JSON.parse(decrypted.toString('utf8'));
+            } catch (e) {
+                console.error('Failed to parse manifest JSON:', e);
+                return null;
+            }
+        } catch (error) {
+            console.error('Failed to get/decrypt manifest:', error);
             return null;
         }
     }

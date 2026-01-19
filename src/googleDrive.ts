@@ -114,9 +114,9 @@ export class GoogleDriveService {
     }
 
     /**
-     * Get the sync manifest from Google Drive
+     * Get the sync manifest from Google Drive (Encrypted)
      */
-    async getManifest(): Promise<SyncManifest | null> {
+    async getManifest(): Promise<Buffer | null> {
         if (!this.syncFolderId) {
             await this.ensureSyncFolders();
         }
@@ -133,10 +133,7 @@ export class GoogleDriveService {
         }
 
         const fileId = response.data.files[0].id!;
-        const content = await this.downloadFile(fileId);
-
-        // Note: content is encrypted, caller should decrypt
-        return JSON.parse(content.toString('utf8'));
+        return this.downloadFile(fileId);
     }
 
     /**

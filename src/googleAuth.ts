@@ -212,7 +212,7 @@ export class GoogleAuthProvider {
                             res.end(`
                                 <html>
                                 <body style="font-family: sans-serif; text-align: center; padding: 50px;">
-                                    <h1>✅ Authentication Successful</h1>
+                                    <h1>Authentication Successful</h1>
                                     <p>You can close this window and return to VS Code.</p>
                                     <script>setTimeout(() => window.close(), 2000);</script>
                                 </body>

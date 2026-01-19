@@ -54,6 +54,8 @@ Keep your conversations synchronized across multiple machines using your Google 
 3. **Authenticate**: Log in with your Google account.
 4. **Done!** Conversations will automatically sync in the background.
 
+👉 **[Detailed Setup Guide](SYNC_SETUP.md)**: Includes step-by-step instructions for configuring Google Cloud Console, adding test users, and troubleshooting.
+
 ### Security
 - **Zero Knowledge**: All data is encrypted locally before being uploaded.
 - **Master Password**: Only you know the password. It is stored securely in your OS keychain.
