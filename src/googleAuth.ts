@@ -81,6 +81,15 @@ export class GoogleAuthProvider {
         listeners.forEach(listener => {
             this.oauth2Client.on('tokens', listener as any);
         });
+
+        // Restore credentials if we have them
+        if (this.tokens) {
+            this.oauth2Client.setCredentials({
+                access_token: this.tokens.accessToken,
+                refresh_token: this.tokens.refreshToken,
+                expiry_date: this.tokens.expiryDate
+            });
+        }
     }
 
     /**
