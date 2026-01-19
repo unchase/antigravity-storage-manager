@@ -42,6 +42,11 @@ export interface MachineState {
     }[];
 }
 
+export interface LockFile {
+    machineId: string;
+    expiresAt: number;
+}
+
 /**
  * Service for interacting with Google Drive API
  */
@@ -374,6 +379,102 @@ export class GoogleDriveService {
         } catch (error) {
             console.error('Failed to get storage info:', error);
             return null;
+        }
+    }
+
+    /**
+     * Try to acquire the sync lock
+     */
+    async acquireLock(machineId: string, ttlMs: number = 60000): Promise<boolean> {
+        if (!this.syncFolderId) {
+            await this.ensureSyncFolders();
+        }
+
+        const lockFileName = 'sync.lock';
+        const query = `name = '${lockFileName}' and '${this.syncFolderId}' in parents and trashed = false`;
+
+        try {
+            const list = await this.drive.files.list({
+                q: query,
+                fields: 'files(id)',
+                spaces: 'drive'
+            });
+
+            if (list.data.files && list.data.files.length > 0) {
+                // Lock exists check validity
+                const fileId = list.data.files[0].id!;
+                try {
+                    const content = await this.downloadFile(fileId);
+                    const lockData = JSON.parse(content.toString()) as LockFile;
+
+                    if (Date.now() < lockData.expiresAt && lockData.machineId !== machineId) {
+                        return false; // Locked by another machine
+                    }
+
+                    // Expired or owned by us - refresh/overwrite
+                    await this.drive.files.delete({ fileId });
+                } catch (e) {
+                    // Invalid lock file or download failed - assume we can take over
+                    try { await this.drive.files.delete({ fileId }); } catch { }
+                }
+            }
+
+            // Create lock
+            const lockData: LockFile = {
+                machineId,
+                expiresAt: Date.now() + ttlMs
+            };
+
+            await this.drive.files.create({
+                requestBody: {
+                    name: lockFileName,
+                    parents: [this.syncFolderId!]
+                },
+                media: {
+                    mimeType: 'application/json',
+                    body: bufferToStream(Buffer.from(JSON.stringify(lockData)))
+                }
+            });
+
+            return true;
+        } catch (e) {
+            console.error('Failed to acquire lock:', e);
+            return false;
+        }
+    }
+
+    /**
+     * Release the sync lock
+     */
+    async releaseLock(machineId: string): Promise<void> {
+        if (!this.syncFolderId) return;
+
+        const lockFileName = 'sync.lock';
+        const query = `name = '${lockFileName}' and '${this.syncFolderId}' in parents and trashed = false`;
+
+        try {
+            const list = await this.drive.files.list({
+                q: query,
+                fields: 'files(id)',
+                spaces: 'drive'
+            });
+
+            if (list.data.files && list.data.files.length > 0) {
+                const fileId = list.data.files[0].id!;
+                try {
+                    const content = await this.downloadFile(fileId);
+                    const lockData = JSON.parse(content.toString()) as LockFile;
+
+                    // Only delete if it's our lock
+                    if (lockData.machineId === machineId) {
+                        await this.drive.files.delete({ fileId });
+                    }
+                } catch {
+                    // Force delete if corrupt? No, better safe.
+                }
+            }
+        } catch (e) {
+            console.error('Failed to release lock:', e);
         }
     }
 }

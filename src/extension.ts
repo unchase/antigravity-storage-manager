@@ -6,6 +6,7 @@ import archiver from 'archiver';
 import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
 import { SyncManager } from './sync';
+import { formatRelativeTime, getConversationsAsync } from './utils';
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
@@ -13,9 +14,7 @@ const STORAGE_ROOT = path.join(os.homedir(), '.gemini', 'antigravity');
 const BRAIN_DIR = path.join(STORAGE_ROOT, 'brain');
 const CONV_DIR = path.join(STORAGE_ROOT, 'conversations');
 
-interface ConversationItem extends vscode.QuickPickItem {
-    id: string;
-}
+
 
 // Global instances for sync
 let authProvider: GoogleAuthProvider;
@@ -134,63 +133,13 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(importButton);
 }
 
-// Helper: Get all conversations with metadata
-function getConversations(): ConversationItem[] {
-    if (!fs.existsSync(BRAIN_DIR)) {
-        return [];
-    }
 
-    const dirs = fs.readdirSync(BRAIN_DIR).filter(d => {
-        try {
-            return fs.statSync(path.join(BRAIN_DIR, d)).isDirectory();
-        } catch { return false; }
-    });
 
-    const items: ConversationItem[] = [];
 
-    for (const id of dirs) {
-        const dirPath = path.join(BRAIN_DIR, id);
-        const taskPath = path.join(dirPath, 'task.md');
-        let label = id;
-
-        if (fs.existsSync(taskPath)) {
-            try {
-                const content = fs.readFileSync(taskPath, 'utf8');
-                const match = content.match(/^#\s*Task:?\s*(.*)$/im);
-                if (match && match[1]) {
-                    label = match[1].trim();
-                }
-            } catch (e) {
-                console.error(`Error reading ${taskPath}:`, e);
-            }
-        }
-
-        try {
-            const stats = fs.statSync(dirPath);
-            items.push({
-                label: label,
-                description: id,
-                detail: `Last modified: ${stats.mtime.toLocaleString()}`,
-                id: id
-            });
-        } catch (e) {
-            console.error(`Error stat-ing ${dirPath}:`, e);
-        }
-    }
-
-    // Sort by recent first
-    items.sort((a, b) => {
-        const dateA = new Date(a.detail!.replace('Last modified: ', ''));
-        const dateB = new Date(b.detail!.replace('Last modified: ', ''));
-        return dateB.getTime() - dateA.getTime();
-    });
-
-    return items;
-}
 
 // EXPORT: Multi-select
 async function exportConversations() {
-    const items = getConversations();
+    const items = await getConversationsAsync(BRAIN_DIR);
 
     if (items.length === 0) {
         vscode.window.showInformationMessage('No conversations found to export.');
@@ -387,7 +336,7 @@ async function importConversations() {
 
 // RENAME: Change conversation title
 async function renameConversation() {
-    const items = getConversations();
+    const items = await getConversationsAsync(BRAIN_DIR);
 
     if (items.length === 0) {
         vscode.window.showInformationMessage('No conversations found.');

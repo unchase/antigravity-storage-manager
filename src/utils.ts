@@ -1,0 +1,92 @@
+import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export interface ConversationItem extends vscode.QuickPickItem {
+    id: string;
+    lastModified: Date;
+}
+
+/**
+ * Format relative time (e.g. "2 hours ago")
+ */
+export function formatRelativeTime(dateInput: Date | string): string {
+    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 7) {
+        return date.toLocaleDateString();
+    } else if (days > 0) {
+        return `${days} day${days > 1 ? 's' : ''} ago`;
+    } else if (hours > 0) {
+        return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    } else if (minutes > 1) {
+        return `${minutes} mins ago`;
+    } else if (minutes > 0) {
+        return `${minutes} min ago`;
+    } else {
+        return 'Just now';
+    }
+}
+
+/**
+ * Get conversations asynchronously with metadata
+ */
+export async function getConversationsAsync(brainDir: string): Promise<ConversationItem[]> {
+    if (!fs.existsSync(brainDir)) {
+        return [];
+    }
+
+    try {
+        const entries = await fs.promises.readdir(brainDir);
+
+        const jobs = entries.map(async (id) => {
+            const dirPath = path.join(brainDir, id);
+            try {
+                const stats = await fs.promises.stat(dirPath);
+                if (!stats.isDirectory()) return null;
+
+                let label = id;
+                const taskPath = path.join(dirPath, 'task.md');
+
+                try {
+                    const content = await fs.promises.readFile(taskPath, 'utf8');
+                    const match = content.match(/^#\s*Task:?\s*(.*)$/im);
+                    if (match && match[1]) {
+                        label = match[1].trim();
+                    }
+                } catch {
+                    // Ignore task.md errors
+                }
+
+                return {
+                    label: label,
+                    description: id,
+                    detail: `Modified ${formatRelativeTime(stats.mtime)}`,
+                    id: id,
+                    lastModified: stats.mtime
+                } as ConversationItem;
+
+            } catch (e) {
+                console.error(`Error processing ${dirPath}:`, e);
+                return null;
+            }
+        });
+
+        const results = await Promise.all(jobs);
+        const items = results.filter((i): i is ConversationItem => i !== null);
+
+        // Sort by newer first
+        items.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
+        return items;
+
+    } catch (e) {
+        console.error('Error loading conversations:', e);
+        return [];
+    }
+}

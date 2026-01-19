@@ -28,3 +28,7 @@ npm-debug.log*
 # Test
 .vscode-test/
 coverage/
+
+# Private
+TODO.md
+PATREON_DRAFT.md

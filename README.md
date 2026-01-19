@@ -16,6 +16,12 @@
   <a href="https://marketplace.visualstudio.com/items?itemName=unchase.antigravity-storage-manager">
     <img src="https://img.shields.io/visual-studio-marketplace/i/unchase.antigravity-storage-manager" alt="VS Marketplace Installs">
   </a>
+  <a href="https://img.shields.io/open-vsx/v/unchase/antigravity-storage-manager">
+    <img src="https://img.shields.io/open-vsx/v/unchase/antigravity-storage-manager" alt="Open VSX Version">
+  </a>
+  <a href="https://open-vsx.org/extension/unchase/antigravity-storage-manager">
+    <img src="https://img.shields.io/open-vsx/dt/unchase/antigravity-storage-manager" alt="Open VSX Downloads">
+  </a>
   <a href="https://github.com/unchase/antigravity-storage-manager/blob/master/LICENSE">
     <img src="https://img.shields.io/github/license/unchase/antigravity-storage-manager" alt="License">
   </a>
