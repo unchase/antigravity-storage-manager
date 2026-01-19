@@ -18,7 +18,7 @@ Thank you for your interest in contributing to this VS Code extension!
 
 2. **Install dependencies:**
    ```bash
-   npm install --ignore-scripts
+   npm install
    ```
 
    If standard `npm install` fails in your environment, use these commands to build manually:
@@ -110,7 +110,8 @@ node node_modules/@vscode/vsce/vsce package --no-dependencies
 ├── package.json        # Extension manifest
 ├── package.nls.json    # English strings
 ├── package.nls.ru.json # Russian strings
-└── jest.config.js      # Jest configuration
+├── jest.config.js      # Jest configuration
+└── eslint.config.mjs   # ESLint configuration
 ```
 
 ## Questions?
