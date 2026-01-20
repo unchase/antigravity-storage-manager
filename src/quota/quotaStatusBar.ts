@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import { QuotaSnapshot } from './types';
-import { getModelAbbreviation, formatResetTime } from './utils';
+import { getModelAbbreviation, formatResetTime, drawProgressBar } from './utils';
 import { LocalizationManager } from '../l10n/localizationManager';
+import { QuotaUsageTracker } from './quotaUsageTracker';
 
 export class QuotaStatusBar {
     private item: vscode.StatusBarItem;
     private lastSnapshot: QuotaSnapshot | undefined;
+    private lastTracker: QuotaUsageTracker | undefined;
 
     constructor() {
         this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -14,8 +16,10 @@ export class QuotaStatusBar {
         this.item.tooltip = 'Antigravity Quota';
     }
 
-    public update(snapshot: QuotaSnapshot, pinnedOverride?: string[]): void {
+    public update(snapshot: QuotaSnapshot, pinnedOverride?: string[], tracker?: QuotaUsageTracker): void {
         this.lastSnapshot = snapshot;
+        if (tracker) this.lastTracker = tracker;
+
         const pinned = pinnedOverride || this.getPinnedModels();
         const parts: string[] = [];
 
@@ -29,9 +33,11 @@ export class QuotaStatusBar {
             for (const m of pinnedModels) {
                 const pct = m.remainingPercentage ?? 0;
                 let statusIcon = '🟢';
-                if (m.isExhausted) {
+                if (m.isExhausted || pct === 0) {
                     statusIcon = '🔴';
-                } else if (pct < 20) {
+                } else if (pct < 30) {
+                    statusIcon = '🟠';
+                } else if (pct < 50) {
                     statusIcon = '🟡';
                 }
 
@@ -45,21 +51,39 @@ export class QuotaStatusBar {
             md.isTrusted = true;
             md.supportThemeIcons = true;
 
-            md.appendMarkdown('### Pinned Models Quota\n\n');
+            const lm = LocalizationManager.getInstance();
+
+            md.appendMarkdown(`### ${lm.t('Pinned Models Quota')}\n\n`);
 
             for (const m of pinnedModels) {
                 const pct = m.remainingPercentage ?? 0;
                 let statusIcon = '🟢';
-                if (m.isExhausted) {
+                if (m.isExhausted || pct === 0) {
                     statusIcon = '🔴';
-                } else if (pct < 20) {
+                } else if (pct < 30) {
+                    statusIcon = '🟠';
+                } else if (pct < 50) {
                     statusIcon = '🟡';
                 }
 
                 md.appendMarkdown(`**${statusIcon} ${m.label}**\n\n`);
-                md.appendMarkdown(`- Remaining: **${pct.toFixed(1)}%**\n`);
+
+                const bar = drawProgressBar(pct);
+                md.appendMarkdown(`- ${lm.t('Remaining')}: \`${bar}\` **${pct.toFixed(1)}%**\n`);
+
+                // Add Speed / Estimation
+                if (this.lastTracker) {
+                    const est = this.lastTracker.getEstimation(m.modelId);
+                    if (est && est.speedPerHour > 0.1) {
+                        md.appendMarkdown(`- ${lm.t('Speed')}: ~${est.speedPerHour.toFixed(1)}%${lm.t('/h')}\n`);
+                        if (est.estimatedTimeRemainingMs) {
+                            md.appendMarkdown(`- ${lm.t('Estimated Remaining Time')}: ~${this.formatDuration(est.estimatedTimeRemainingMs)}\n`);
+                        }
+                    }
+                }
+
                 if (m.resetTime) {
-                    md.appendMarkdown(`- Resets: ${formatResetTime(m.resetTime)}\n`);
+                    md.appendMarkdown(`- ${lm.t('Resets')}: ${formatResetTime(m.resetTime)}\n`);
 
                     // Visual Scale for Pro and Ultra
                     if (m.label.includes('Pro') || m.label.includes('Ultra')) {
@@ -68,9 +92,6 @@ export class QuotaStatusBar {
                         const msUntilReset = reset.getTime() - now.getTime();
 
                         // Assume 24h cycle for Pro, 4h for Ultra (adjust if detailed specs confirm otherwise)
-                        // Defaulting to 24h generally safe for "daily" quotas, but high-tier might be shorter.
-                        // User mentioned "known", implying they care about the wait.
-                        // Let's use 24h as the base denominator.
                         const cycleDuration = m.label.includes('Ultra') ? 4 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
 
                         if (msUntilReset > 0) {
@@ -80,15 +101,38 @@ export class QuotaStatusBar {
                             const empty = bars - filled;
                             const progressBar = '█'.repeat(filled) + '░'.repeat(empty);
 
-                            const cycleText = LocalizationManager.getInstance().t('Cycle');
-                            const leftText = LocalizationManager.getInstance().t('left');
+                            const cycleText = lm.t('Cycle');
+                            const leftText = lm.t('left');
                             md.appendMarkdown(`- ${cycleText}: \`${progressBar}\` (${this.formatDuration(msUntilReset)} ${leftText})\n`);
                         }
                     }
                 }
+
+                // Request/Token Stats
+                if (m.requestLimit && m.requestUsage !== undefined) {
+                    const reqText = lm.t('Requests');
+                    md.appendMarkdown(`- ${reqText}: \`${m.requestUsage} / ${m.requestLimit}\`\n`);
+                }
+                if (m.tokenLimit && m.tokenUsage !== undefined) {
+                    const tokText = lm.t('Tokens');
+                    md.appendMarkdown(`- ${tokText}: \`${m.tokenUsage} / ${m.tokenLimit}\`\n`);
+                }
+
                 md.appendMarkdown('\n---\n');
             }
-            md.appendMarkdown('\n🚀 [Show Dashboard](command:antigravity-storage-manager.showQuota)');
+
+            // Global Plan Info
+            if (snapshot.planName || snapshot.promptCredits) {
+                md.appendMarkdown(`\n### ${lm.t('Plan')}: ${snapshot.planName || 'Free'}\n\n`);
+                if (snapshot.promptCredits) {
+                    const cred = snapshot.promptCredits;
+                    const credText = lm.t('Credits');
+                    const availText = lm.t('available');
+                    md.appendMarkdown(`- ${credText}: **${cred.available} / ${cred.monthly}** (${cred.remainingPercentage.toFixed(1)}% ${availText})\n`);
+                }
+            }
+
+            md.appendMarkdown(`\n🚀 [${lm.t('Show Dashboard')}](command:antigravity-storage-manager.showQuota)`);
 
             this.item.tooltip = md;
         }
@@ -103,7 +147,7 @@ export class QuotaStatusBar {
 
     public showError(msg: string): void {
         this.item.text = '🔴 AGQ';
-        this.item.tooltip = `Error fetching quota: ${msg}`;
+        this.item.tooltip = `${LocalizationManager.getInstance().t('Sync Error')}: ${msg}`;
         this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         this.item.show();
     }
@@ -129,14 +173,15 @@ export class QuotaStatusBar {
         } else if (labelIndex >= 0) {
             pinned.splice(labelIndex, 1);
         } else {
-            pinned.push(modelId);
+            // Prefer saving label if valid, otherwise ID
+            pinned.push(modelLabel || modelId);
         }
 
         await config.update('quota.pinnedModels', pinned, vscode.ConfigurationTarget.Global);
 
         // Force update if we have a snapshot
         if (this.lastSnapshot) {
-            this.update(this.lastSnapshot, pinned);
+            this.update(this.lastSnapshot, pinned, this.lastTracker);
         }
     }
 

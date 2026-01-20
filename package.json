@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Securely sync Antigravity history with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.",
-    "version": "0.6.1",
+    "version": "0.7.0",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -110,13 +110,13 @@
             },
             {
                 "command": "antigravity-storage-manager.showSyncStats",
-                "title": "Show Sync Statistics",
+                "title": "%antigravity.command.showSyncStats%",
                 "icon": "$(graph)",
                 "category": "%antigravity.submenu.label%"
             },
             {
                 "command": "antigravity-storage-manager.showQuota",
-                "title": "Show Antigravity Quota",
+                "title": "%antigravity.command.showQuota%",
                 "icon": "$(dashboard)",
                 "category": "%antigravity.submenu.label%"
             }
@@ -247,7 +247,7 @@
                     "default": 3,
                     "minimum": 1,
                     "maximum": 50,
-                    "description": "Number of parallel uploads/downloads during sync."
+                    "description": "%antigravity.config.concurrency%"
                 },
                 "antigravity-storage-manager.sync.showStatusBar": {
                     "type": "boolean",
@@ -267,7 +267,7 @@
                 "antigravity-storage-manager.sync.suggestSolutions": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Suggest solutions when sync errors occur (e.g., file not found in Drive)"
+                    "description": "%antigravity.config.suggestSolutions%"
                 },
                 "antigravity-storage-manager.google.clientId": {
                     "type": "string",
@@ -302,7 +302,7 @@
                 "antigravity-storage-manager.enableQuota": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Enable or disable fetching and displaying Antigravity quota usage."
+                    "description": "%antigravity.config.enableQuota%"
                 },
                 "antigravity-storage-manager.quota.pinnedModels": {
                     "type": "array",
@@ -328,7 +328,7 @@
                         ]
                     },
                     "default": [],
-                    "description": "List of model IDs to always show in the status bar."
+                    "description": "%antigravity.config.pinnedModels%"
                 }
             }
         },
@@ -342,6 +342,11 @@
                 "command": "antigravity-storage-manager.showSyncStats",
                 "key": "ctrl+alt+i",
                 "mac": "cmd+alt+i"
+            },
+            {
+                "command": "antigravity-storage-manager.showQuota",
+                "key": "ctrl+alt+q",
+                "mac": "cmd+alt+q"
             }
         ]
     },

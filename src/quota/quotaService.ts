@@ -174,7 +174,11 @@ function parseModelQuota(config: any): ModelQuotaInfo {
         isExhausted: remainingFraction === undefined || remainingFraction === 0,
         resetTime,
         timeUntilReset,
-        timeUntilResetFormatted: formatTimeUntilReset(timeUntilReset)
+        timeUntilResetFormatted: formatTimeUntilReset(timeUntilReset),
+        requestLimit: quotaInfo?.limit ?? quotaInfo?.maxRequestCount,
+        requestUsage: quotaInfo?.usage ?? quotaInfo?.requestCount,
+        tokenLimit: quotaInfo?.tokenLimit ?? quotaInfo?.maxTokens,
+        tokenUsage: quotaInfo?.tokenUsage ?? quotaInfo?.tokensUsed
     };
 }
 

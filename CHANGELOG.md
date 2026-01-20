@@ -5,6 +5,31 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-20
+### Localization & Internationalization
+- **16 Languages Support**: Added native localization for: English, Russian, Chinese (Simplified/Traditional), Japanese, Korean, German, French, Spanish, Italian, Portuguese (Brazil), Turkish, Polish, Czech, Arabic, and Vietnamese.
+- **Smart Formatting**: Dates and times (e.g., "Tomorrow 09:00", "Last Sync") are now formatted according to the user's locale.
+- **Comprehensive Coverage**: Translated all Status Bar items, Menus, Notifications, Popups, and Settings descriptions.
+
+### Quota Dashboard Enhancements
+- **Quota Estimations**: Added "Speed" (usage/hour) and "Estimated Remaining Time" to Model Tooltips.
+- **Visual Time Scale**: Pro/Ultra models now display a visual progress bar `[████░░]` showing time elapsed in the current cycle.
+- **Detailed Usage**: Quota Usage window now shows granular Request count and Token usage stats per model.
+- **Colored Status Indicators**: Quota status icon now changes color (Red/Orange/Yellow/Green) based on remaining percentage.
+- **Visual Progress**: "Remaining" field in tooltips now includes the visual progress bar `[██░░]`.
+
+### UX Improvements
+- **Sync Progress**: Added visual progress bar `▓▓░░` for Sync Quota in the status bar tooltip.
+- **Live Sync info**: "AG Sync" tooltip now duplicates the live upload/download progress counts.
+- **Better Formatting**: Sync Statistics now display load times in a more readable format (seconds/ms).
+- **Keybinding**: Added `Ctrl+Alt+Q` (Mac: `Cmd+Alt+Q`) shortcut to directly open the Antigravity Quota view.
+- **Chat Refresh**: Added a "Reload Window" prompt after syncing to ensure new conversations appear in the list.
+
+### Bug Fixes
+- **Sync Titles**: Resolved issue where Sync Statistics displayed outdated conversation titles. Titles are prioritized from local `task.md`.
+- **Sorting**: Fixed "Sort by Reset Time" behavior in Quota Usage window.
+- **Validation**: Fixed validation error for `pinnedModels` setting to support readable labels and custom IDs.
+
 ## [0.6.0] - 2026-01-20
 - **Feature**: Parallel Sync! Uploads and downloads now run in parallel chains for significantly faster synchronization.
     - **Configurable**: Added `sync.concurrency` setting (default 3, max 10) to control parallelism.

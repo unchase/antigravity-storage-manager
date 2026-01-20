@@ -1,3 +1,4 @@
+import { LocalizationManager } from "../l10n/localizationManager";
 
 /**
  * Generates an ASCII progress bar.
@@ -58,15 +59,23 @@ export function formatResetTime(date: Date): string {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const isTomorrow = date.getDate() === tomorrow.getDate() && date.getMonth() === tomorrow.getMonth() && date.getFullYear() === tomorrow.getFullYear();
 
-    const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    const lm = LocalizationManager.getInstance();
+    const locale = lm.getLocale();
 
-    if (isToday) {
-        return `Today ${timeStr}`;
-    } else if (isTomorrow) {
-        return `Tomorrow ${timeStr}`;
-    } else {
-        return `${date.toLocaleDateString()} ${timeStr}`;
-    }
+    const timeStr = new Intl.DateTimeFormat(locale, {
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(date);
+
+    if (isToday) return `${lm.t('Today')} ${timeStr}`;
+    if (isTomorrow) return `${lm.t('Tomorrow')} ${timeStr}`;
+
+    return new Intl.DateTimeFormat(locale, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(date);
 }
 
 /**
@@ -79,11 +88,14 @@ export function compareModels(a: { remainingPercentage?: number, resetTime: Date
     const timeA = a.resetTime.getTime();
     const timeB = b.resetTime.getTime();
 
+    const labelA = (a as any).label || '';
+    const labelB = (b as any).label || '';
+
     if (sortMethod === 'quota') {
         // Highest quota first (100% ... 0%)
         if (quotaA !== quotaB) return quotaB - quotaA;
-        // Secondary sort by time (Soonest reset first)
-        return timeA - timeB;
+        // Secondary sort by label (Alphabetical)
+        return labelA.localeCompare(labelB);
     } else {
         // Soonest reset first
         if (timeA !== timeB) return timeA - timeB;

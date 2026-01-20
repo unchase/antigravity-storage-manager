@@ -8,6 +8,10 @@ export interface ModelQuotaInfo {
     resetTime: Date;
     timeUntilReset: number;
     timeUntilResetFormatted: string;
+    requestLimit?: number;
+    requestUsage?: number;
+    tokenLimit?: number;
+    tokenUsage?: number;
 }
 
 export interface PromptCreditsInfo {

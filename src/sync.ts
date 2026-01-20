@@ -7,6 +7,7 @@ import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
 import { GoogleDriveService, SyncManifest, SyncedConversation, MachineState, FileHashInfo } from './googleDrive';
 import * as crypto from './crypto';
+import { LocalizationManager } from './l10n/localizationManager';
 import { formatRelativeTime, getConversationsAsync, limitConcurrency } from './utils';
 
 const EXT_NAME = 'antigravity-storage-manager';
@@ -55,6 +56,7 @@ export class SyncManager {
     private config: SyncConfig | null = null;
     private masterPassword: string | null = null;
     private autoSyncTimer: NodeJS.Timeout | null = null;
+    private nextAutoSyncTime: number | null = null;
     private isSyncing: boolean = false;
     private syncCount: number = 0;
     private fileHashCache: Map<string, { mtime: number, hash: string }> = new Map();
@@ -832,21 +834,24 @@ export class SyncManager {
             return;
         }
 
+        const lm = LocalizationManager.getInstance();
+
         switch (status) {
 
             case 'syncing':
-                this.statusBarItem.text = `$(sync~spin) AG Sync`;
-                this.statusBarItem.tooltip = vscode.l10n.t('Syncing with Google Drive...');
+                this.statusBarItem.text = `$(sync~spin) ${lm.t('AG Sync')}`;
+                this.statusBarItem.text = `$(sync~spin) ${lm.t('AG Sync')}`;
+                this.statusBarItem.tooltip = text || lm.t('Syncing with Google Drive...');
                 this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.prominentForeground');
                 break;
             case 'error':
-                this.statusBarItem.text = `$(error) AG Sync`;
-                this.statusBarItem.tooltip = vscode.l10n.t('Sync Error');
+                this.statusBarItem.text = `$(error) ${lm.t('AG Sync')}`;
+                this.statusBarItem.tooltip = lm.t('Sync Error');
                 this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.errorForeground');
                 break;
             case 'ok':
-                this.statusBarItem.text = "$(check) AG Sync";
-                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Up to date");
+                this.statusBarItem.text = `$(check) ${lm.t('AG Sync')}`;
+                this.statusBarItem.tooltip = lm.t("Antigravity Sync: Up to date");
                 this.statusBarItem.backgroundColor = undefined;
                 this.statusBarItem.color = undefined;
                 // Revert to idle after 5 seconds
@@ -857,8 +862,8 @@ export class SyncManager {
             case 'idle':
             default: {
                 if (!this.isReady()) {
-                    this.statusBarItem.text = `$(alert) AG Sync`;
-                    this.statusBarItem.tooltip = vscode.l10n.t('Sync is not configured. Click to setup.');
+                    this.statusBarItem.text = `$(alert) ${lm.t('AG Sync')}`;
+                    this.statusBarItem.tooltip = lm.t('Sync is not configured. Click to setup.');
                     this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.warningForeground');
                     this.statusBarItem.backgroundColor = undefined;
                 } else {
@@ -867,18 +872,62 @@ export class SyncManager {
                     // Or if user wants "Everything OK" -> Check. 
                     // Let's use Check if we have a valid lastSync time, otherwise Cloud.
                     const icon = (this.config?.lastSync && this.config.lastSync !== 'Never') ? '$(check)' : '$(cloud)';
-                    this.statusBarItem.text = `${icon} AG Sync`;
+                    this.statusBarItem.text = `${icon} ${lm.t('AG Sync')}`;
 
                     const md = new vscode.MarkdownString('', true);
                     md.isTrusted = true;
                     md.supportThemeIcons = true;
 
-                    md.appendMarkdown(`**Antigravity Sync**\n\n`);
-                    md.appendMarkdown(`$(cloud) Status: **Idle**\n\n`);
+                    md.appendMarkdown(`**${lm.t('Antigravity Sync')}**\n\n`);
+                    md.appendMarkdown(`$(cloud) ${lm.t('Status')}: **${lm.t('Idle')}**\n\n`);
                     if (this.config?.lastSync) {
-                        md.appendMarkdown(`$(history) Last Sync: ${new Date(this.config.lastSync).toLocaleString()}\n\n`);
+                        const date = new Date(this.config.lastSync);
+                        const locale = lm.getLocale();
+                        const dateStr = new Intl.DateTimeFormat(locale, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        }).format(date);
+                        md.appendMarkdown(`$(history) ${lm.t('Last Sync')}: ${dateStr}\n\n`);
                     }
-                    md.appendMarkdown(`$(sync) Session Syncs: ${sessionCount}`);
+
+                    // Add visual progress bar for next sync if auto-sync is enabled
+                    if (this.autoSyncTimer && this.config?.syncInterval && this.nextAutoSyncTime) {
+                        const now = Date.now();
+                        const interval = this.config.syncInterval;
+                        // Calculate time until next sync
+                        const msUntilSync = Math.max(0, this.nextAutoSyncTime - now);
+
+                        // Inverted progress: 0% at start (full time left), 100% at end (0 time left)
+                        // But for a "filling up" bar until triggers:
+                        // We want it to fill up as we approach the sync time? Or deplete?
+                        // "Next Sync in..." implies depletion (hourglass).
+                        // Let's do a depletion bar: Full at start, empty at end.
+                        // Start time = next - interval.
+                        const totalTime = interval;
+                        const elapsed = totalTime - msUntilSync;
+                        const progress = Math.min(1, Math.max(0, elapsed / totalTime));
+
+                        // Visual scale [████░░]
+                        const bars = 15;
+                        const filled = Math.round(progress * bars);
+                        const empty = bars - filled;
+                        const progressBar = '█'.repeat(filled) + '░'.repeat(empty);
+
+                        // Format remaining time
+                        let timeText = '';
+                        const seconds = Math.ceil(msUntilSync / 1000);
+                        if (seconds > 60) {
+                            timeText = `${Math.ceil(seconds / 60)}${lm.t('m')}`;
+                        } else {
+                            timeText = `${seconds}s`;
+                        }
+
+                        md.appendMarkdown(`$(watch) ${LocalizationManager.getInstance().t('Next Sync')}: \`${progressBar}\` (${timeText})\n\n`);
+                    }
+
+                    md.appendMarkdown(`$(sync) ${LocalizationManager.getInstance().t('Session Syncs')}: ${sessionCount}`);
 
                     this.statusBarItem.tooltip = md;
                     this.statusBarItem.color = undefined; // Default color
@@ -890,7 +939,7 @@ export class SyncManager {
 
         if (status === 'idle') {
             // idle logic moved to switch
-        } else if (text && status !== 'syncing') {
+        } else if (text) {
             this.statusBarItem.tooltip = text;
         }
         this.statusBarItem.show();
@@ -1059,7 +1108,14 @@ export class SyncManager {
                         }
                     }
                 }
+                // Reset next sync time
+                this.nextAutoSyncTime = Date.now() + this.config!.syncInterval;
+                // Update tooltip to show full bar? Or wait for next hover/update?
+                // Ideally updates when status changes back to idle.
             }, this.config.syncInterval);
+
+            // Set initial next sync time
+            this.nextAutoSyncTime = Date.now() + this.config.syncInterval;
         }
     }
 
@@ -1077,6 +1133,7 @@ export class SyncManager {
      * Setup wizard
      */
     async setup(): Promise<void> {
+        const lm = LocalizationManager.getInstance();
         // 1. Check if we need to authenticate
         try {
             const token = await this.authProvider.getAccessToken();
@@ -1085,37 +1142,37 @@ export class SyncManager {
             }
         } catch {
             const answer = await vscode.window.showInformationMessage(
-                vscode.l10n.t("To sync conversations, you need to sign in with Google."),
-                vscode.l10n.t("Sign In"),
-                vscode.l10n.t("Cancel")
+                lm.t("To sync conversations, you need to sign in with Google."),
+                lm.t("Sign In"),
+                lm.t("Cancel")
             );
 
-            if (answer !== vscode.l10n.t("Sign In")) return;
+            if (answer !== lm.t("Sign In")) return;
 
             try {
                 await this.authProvider.signIn();
             } catch (err: any) {
-                vscode.window.showErrorMessage(vscode.l10n.t("Login failed: {0}", err.message));
+                vscode.window.showErrorMessage(lm.t("Login failed: {0}", err.message));
                 return;
             }
         }
 
         // 2. Set Master Password
         const password = await vscode.window.showInputBox({
-            prompt: vscode.l10n.t("Create a Master Password to encrypt your data"),
+            prompt: lm.t("Create a Master Password to encrypt your data"),
             password: true,
             validateInput: (value) =>
-                value && value.length >= 8 ? null : vscode.l10n.t("Password must be at least 8 characters")
+                value && value.length >= 8 ? null : lm.t("Password must be at least 8 characters")
         });
 
         if (!password) return;
 
         // 3. Confirm Password
         const confirm = await vscode.window.showInputBox({
-            prompt: vscode.l10n.t("Confirm Master Password"),
+            prompt: lm.t("Confirm Master Password"),
             password: true,
             validateInput: (value) =>
-                value === password ? null : vscode.l10n.t("Passwords do not match")
+                value === password ? null : lm.t("Passwords do not match")
         });
 
         if (!confirm) return;
@@ -1129,9 +1186,9 @@ export class SyncManager {
         if (!machineName) {
             // ask for machine name
             machineName = await vscode.window.showInputBox({
-                prompt: vscode.l10n.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
+                prompt: lm.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
                 value: os.hostname(),
-                validateInput: (val) => val ? null : vscode.l10n.t("Machine name cannot be empty")
+                validateInput: (val) => val ? null : lm.t("Machine name cannot be empty")
             }) || os.hostname();
         }
 
@@ -1156,21 +1213,21 @@ export class SyncManager {
         try {
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: vscode.l10n.t("Setting up sync storage..."),
+                title: lm.t("Setting up sync storage..."),
                 cancellable: true
             }, async (progress, token) => {
                 if (token.isCancellationRequested) throw new vscode.CancellationError();
 
-                this.reportProgress(progress, vscode.l10n.t('Checking Google Drive folders...'));
+                this.reportProgress(progress, lm.t('Checking Google Drive folders...'));
                 await this.driveService.ensureSyncFolders();
 
                 // Try to get existing manifest
-                this.reportProgress(progress, vscode.l10n.t('Checking for existing backup...'));
+                this.reportProgress(progress, lm.t('Checking for existing backup...'));
                 if (token.isCancellationRequested) throw new vscode.CancellationError();
                 const manifest = await this.getDecryptedManifest();
 
                 if (manifest) {
-                    vscode.window.showInformationMessage(vscode.l10n.t("Found existing sync data! Joined as '{0}'.", this.config!.machineName));
+                    vscode.window.showInformationMessage(lm.t("Found existing sync data! Joined as '{0}'.", this.config!.machineName));
 
                     // Ask user which conversations to sync
                     if (manifest.conversations.length > 0) {
@@ -1183,7 +1240,7 @@ export class SyncManager {
 
                         const selected = await vscode.window.showQuickPick(items, {
                             canPickMany: true,
-                            placeHolder: vscode.l10n.t('Select conversations to sync from Google Drive')
+                            placeHolder: lm.t('Select conversations to sync from Google Drive')
                         });
 
                         if (selected) {
@@ -1197,9 +1254,9 @@ export class SyncManager {
                     }
                 } else {
                     // Create new
-                    this.reportProgress(progress, vscode.l10n.t('Creating initial backup...'));
+                    this.reportProgress(progress, lm.t('Creating initial backup...'));
                     await this.createInitialManifest();
-                    vscode.window.showInformationMessage(vscode.l10n.t("Sync set up successfully!"));
+                    vscode.window.showInformationMessage(lm.t("Sync set up successfully!"));
                 }
 
                 // Trigger first sync
@@ -1210,7 +1267,7 @@ export class SyncManager {
             this.startAutoSync();
 
         } catch (error: any) {
-            vscode.window.showErrorMessage(vscode.l10n.t("Setup failed: {0}", error.message));
+            vscode.window.showErrorMessage(lm.t("Setup failed: {0}", error.message));
         }
     }
 
@@ -1226,7 +1283,7 @@ export class SyncManager {
         if (this.statusBarItem) {
             this.statusBarItem.hide();
         }
-        vscode.window.showInformationMessage(vscode.l10n.t("Disconnected from sync. Local data is kept safe."));
+        vscode.window.showInformationMessage(LocalizationManager.getInstance().t("Disconnected from sync. Local data is kept safe."));
     }
 
     /**
@@ -1299,7 +1356,17 @@ export class SyncManager {
         const remote = remoteManifest.conversations.find(c => c.id === convId);
         const title = local?.title || remote?.title || convId;
 
-        this.reportProgress(progress, vscode.l10n.t('Syncing "{0}"...', title));
+        // Auto-correct remote title if local exists and differs
+        if (local && remote && local.title !== remote.title && local.title !== local.id) {
+            // Force update manifest to sync title even if content hash matched
+            if (remote.fileHashes) {
+                await this.updateManifestEntryWithFileHashes(convId, remote.hash, remote.fileHashes);
+            } else {
+                await this.updateManifestEntry(convId, remote.hash, remote.size);
+            }
+        }
+
+        this.reportProgress(progress, LocalizationManager.getInstance().t('Syncing "{0}"...', title));
 
         if (local && !remote) {
             // Local only - push to remote
@@ -1420,7 +1487,7 @@ export class SyncManager {
 
         const panel = vscode.window.createWebviewPanel(
             'antigravitySyncStats',
-            vscode.l10n.t('Antigravity Sync Statistics'),
+            LocalizationManager.getInstance().t('Antigravity Sync Statistics'),
             vscode.ViewColumn.One,
             { enableScripts: true }
         );
@@ -1446,16 +1513,16 @@ export class SyncManager {
                                 vscode.env.openExternal(vscode.Uri.file(convPath));
                             }
                         } else {
-                            vscode.window.showInformationMessage(vscode.l10n.t('Conversation content not found locally.'));
+                            vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversation content not found locally.'));
                         }
                         break;
                     }
                     case 'deleteConversation': {
                         const confirm = await vscode.window.showWarningMessage(
-                            vscode.l10n.t('Are you sure you want to delete conversation "{0}"?', message.title || message.id),
+                            LocalizationManager.getInstance().t('Are you sure you want to delete conversation "{0}"?', message.title || message.id),
                             { modal: true },
-                            vscode.l10n.t('Delete'),
-                            vscode.l10n.t('Cancel')
+                            LocalizationManager.getInstance().t('Delete'),
+                            LocalizationManager.getInstance().t('Cancel')
                         );
 
                         if (confirm === vscode.l10n.t('Delete')) {
@@ -1471,7 +1538,7 @@ export class SyncManager {
 
                     case 'renameConversation': {
                         const newName = await vscode.window.showInputBox({
-                            prompt: vscode.l10n.t('Rename {0}', message.title),
+                            prompt: LocalizationManager.getInstance().t('Rename {0}', message.title),
                             value: message.title
                         });
 
@@ -1489,16 +1556,16 @@ export class SyncManager {
                     case 'pushConversation':
                         vscode.window.withProgress({
                             location: vscode.ProgressLocation.Notification,
-                            title: vscode.l10n.t('Uploading conversation...'),
+                            title: LocalizationManager.getInstance().t('Uploading conversation...'),
                             cancellable: true
                         }, async (progress, token) => {
                             try {
                                 await this.pushConversation(message.id, progress, token);
-                                vscode.window.showInformationMessage(vscode.l10n.t('Conversation uploaded.'));
+                                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversation uploaded.'));
                                 this.refreshStatistics(panel);
                             } catch (e: any) {
                                 if (e instanceof vscode.CancellationError) return;
-                                vscode.window.showErrorMessage(vscode.l10n.t('Upload failed: {0}', e.message));
+                                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Upload failed: {0}', e.message));
                             }
                         });
                         break;
@@ -1506,16 +1573,16 @@ export class SyncManager {
                     case 'pullConversation':
                         vscode.window.withProgress({
                             location: vscode.ProgressLocation.Notification,
-                            title: vscode.l10n.t('Downloading conversation...'),
+                            title: LocalizationManager.getInstance().t('Downloading conversation...'),
                             cancellable: true
                         }, async (progress, token) => {
                             try {
                                 await this.pullConversation(message.id, progress, token);
-                                vscode.window.showInformationMessage(vscode.l10n.t('Conversation downloaded.'));
+                                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversation downloaded.'));
                                 this.refreshStatistics(panel);
                             } catch (e: any) {
                                 if (e instanceof vscode.CancellationError) return;
-                                vscode.window.showErrorMessage(vscode.l10n.t('Download failed: {0}', e.message));
+                                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Download failed: {0}', e.message));
                             }
                         });
                         break;
@@ -1531,10 +1598,10 @@ export class SyncManager {
                             try {
                                 // Delete the file from Drive
                                 await this.driveService.deleteFile(message.id); // message.id here is the FILE ID for machine state
-                                vscode.window.showInformationMessage(vscode.l10n.t('Machine removed.'));
+                                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Machine removed.'));
                                 this.refreshStatistics(panel);
                             } catch (e: any) {
-                                vscode.window.showErrorMessage(vscode.l10n.t('Failed to remove machine: {0}', e.message));
+                                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to remove machine: {0}', e.message));
                             }
                         }
                         break;
@@ -1544,7 +1611,7 @@ export class SyncManager {
                         // Upload a command file for the target machine
                         vscode.window.withProgress({
                             location: vscode.ProgressLocation.Notification,
-                            title: vscode.l10n.t('Sending sync signal...'),
+                            title: LocalizationManager.getInstance().t('Sending sync signal...'),
                             cancellable: false
                         }, async () => {
                             try {
@@ -1565,9 +1632,9 @@ export class SyncManager {
                                 // So this button is a requested UI feature that I will add, but logic might be "Mock" for now 
                                 // OR I assume the user will implement the listener later?
                                 // "add a button for this".
-                                vscode.window.showInformationMessage(vscode.l10n.t('Sync signal sent to {0}. (Requires target machine to be online and polling)', message.name));
+                                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Sync signal sent to {0}. (Requires target machine to be online and polling)', message.name));
                             } catch (e: any) {
-                                vscode.window.showErrorMessage(vscode.l10n.t('Failed to send signal: {0}', e.message));
+                                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to send signal: {0}', e.message));
                             }
                         });
                         break;
@@ -1612,9 +1679,9 @@ export class SyncManager {
                 // Ideally: call this.driveService.deleteConversation(id) if needed.
             }
 
-            vscode.window.showInformationMessage(vscode.l10n.t('Conversation deleted.'));
+            vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversation deleted.'));
         } catch (e: any) {
-            vscode.window.showErrorMessage(vscode.l10n.t('Error deleting: {0}', e.message));
+            vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Error deleting: {0}', e.message));
         }
     }
 
@@ -1661,7 +1728,7 @@ export class SyncManager {
             const machines: Array<{ name: string; id: string; fileId?: string; lastSync: string; isCurrent: boolean; conversationStates: any[] }> = [];
 
             for (const file of machineFiles) {
-                let machineName = 'Unknown Device';
+                let machineName = LocalizationManager.getInstance().t('Unknown Device');
                 let lastSync = file.modifiedTime;
 
                 const machineId = file.name.replace('.json.enc', '');
@@ -1684,7 +1751,7 @@ export class SyncManager {
                     if (contentValues) {
                         const decrypted = crypto.decrypt(contentValues, this.masterPassword!);
                         const state: MachineState = JSON.parse(decrypted.toString());
-                        machineName = state.machineName || 'Unknown';
+                        machineName = state.machineName || LocalizationManager.getInstance().t('Unknown');
                         lastSync = state.lastSync;
                         machines.push({
                             name: machineName,
@@ -1721,16 +1788,17 @@ export class SyncManager {
             });
 
         } catch (error: any) {
-            panel.webview.html = `<html><body><h2>Error loading statistics</h2><p>${error.message}</p></body></html>`;
+            panel.webview.html = `<html><body><h2>${LocalizationManager.getInstance().t('Error loading statistics')}</h2><p>${error.message}</p></body></html>`;
         }
     }
 
     private getLoadingHtml(): string {
+        const lm = LocalizationManager.getInstance();
         return `<!DOCTYPE html>
         <html>
         <body style="font-family: sans-serif; padding: 20px; color: var(--vscode-editor-foreground); background-color: var(--vscode-editor-background);">
-            <h2>Loading Sync Statistics...</h2>
-            <p>Fetching data from Google Drive...</p>
+            <h2>${lm.t('Loading Sync Statistics...')}</h2>
+            <p>${lm.t('Fetching data from Google Drive...')}</p>
         </body>
         </html>`;
     }
@@ -1745,6 +1813,7 @@ export class SyncManager {
         loadTime: number;
         currentMachineId: string;
     }): string {
+        const lm = LocalizationManager.getInstance();
         const machineRows = data.machines.map(m => {
             // Uploads: Created by this machine
             const uploads = data.remoteManifest.conversations.filter(c => c.createdBy === m.id || (c.createdByName === m.name));
@@ -1776,13 +1845,13 @@ export class SyncManager {
                 // Add Delete button
                 machineActions += `<button class="small-btn danger" style="margin-left: 5px;" onclick="vscode.postMessage({command: 'deleteMachine', id: '${m.fileId}', name: '${m.name}'})">🗑️</button>`;
                 // Add Force Sync button
-                machineActions += `<button class="small-btn primary" style="margin-left: 5px;" title="Request Sync" onclick="vscode.postMessage({command: 'forceRemoteSync', id: '${m.id}', name: '${m.name}'})">🔄 Push</button>`;
+                machineActions += `<button class="small-btn primary" style="margin-left: 5px;" title="${lm.t('Trigger immediate synchronization')}" onclick="vscode.postMessage({command: 'forceRemoteSync', id: '${m.id}', name: '${m.name}'})">🔄 ${lm.t('Push')}</button>`;
             }
 
             return `
             <tr style="${m.isCurrent ? 'background-color: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);' : ''}">
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
-                    ${m.name} ${m.isCurrent ? '(This Machine)' : ''}
+                    ${m.name} ${m.isCurrent ? `(${lm.t('This Machine')})` : ''}
                     <div style="float:right;">${machineActions}</div>
                 </td>
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${m.id}</td>
@@ -1805,11 +1874,10 @@ export class SyncManager {
             // Stats
             const syncedOn = data.machines.filter(m => m.conversationStates.some((s: any) => s.id === id));
             const syncedCount = syncedOn.length;
-            const syncedNames = syncedOn.map(m => m.name).join(', ');
             const isMultiSync = syncedCount > 1;
 
             const originMachineId = remote?.createdBy || (local ? data.currentMachineId : 'unknown');
-            const originMachineName = remote?.createdByName || (local ? 'This Machine' : 'Unknown');
+            const originMachineName = remote?.createdByName || (local ? lm.t('This Machine') : lm.t('Unknown'));
             const isExternal = originMachineId !== data.currentMachineId;
 
             const sizeBytes = remote?.size || 0;
@@ -1832,19 +1900,19 @@ export class SyncManager {
             let actionButtons = '';
 
             // Standard renaming/deleting
-            actionButtons += `<button class="small-btn" onclick="vscode.postMessage({command: 'renameConversation', id: '${id}', title: '${(remote?.title || local?.title || '').replace(/'/g, "\\'")}'})">Rename</button> `;
-            actionButtons += `<button class="small-btn danger" onclick="vscode.postMessage({command: 'deleteConversation', id: '${id}', title: '${(remote?.title || local?.title || '').replace(/'/g, "\\'")}'})">Delete</button> `;
+            actionButtons += `<button class="small-btn" onclick="vscode.postMessage({command: 'renameConversation', id: '${id}', title: '${(remote?.title || local?.title || '').replace(/'/g, "\\'")}'})">${lm.t('Rename')}</button> `;
+            actionButtons += `<button class="small-btn danger" onclick="vscode.postMessage({command: 'deleteConversation', id: '${id}', title: '${(remote?.title || local?.title || '').replace(/'/g, "\\'")}'})">${lm.t('Delete')}</button> `;
 
-            if (isMultiSync) statusBadges.push(`<span class="badge" title="Synced to: ${syncedNames}" style="background: var(--vscode-progressBar-background); color: white; cursor: help;">Synced on ${syncedCount}</span>`);
-            if (isExternal) statusBadges.push(`<span class="badge" title="Created on another machine" style="background: var(--vscode-terminal-ansiCyan); color: black; cursor: help;">Imported</span>`);
+            if (isMultiSync) statusBadges.push(`<span class="badge" title="${lm.t('Synced on {0}', syncedCount)}" style="background: var(--vscode-progressBar-background); color: white; cursor: help;">${lm.t('Synced')}</span>`);
+            if (isExternal) statusBadges.push(`<span class="badge" title="${lm.t('Created on another machine')}" style="background: var(--vscode-terminal-ansiCyan); color: black; cursor: help;">${lm.t('Imported')}</span>`);
 
             if (!remote) {
-                statusBadges.push(`<span class="badge" title="Not yet pushed to Drive" style="background: var(--vscode-list-errorForeground); color: white; cursor: help;">Local Only</span>`);
-                actionButtons += `<button class="small-btn primary" title="Upload to Drive" onclick="vscode.postMessage({command: 'pushConversation', id: '${id}'})">⬆️ Upload</button>`;
+                statusBadges.push(`<span class="badge" title="${lm.t('Not yet pushed to Drive')}" style="background: var(--vscode-list-errorForeground); color: white; cursor: help;">${lm.t('Local Only')}</span>`);
+                actionButtons += `<button class="small-btn primary" title="${lm.t('Upload to Drive')}" onclick="vscode.postMessage({command: 'pushConversation', id: '${id}'})">⬆️ ${lm.t('Upload')}</button>`;
             }
             if (!local) {
-                statusBadges.push(`<span class="badge" title="Not present on this machine" style="background: var(--vscode-list-warningForeground); color: white; cursor: help;">Remote Only</span>`);
-                actionButtons += `<button class="small-btn primary" title="Download from Drive" onclick="vscode.postMessage({command: 'pullConversation', id: '${id}'})">⬇️ Download</button>`;
+                statusBadges.push(`<span class="badge" title="${lm.t('Not present on this machine')}" style="background: var(--vscode-list-warningForeground); color: white; cursor: help;">${lm.t('Remote Only')}</span>`);
+                actionButtons += `<button class="small-btn primary" title="${lm.t('Download from Drive')}" onclick="vscode.postMessage({command: 'pullConversation', id: '${id}'})">⬇️ ${lm.t('Download')}</button>`;
             }
 
             return `
@@ -1864,7 +1932,7 @@ export class SyncManager {
                 </td>
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
                     <div>${dateStr}</div>
-                    <div style="font-size: 0.8em; opacity: 0.7;">by ${remote?.modifiedBy === data.currentMachineId ? 'Me' : (data.machines.find(m => m.id === remote?.modifiedBy)?.name || remote?.modifiedBy || 'Unknown')}</div>
+                    <div style="font-size: 0.8em; opacity: 0.7;">by ${remote?.modifiedBy === data.currentMachineId ? lm.t('Me') : (data.machines.find(m => m.id === remote?.modifiedBy)?.name || remote?.modifiedBy || lm.t('Unknown'))}</div>
                 </td>
                  <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
                     <div>${originMachineName}</div>
@@ -2054,8 +2122,8 @@ export class SyncManager {
         </head>
         <body>
             <div class="header-row">
-                <h1>Sync Statistics</h1>
-                <button class="small-btn primary" style="font-size: 13px; padding: 6px 12px;" onclick="vscode.postMessage({command: 'refresh'})">🔄 Refresh Data</button>
+                <h1>${lm.t('Sync Statistics')}</h1>
+                <button class="small-btn primary" style="font-size: 13px; padding: 6px 12px;" onclick="vscode.postMessage({command: 'refresh'})">🔄 ${lm.t('Refresh Data')}</button>
             </div>
             
             <div class="grid">
@@ -2065,10 +2133,10 @@ export class SyncManager {
                         <div class="pie-chart" style="background: conic-gradient(var(--vscode-progressBar-background) 0% ${localPct}%, var(--vscode-widget-shadow) ${localPct}% 100%);"></div>
                         <div class="chart-details">
                             <div class="stat-value">${data.localCount}</div>
-                            <div class="stat-label">Local Conversations</div>
+                            <div class="stat-label">${lm.t('Local Conversations')}</div>
                             <div style="margin-top: 5px; font-size: 11px; opacity: 0.8;">
-                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-progressBar-background)"></span>${syncedCount} Synced</div>
-                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-widget-shadow)"></span>${data.localCount - syncedCount} Local Only</div>
+                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-progressBar-background)"></span>${syncedCount} ${lm.t('Synced')}</div>
+                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-widget-shadow)"></span>${data.localCount - syncedCount} ${lm.t('Local Only')}</div>
                             </div>
                         </div>
                     </div>
@@ -2078,38 +2146,38 @@ export class SyncManager {
                          <div class="pie-chart" style="background: conic-gradient(var(--vscode-progressBar-background) 0% ${remotePct}%, var(--vscode-widget-shadow) ${remotePct}% 100%);"></div>
                         <div class="chart-details">
                             <div class="stat-value">${data.remoteCount}</div>
-                            <div class="stat-label">Remote Conversations</div>
+                            <div class="stat-label">${lm.t('Remote Conversations')}</div>
                              <div style="margin-top: 5px; font-size: 11px; opacity: 0.8;">
-                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-progressBar-background)"></span>${syncedCount} Synced</div>
-                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-widget-shadow)"></span>${data.remoteCount - syncedCount} Remote Only</div>
+                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-progressBar-background)"></span>${syncedCount} ${lm.t('Synced')}</div>
+                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-widget-shadow)"></span>${data.remoteCount - syncedCount} ${lm.t('Remote Only')}</div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="card">
                     <div class="stat-value">${syncedCount}</div>
-                    <div class="stat-label">Synced Conversations</div>
+                    <div class="stat-label">${lm.t('Synced Conversations')}</div>
                 </div>
                 <div class="card">
                     <div class="stat-value">${data.machines.length}</div>
-                    <div class="stat-label">Connected Machines</div>
+                    <div class="stat-label">${lm.t('Connected Machines')}</div>
                 </div>
             </div>
 
             <div class="card">
-                <div><strong>Last Sync:</strong> ${new Date(data.lastSync).toLocaleString()}</div>
-                <div style="font-size: 12px; opacity: 0.6; margin-top: 5px;">Data loaded in ${data.loadTime}ms</div>
+                <div><strong>${LocalizationManager.getInstance().t('Last Sync')}:</strong> ${new Date(data.lastSync).toLocaleString()}</div>
+                <div style="font-size: 12px; opacity: 0.6; margin-top: 5px;">${LocalizationManager.getInstance().t('Data loaded in')} ${this.formatLoadTime(data.loadTime)}</div>
             </div>
 
-            <h3>Conversations</h3>
+            <h3>${lm.t('Conversations')}</h3>
             <table id="convTable">
                 <thead>
                     <tr>
-                        <th onclick="sortTable(0, 'convTable')" style="cursor: pointer;">Title / ID</th>
-                        <th onclick="sortTable(1, 'convTable')" style="cursor: pointer;">Size (Remote)</th>
-                        <th onclick="sortTable(2, 'convTable')" style="cursor: pointer;">Last Modified</th>
-                        <th onclick="sortTable(3, 'convTable')" style="cursor: pointer;">Origin</th>
-                        <th onclick="sortTable(4, 'convTable')" style="cursor: pointer;">Status</th>
+                        <th onclick="sortTable(0, 'convTable')" style="cursor: pointer;">${lm.t('Title / ID')}</th>
+                        <th onclick="sortTable(1, 'convTable')" style="cursor: pointer;">${lm.t('Size (Remote)')}</th>
+                        <th onclick="sortTable(2, 'convTable')" style="cursor: pointer;">${lm.t('Last Modified')}</th>
+                        <th onclick="sortTable(3, 'convTable')" style="cursor: pointer;">${lm.t('Origin')}</th>
+                        <th onclick="sortTable(4, 'convTable')" style="cursor: pointer;">${lm.t('Status')}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2117,15 +2185,15 @@ export class SyncManager {
                 </tbody>
             </table>
 
-            <h3>Connected Machines</h3>
+            <h3>${lm.t('Connected Machines')}</h3>
             <table id="machineTable">
                 <thead>
                     <tr>
-                        <th onclick="sortTable(0, 'machineTable')" style="cursor: pointer;">Machine Name</th>
-                        <th onclick="sortTable(1, 'machineTable')" style="cursor: pointer;">ID</th>
-                        <th onclick="sortTable(2, 'machineTable')" style="cursor: pointer;">Last Sync State</th>
-                        <th onclick="sortTable(3, 'machineTable')" style="cursor: pointer;">Uploads</th>
-                        <th onclick="sortTable(4, 'machineTable')" style="cursor: pointer;">Downloads</th>
+                        <th onclick="sortTable(0, 'machineTable')" style="cursor: pointer;">${lm.t('Machine Name')}</th>
+                        <th onclick="sortTable(1, 'machineTable')" style="cursor: pointer;">${lm.t('ID')}</th>
+                        <th onclick="sortTable(2, 'machineTable')" style="cursor: pointer;">${lm.t('Last Sync State')}</th>
+                        <th onclick="sortTable(3, 'machineTable')" style="cursor: pointer;">${lm.t('Uploads')}</th>
+                        <th onclick="sortTable(4, 'machineTable')" style="cursor: pointer;">${lm.t('Downloads')}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2134,6 +2202,12 @@ export class SyncManager {
             </table>
         </body>
         </html>`;
+    }
+
+    private formatLoadTime(ms: number): string {
+        if (ms < 1000) return `${ms}ms`;
+        const s = (ms / 1000).toFixed(2);
+        return `${s}s`;
     }
 }
 

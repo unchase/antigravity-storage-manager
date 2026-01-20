@@ -42,19 +42,14 @@ If you find this extension useful, consider supporting the development:
 
 ## Features
 
-- ☁️ **Google Drive Sync** — Automatically sync conversations between devices
-- 🔒 **End-to-End Encryption** — All synced data is encrypted using AES-256-GCM
+- ☁️ **Google Drive Sync** — Automatically sync conversations between devices with end-to-end encryption.
 - ⚡ **Parallel Per-File Sync** — Fast differential sync with parallel processing and hash caching.
-- 📉 **Quota Dashboard** — Monitor your AI usage limits and remaining credits directly in the status bar.
-- 📦 **Export Conversations** — Select one or multiple conversations and save them to a ZIP archive
-- 💾 **Local Backup** — One-click backup of ALL conversations to a single local archive
-- 📥 **Import Conversations** — Restore conversations from ZIP archives with smart conflict detection.
-- ✏️ **Rename Conversations** — Change conversation titles directly from VS Code
-- ⚔️ **Advanced Conflict Resolution** — UI to manually resolve synchronization conflicts (Keep Local vs. Keep Remote)
+- 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
 - 📊 **Interactive Statistics** — Dashboard with sortable tables, visual analytics, and machine management.
+- 🌍 **Global Localization** — Native support for **16 languages** (English, Russian, Chinese, Japanese, Korean, German, and more).
+- 📉 **Advanced Quota Dashboard** — Real-time tracking with consumption speed, remaining time estimates, and visual progress bars.
+- 🚦 **Smart Status Indicators** — Colored icons (🟢/🟡/🟠/🔴) and visual scales `[██░░]` to track quota and sync health at a glance.
 - 🛑 **Cancellation Support** — Abort long-running operations (Sync, Export, Backup) safely at any time.
-- 🎯 **Status Bar Integration** — Quick access to Export, Import, Sync, and Quota.
-- 🌍 **Localization** — Supports English and Russian interfaces (customizable in settings).
 - 🎨 **Command Palette** — All commands available via `Ctrl+Shift+P`
 
 ---

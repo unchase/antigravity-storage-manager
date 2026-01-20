@@ -4,6 +4,7 @@ import * as path from 'path';
 
 import archiver from 'archiver';
 
+
 const EXT_NAME = 'antigravity-storage-manager';
 
 export class BackupManager {
@@ -53,6 +54,8 @@ export class BackupManager {
 
         const intervalHours = config.get<number>('interval', 24);
         const intervalMs = intervalHours * 60 * 60 * 1000;
+
+
 
         console.log(`Antigravity Backups: Enabled. Interval: ${intervalHours}h`);
 

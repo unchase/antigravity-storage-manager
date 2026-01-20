@@ -4,15 +4,18 @@ import { ProcessPortDetector } from './processPortDetector';
 import { QuotaService } from './quotaService';
 import { QuotaSnapshot } from './types';
 import { versionInfo } from './versionInfo';
+import { LocalizationManager } from '../l10n/localizationManager';
 
 import { QuotaStatusBar } from './quotaStatusBar';
 import { drawProgressBar, formatResetTime, compareModels } from './utils';
+import { QuotaUsageTracker } from './quotaUsageTracker';
 
 export class QuotaManager {
     private context: vscode.ExtensionContext;
     private portDetector: ProcessPortDetector;
     private quotaService: QuotaService | null = null;
     private statusBar: QuotaStatusBar;
+    private usageTracker: QuotaUsageTracker;
     private isEnabled: boolean = true;
     private pollingTimer: NodeJS.Timeout | undefined;
     private readonly POLLING_INTERVAL = 60 * 1000; // 1 minute
@@ -23,6 +26,7 @@ export class QuotaManager {
         this.context = context;
         this.portDetector = new ProcessPortDetector();
         this.statusBar = new QuotaStatusBar();
+        this.usageTracker = new QuotaUsageTracker(context);
         versionInfo.initialize(context);
 
         // Listen for configuration changes
@@ -80,8 +84,9 @@ export class QuotaManager {
 
         try {
             const snapshot = await this.getQuota();
+            this.usageTracker.track(snapshot);
             this.checkAndNotifyResets(snapshot);
-            this.statusBar.update(snapshot);
+            this.statusBar.update(snapshot, undefined, this.usageTracker);
             return snapshot;
         } catch (error: any) {
             console.error('QuotaManager', `Fetch failed: ${error.message}`);
@@ -142,7 +147,7 @@ export class QuotaManager {
 
             // If it was exhausted and now is NOT exhausted (and has reasonable quota), notify
             if (wasExhausted && !isExhausted && (model.remainingPercentage === undefined || model.remainingPercentage > 20)) {
-                vscode.window.showInformationMessage(`Antigravity Quota: Limit for ${model.label} has been reset!`);
+                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Antigravity Quota: Limit for {0} has been reset!', model.label));
             }
 
             this.lastNotifiedModels.set(model.modelId, isExhausted);
@@ -151,32 +156,37 @@ export class QuotaManager {
 
     private async displayQuota(snapshot: QuotaSnapshot): Promise<void> {
         const picker = vscode.window.createQuickPick();
-        picker.title = vscode.l10n.t('Antigravity Quota Usage');
-        picker.placeholder = vscode.l10n.t('Click a model to pin/unpin it from status bar');
+        picker.title = LocalizationManager.getInstance().t('Antigravity Quota Usage');
+        picker.placeholder = LocalizationManager.getInstance().t('Click a model to pin/unpin it from status bar');
         picker.matchOnDetail = true;
 
         const updateItems = () => {
             const items: vscode.QuickPickItem[] = [];
 
+            const lm = LocalizationManager.getInstance();
+            if (this.statusBar) {
+                this.statusBar.update(snapshot, undefined, this.usageTracker);
+            }
+
             // Sort Options
             const sortIcon = this.sortMethod === 'quota' ? '$(list-ordered)' : '$(clock)';
-            const sortText = this.sortMethod === 'quota' ? 'Sort by Reset Time' : 'Sort by Quota Remaining';
+            const sortText = this.sortMethod === 'quota' ? lm.t('Sort by Reset Time') : lm.t('Sort by Quota Remaining');
 
             // Action button to change sort
             items.push({
                 label: `${sortIcon} ${sortText}`,
-                detail: 'CHANGE_SORT',
-                description: `Current: ${this.sortMethod === 'quota' ? 'Quota' : 'Reset Time'}`,
+                detail: lm.t('Click to change sort order'),
+                description: `${lm.t('Current')}: ${this.sortMethod === 'quota' ? lm.t('Quota') : lm.t('Reset Time')}`,
                 alwaysShow: true
             });
 
             // Plan Info
             if (snapshot.planName) {
                 items.push({
-                    label: `$(star) Plan: ${snapshot.planName}`,
+                    label: `$(star) ${lm.t('Plan')}: ${snapshot.planName}`,
                     // kind: vscode.QuickPickItemKind.Separator // Separators don't support icons
                     alwaysShow: true,
-                    description: 'Current Subscription'
+                    description: lm.t('Current Subscription')
                 });
             }
 
@@ -185,9 +195,9 @@ export class QuotaManager {
                 const credits = snapshot.promptCredits;
                 const percent = credits.remainingPercentage.toFixed(1);
                 items.push({
-                    label: `$(graph) Credits: ${credits.available} / ${credits.monthly}`,
-                    description: `${percent}% available`,
-                    detail: 'Monthly Usage Limit',
+                    label: `$(graph) ${lm.t('Credits')}: ${credits.available} / ${credits.monthly}`,
+                    description: `${percent}% ${lm.t('available')}`,
+                    detail: lm.t('Monthly Usage Limit'),
                     alwaysShow: true
                 });
             }
@@ -195,7 +205,7 @@ export class QuotaManager {
             // Models
             if (snapshot.models && snapshot.models.length > 0) {
                 items.push({
-                    label: 'Models (Click to Pin/Unpin)',
+                    label: lm.t('Models (Click to Pin/Unpin)'),
                     kind: vscode.QuickPickItemKind.Separator
                 });
 
@@ -208,20 +218,42 @@ export class QuotaManager {
                 for (const model of models) {
                     const isPinned = pinned.includes(model.modelId) || pinned.includes(model.label);
                     const pinIcon = isPinned ? '$(pin)' : '$(circle-outline)';
-                    const status = model.isExhausted ? '$(error)' : '$(check)';
-
                     const pct = model.remainingPercentage ?? 0;
+                    let status = '$(check)';
+
+                    if (model.isExhausted || pct === 0) {
+                        status = '$(error)';
+                    } else if (pct < 30) {
+                        status = '$(flame)';
+                    } else if (pct < 50) {
+                        status = '$(warning)';
+                    }
+
                     const bar = drawProgressBar(pct);
 
                     let desc = `${bar} ${pct.toFixed(1)}%`;
                     if (model.timeUntilReset > 0) {
-                        desc += ` • Resets ${formatResetTime(model.resetTime)}`;
+                        desc += ` • ${lm.t('Resets')} ${formatResetTime(model.resetTime)}`;
+                    }
+
+                    // Show detailed functionality usage if available, otherwise fallback to Model ID
+                    let details = '';
+                    if (model.requestLimit && model.requestUsage !== undefined) {
+                        details += `${lm.t('Requests')}: ${model.requestUsage} / ${model.requestLimit}  `;
+                    }
+                    if (model.tokenLimit && model.tokenUsage !== undefined) {
+                        details += `${lm.t('Tokens')}: ${model.tokenUsage} / ${model.tokenLimit}`;
+                    }
+
+                    if (!details.trim()) {
+                        // Fallback to ID if no stats
+                        details = model.modelId;
                     }
 
                     items.push({
                         label: `${pinIcon} ${status} ${model.label}`,
                         description: desc,
-                        detail: model.modelId
+                        detail: details // Used to act as ID in selection logic BUT we need to handle that carefully
                     });
                 }
             }
@@ -235,25 +267,42 @@ export class QuotaManager {
             if (!selected) return;
 
             // Handle Sort
-            if (selected.detail === 'CHANGE_SORT') {
+            if (selected.detail === LocalizationManager.getInstance().t('Click to change sort order')) {
                 this.sortMethod = this.sortMethod === 'quota' ? 'time' : 'quota';
                 updateItems();
                 picker.selectedItems = []; // Clear selection to avoid confusion
                 return;
             }
 
-            // Handle Pinning (Item with detail=modelId)
-            // Ignore Plan/Credits items which don't have modelId as detail or CHANGE_SORT
-            if (selected.detail && !selected.detail.includes('CHANGE_SORT') && selected.detail !== 'Monthly Usage Limit') {
-                const model = snapshot.models.find(m => m.modelId === selected.detail);
-                if (model) {
-                    await this.statusBar.togglePinnedModel(model.modelId, model.label);
-                } else {
-                    // Fallback using detail as ID
-                    await this.statusBar.togglePinnedModel(selected.detail);
+            // Handle Pinning
+            // We need to find the model corresponding to this item.
+            // Since 'detail' might now contain stats strings, we can't trust it as ID directly.
+            // We'll iterate models and match by label (removing icons)
+            if (snapshot.models) {
+                // Label format: "$(pin) $(check) ModelName"
+                // Let's strip icons.
+                // Or better, let's store the modelId in a custom property?
+                // QuickPickItem doesn't allow custom props easily without casting.
+                // Let's rely on finding standard separators.
+
+                // Let's try to match by label since we know the label format used in generation.
+                // But cleaner is to check if we can identify the model from the list.
+                // The iteration order is deterministic if we resort again, but that's risky.
+
+                // Hack: Let's assume detail IS unique enough? No.
+
+                // Let's look for the model in the snapshot
+                const targetModel = snapshot.models.find(m => {
+                    // Check if selected label contains the model label
+                    return selected.label.includes(m.label);
+                });
+
+                if (targetModel) {
+                    await this.statusBar.togglePinnedModel(targetModel.modelId, targetModel.label);
+                    updateItems();
                 }
-                updateItems();
             }
+
             // Clear selection for all actions so user can click again
             picker.selectedItems = [];
         });

@@ -49,7 +49,24 @@ export class LocalizationManager {
         // Map vs code language codes to our supported files
         // e.g. 'en-US' -> 'en', 'ru-RU' -> 'ru'
         let langCode = this.currentLanguage.split('-')[0].toLowerCase();
-        if (!['en', 'ru'].includes(langCode)) {
+
+        // Handle specific regional codes if needed, or map generic
+        const supported = [
+            'en', 'zh', 'ja', 'de', 'es', 'fr', 'it', 'ko', 'pt', 'ru', 'tr', 'pl', 'cs', 'ar', 'vi'
+        ];
+        // Note: zh-cn and zh-tw are usually distinct.
+        // vscode uses 'zh-cn' and 'zh-tw'. splitting by '-' might lose that.
+        // Let's rely on full code for zh?
+        if (this.currentLanguage.toLowerCase().startsWith('zh-')) {
+            langCode = this.currentLanguage.toLowerCase();
+        }
+
+        // Portuguese (Brazil) is pt-br
+        if (this.currentLanguage.toLowerCase() === 'pt-br') {
+            langCode = 'pt-br';
+        }
+
+        if (!supported.includes(langCode) && !langCode.startsWith('zh') && langCode !== 'pt-br') {
             langCode = 'en'; // Default fallback
         }
 
@@ -82,5 +99,9 @@ export class LocalizationManager {
         }
 
         return text;
+    }
+
+    public getLocale(): string {
+        return this.currentLanguage;
     }
 }

@@ -21,5 +21,11 @@
     "antigravity.config.backupInterval": "Интервал бэкапов в часах (по умолчанию: 24)",
     "antigravity.config.backupPath": "Путь для бэкапов (пусто = по умолчанию)",
     "antigravity.config.backupRetention": "Количество хранимых бэкапов",
-    "antigravity.config.language": "Язык интерфейса расширения (auto = язык системы)."
+    "antigravity.config.language": "Язык интерфейса расширения (auto = язык системы).",
+    "antigravity.config.concurrency": "Количество параллельных загрузок при синхронизации.",
+    "antigravity.config.suggestSolutions": "Предлагать решения при ошибках синхронизации (напр. файл не найден)",
+    "antigravity.config.enableQuota": "Включить/отключить получение и отображение квот Antigravity.",
+    "antigravity.config.pinnedModels": "Список моделей для отображения в статус-баре.",
+    "antigravity.command.showSyncStats": "Показать статистику синхронизации",
+    "antigravity.command.showQuota": "Показать квоты Antigravity"
 }
