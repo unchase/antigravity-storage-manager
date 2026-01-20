@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, main]
     tags:
-      - 'v*'
+      - "v*"
   pull_request:
     branches: [master, main]
 
@@ -17,8 +17,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -33,20 +33,22 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: antigravity-storage-manager-vsix
-          path: '*.vsix'
+          path: "*.vsix"
 
   publish:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -54,13 +56,70 @@ jobs:
       - name: Build extension
         run: npm run compile:production
 
+      - name: Extract Release Data
+        id: release_data
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Processing version: $VERSION"
+
+          # 1. Get Commit Message (Short)
+          COMMIT_MSG=$(git log -1 --format=%s)
+          echo "commit_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
+
+          # 2. Extract Changelog
+          # Find start line of the version section
+          START_LINE=$(grep -n "^## \[$VERSION\]" CHANGELOG.md | cut -d: -f1)
+
+          if [ -z "$START_LINE" ]; then
+             echo "::error::Could not find '## [$VERSION]' in CHANGELOG.md"
+             exit 1
+          fi
+
+          # Find next section start to determine end line
+          REMAINING_LINES=$(tail -n +$((START_LINE + 1)) CHANGELOG.md)
+          NEXT_SECTION_OFFSET=$(echo "$REMAINING_LINES" | grep -n "^## \[" | head -n 1 | cut -d: -f1)
+
+          if [ -z "$NEXT_SECTION_OFFSET" ]; then
+             CONTENT=$(tail -n +$START_LINE CHANGELOG.md)
+          else
+             # Take lines up to the next section
+             CONTENT=$(tail -n +$START_LINE CHANGELOG.md | head -n $((NEXT_SECTION_OFFSET - 1)))
+          fi
+
+          # Replace header: remove first line, add new title
+          BODY_WITHOUT_HEADER=$(echo "$CONTENT" | tail -n +2)
+          NEW_HEADER="Antigravity Storage Manager v$VERSION"
+
+          # Combine structure
+          FULL_BODY="${NEW_HEADER}"$'\n\n'"${BODY_WITHOUT_HEADER}"
+
+          # Output multiline string
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$FULL_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Package VSIX
+        run: npx @vscode/vsce package --no-dependencies
+
       - name: Publish to VS Code Marketplace
-        run: npx @vscode/vsce publish --no-dependencies
+        run: npx @vscode/vsce publish --packagePath *.vsix --no-dependencies
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Publish to Open VSX Registry
-        run: npx ovsx publish --no-dependencies
+        run: npx ovsx publish *.vsix --no-dependencies
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         continue-on-error: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: "*.vsix"
+          body: ${{ steps.release_data.outputs.release_notes }}
+          name: "${{ github.ref_name }} - ${{ steps.release_data.outputs.commit_message }}"
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
