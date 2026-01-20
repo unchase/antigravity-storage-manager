@@ -163,5 +163,18 @@
     "Conversation downloaded.": "Konverzace stažena.",
     "Are you sure you want to remove machine \"{0}\" from sync stats?": "Opravdu chcete odebrat stroj \"{0}\" ze statistik?",
     "Remove": "Odebrat",
-    "Machine removed.": "Stroj odebrán."
+    "Machine removed.": "Stroj odebrán.",
+    "Show Dashboard": "Zobrazit panel",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "Stiskněte 'Enter' pro potvrzení nebo 'Escape' pro zrušení",
+    "ms": "ms",
+    "s": "s",
+    "Not yet pushed to Drive": "Zatím nebylo nahrano na Drive",
+    "Not present on this machine": "Na tomto stroji není přítomno",
+    "Created": "Vytvořeno",
+    "Modified": "Změněno",
+    "Select conversations to sync from Google Drive": "Vybrat konverzace k synchronizaci",
+    "Use Space to select/deselect, Enter to confirm": "Mezerník pro výběr, Enter pro potvrzení",
+    "by": "",
+    "Synced on {0}": "Synchronizováno na {0} zařízeních",
+    "Created on another machine": "Vytvořeno na jiném stroji"
 }

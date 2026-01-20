@@ -193,5 +193,22 @@
     "Uploading conversation...": "Uploading conversation...",
     "Downloading conversation...": "Downloading conversation...",
     "Sending sync signal...": "Sending sync signal...",
-    "Error loading statistics": "Error loading statistics"
+    "Error loading statistics": "Error loading statistics",
+    "Today": "Today",
+    "Tomorrow": "Tomorrow",
+    "Show Dashboard": "Show Dashboard",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "Press 'Enter' to confirm or 'Escape' to cancel",
+    "ms": "ms",
+    "s": "s",
+    "Not yet pushed to Drive": "Not yet pushed to Drive",
+    "Not present on this machine": "Not present on this machine",
+    "Created": "Created",
+    "Modified": "Modified",
+    "Select conversations to sync from Google Drive": "Select conversations to sync from Google Drive",
+    "Use Space to select/deselect, Enter to confirm": "Use Space to select/deselect, Enter to confirm",
+    "by": "by",
+    "Synced on {0}": "Synced on {0} machines",
+    "Created on another machine": "Created on another machine",
+    "Language changed.": "Language changed.",
+    "Don't ask again": "Don't ask again"
 }

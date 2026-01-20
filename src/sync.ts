@@ -191,13 +191,14 @@ export class SyncManager {
      * Sync now - manual or automatic sync trigger
      */
     async syncNow(progress?: vscode.Progress<{ message?: string; increment?: number }>, token?: vscode.CancellationToken): Promise<SyncResult> {
+        const lm = LocalizationManager.getInstance();
         if (this.isSyncing) {
             return {
                 success: false,
                 pushed: [],
                 pulled: [],
                 conflicts: [],
-                errors: [vscode.l10n.t('Sync already in progress')]
+                errors: [lm.t('Sync already in progress')]
             };
         }
 
@@ -211,7 +212,7 @@ export class SyncManager {
                 pushed: [],
                 pulled: [],
                 conflicts: [],
-                errors: [vscode.l10n.t('Sync not configured or not authenticated')]
+                errors: [lm.t('Sync not configured or not authenticated')]
             };
         }
 
@@ -228,24 +229,24 @@ export class SyncManager {
 
         try {
             // Try to acquire lock
-            this.reportProgress(progress, vscode.l10n.t('Acquiring sync lock...'));
+            this.reportProgress(progress, lm.t('Acquiring sync lock...'));
             const machineId = this.config!.machineId;
             // Lock for 5 minutes (default)
             const acquired = await this.driveService.acquireLock(machineId);
             if (!acquired) {
-                throw new Error(vscode.l10n.t('Sync is currently locked by another machine. Please try again later.'));
+                throw new Error(lm.t('Sync is currently locked by another machine. Please try again later.'));
             }
 
             try {
                 // Get remote manifest
-                this.reportProgress(progress, vscode.l10n.t('Downloading sync manifest...'));
+                this.reportProgress(progress, lm.t('Downloading sync manifest...'));
                 const remoteManifest = await this.ensureRemoteManifest();
                 if (!remoteManifest) {
-                    throw new Error(vscode.l10n.t('Could not retrieve remote manifest'));
+                    throw new Error(lm.t('Could not retrieve remote manifest'));
                 }
 
                 // Get local conversations
-                this.reportProgress(progress, vscode.l10n.t('Scanning local conversations...'));
+                this.reportProgress(progress, lm.t('Scanning local conversations...'));
                 const localConversations = await this.getLocalConversationsAsync();
 
                 // Determine which conversations to sync
@@ -899,32 +900,35 @@ export class SyncManager {
                         // Calculate time until next sync
                         const msUntilSync = Math.max(0, this.nextAutoSyncTime - now);
 
-                        // Inverted progress: 0% at start (full time left), 100% at end (0 time left)
-                        // But for a "filling up" bar until triggers:
-                        // We want it to fill up as we approach the sync time? Or deplete?
-                        // "Next Sync in..." implies depletion (hourglass).
-                        // Let's do a depletion bar: Full at start, empty at end.
-                        // Start time = next - interval.
-                        const totalTime = interval;
-                        const elapsed = totalTime - msUntilSync;
-                        const progress = Math.min(1, Math.max(0, elapsed / totalTime));
+                        // Only show if there's still time until next sync
+                        if (msUntilSync > 0) {
+                            // Inverted progress: 0% at start (full time left), 100% at end (0 time left)
+                            // But for a "filling up" bar until triggers:
+                            // We want it to fill up as we approach the sync time? Or deplete?
+                            // "Next Sync in..." implies depletion (hourglass).
+                            // Let's do a depletion bar: Full at start, empty at end.
+                            // Start time = next - interval.
+                            const totalTime = interval;
+                            const elapsed = totalTime - msUntilSync;
+                            const progress = Math.min(1, Math.max(0, elapsed / totalTime));
 
-                        // Visual scale [████░░]
-                        const bars = 15;
-                        const filled = Math.round(progress * bars);
-                        const empty = bars - filled;
-                        const progressBar = '█'.repeat(filled) + '░'.repeat(empty);
+                            // Visual scale [████░░]
+                            const bars = 15;
+                            const filled = Math.round(progress * bars);
+                            const empty = bars - filled;
+                            const progressBar = '█'.repeat(filled) + '░'.repeat(empty);
 
-                        // Format remaining time
-                        let timeText = '';
-                        const seconds = Math.ceil(msUntilSync / 1000);
-                        if (seconds > 60) {
-                            timeText = `${Math.ceil(seconds / 60)}${lm.t('m')}`;
-                        } else {
-                            timeText = `${seconds}s`;
+                            // Format remaining time
+                            let timeText = '';
+                            const seconds = Math.ceil(msUntilSync / 1000);
+                            if (seconds > 60) {
+                                timeText = `${Math.ceil(seconds / 60)}${lm.t('m')}`;
+                            } else {
+                                timeText = `${seconds}s`;
+                            }
+
+                            md.appendMarkdown(`$(watch) ${LocalizationManager.getInstance().t('Next Sync')}: \`${progressBar}\` (${timeText})\n\n`);
                         }
-
-                        md.appendMarkdown(`$(watch) ${LocalizationManager.getInstance().t('Next Sync')}: \`${progressBar}\` (${timeText})\n\n`);
                     }
 
                     md.appendMarkdown(`$(sync) ${LocalizationManager.getInstance().t('Session Syncs')}: ${sessionCount}`);
@@ -1159,7 +1163,8 @@ export class SyncManager {
 
         // 2. Set Master Password
         const password = await vscode.window.showInputBox({
-            prompt: lm.t("Create a Master Password to encrypt your data"),
+            title: lm.t("Create a Master Password to encrypt your data"),
+            prompt: lm.t("Press 'Enter' to confirm or 'Escape' to cancel"),
             password: true,
             validateInput: (value) =>
                 value && value.length >= 8 ? null : lm.t("Password must be at least 8 characters")
@@ -1169,7 +1174,8 @@ export class SyncManager {
 
         // 3. Confirm Password
         const confirm = await vscode.window.showInputBox({
-            prompt: lm.t("Confirm Master Password"),
+            title: lm.t("Confirm Master Password"),
+            prompt: lm.t("Press 'Enter' to confirm or 'Escape' to cancel"),
             password: true,
             validateInput: (value) =>
                 value === password ? null : lm.t("Passwords do not match")
@@ -1231,16 +1237,32 @@ export class SyncManager {
 
                     // Ask user which conversations to sync
                     if (manifest.conversations.length > 0) {
-                        const items = manifest.conversations.map(c => ({
-                            label: c.title || c.id,
-                            description: c.id,
-                            picked: true, // Default to all
-                            id: c.id
-                        }));
+                        // Sort by creation date descending (newest first)
+                        const sortedConversations = [...manifest.conversations].sort((a, b) => {
+                            const dateA = new Date(a.createdAt || a.lastModified).getTime();
+                            const dateB = new Date(b.createdAt || b.lastModified).getTime();
+                            return dateB - dateA;
+                        });
+
+                        const items = sortedConversations.map(c => {
+                            const createdDate = c.createdAt ? lm.formatDate(c.createdAt) : undefined;
+                            const modifiedDate = lm.formatDate(c.lastModified);
+                            const dateInfo = createdDate
+                                ? `${lm.t('Created')}: ${createdDate}`
+                                : `${lm.t('Modified')}: ${modifiedDate}`;
+                            return {
+                                label: c.title || c.id,
+                                description: c.id,
+                                detail: dateInfo,
+                                picked: true, // Default to all
+                                id: c.id
+                            };
+                        });
 
                         const selected = await vscode.window.showQuickPick(items, {
                             canPickMany: true,
-                            placeHolder: lm.t('Select conversations to sync from Google Drive')
+                            title: lm.t('Select conversations to sync from Google Drive'),
+                            placeHolder: lm.t('Use Space to select/deselect, Enter to confirm')
                         });
 
                         if (selected) {
@@ -1537,8 +1559,10 @@ export class SyncManager {
                     }
 
                     case 'renameConversation': {
+                        const lm = LocalizationManager.getInstance();
                         const newName = await vscode.window.showInputBox({
-                            prompt: LocalizationManager.getInstance().t('Rename {0}', message.title),
+                            title: lm.t('Rename {0}', message.title),
+                            prompt: lm.t("Press 'Enter' to confirm or 'Escape' to cancel"),
                             value: message.title
                         });
 
@@ -1588,13 +1612,14 @@ export class SyncManager {
                         break;
 
                     case 'deleteMachine': {
+                        const lm = LocalizationManager.getInstance();
                         const confirm = await vscode.window.showWarningMessage(
-                            vscode.l10n.t('Are you sure you want to remove machine "{0}" from sync stats?', message.name),
+                            lm.t('Are you sure you want to remove machine "{0}" from sync stats?', message.name),
                             { modal: true },
-                            vscode.l10n.t('Remove'),
-                            vscode.l10n.t('Cancel')
+                            lm.t('Remove'),
+                            lm.t('Cancel')
                         );
-                        if (confirm === vscode.l10n.t('Remove')) {
+                        if (confirm === lm.t('Remove')) {
                             try {
                                 // Delete the file from Drive
                                 await this.driveService.deleteFile(message.id); // message.id here is the FILE ID for machine state
@@ -1855,7 +1880,7 @@ export class SyncManager {
                     <div style="float:right;">${machineActions}</div>
                 </td>
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${m.id}</td>
-                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${new Date(m.lastSync).toLocaleString()}</td>
+                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${lm.formatDateTime(m.lastSync)}</td>
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${uploadCount} (${uploadSize.toFixed(2)} MB)</td>
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${downloadCount} (${downloadSize.toFixed(2)} MB)</td>
             </tr>
@@ -1893,8 +1918,8 @@ export class SyncManager {
                 fileBreakdown += '</div>';
             }
 
-            const dateStr = remote?.lastModified ? new Date(remote.lastModified).toLocaleString() : (local ? new Date(local.lastModified).toLocaleString() : '-');
-            const originDateStr = remote?.createdAt ? new Date(remote.createdAt).toLocaleString() : '-';
+            const dateStr = remote?.lastModified ? lm.formatDateTime(remote.lastModified) : (local ? lm.formatDateTime(local.lastModified) : '-');
+            const originDateStr = remote?.createdAt ? lm.formatDateTime(remote.createdAt) : '-';
 
             const statusBadges = [];
             let actionButtons = '';
@@ -1932,7 +1957,7 @@ export class SyncManager {
                 </td>
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
                     <div>${dateStr}</div>
-                    <div style="font-size: 0.8em; opacity: 0.7;">by ${remote?.modifiedBy === data.currentMachineId ? lm.t('Me') : (data.machines.find(m => m.id === remote?.modifiedBy)?.name || remote?.modifiedBy || lm.t('Unknown'))}</div>
+                    <div style="font-size: 0.8em; opacity: 0.7;">${lm.t('by')} ${remote?.modifiedBy === data.currentMachineId ? lm.t('Me') : (data.machines.find(m => m.id === remote?.modifiedBy)?.name || remote?.modifiedBy || lm.t('Unknown'))}</div>
                 </td>
                  <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
                     <div>${originMachineName}</div>
@@ -2165,7 +2190,7 @@ export class SyncManager {
             </div>
 
             <div class="card">
-                <div><strong>${LocalizationManager.getInstance().t('Last Sync')}:</strong> ${new Date(data.lastSync).toLocaleString()}</div>
+                <div><strong>${LocalizationManager.getInstance().t('Last Sync')}:</strong> ${LocalizationManager.getInstance().formatDateTime(data.lastSync)}</div>
                 <div style="font-size: 12px; opacity: 0.6; margin-top: 5px;">${LocalizationManager.getInstance().t('Data loaded in')} ${this.formatLoadTime(data.loadTime)}</div>
             </div>
 
@@ -2205,9 +2230,10 @@ export class SyncManager {
     }
 
     private formatLoadTime(ms: number): string {
-        if (ms < 1000) return `${ms}ms`;
+        const lm = LocalizationManager.getInstance();
+        if (ms < 1000) return `${ms}${lm.t('ms')}`;
         const s = (ms / 1000).toFixed(2);
-        return `${s}s`;
+        return `${s}${lm.t('s')}`;
     }
 }
 

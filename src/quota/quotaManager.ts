@@ -246,8 +246,7 @@ export class QuotaManager {
                     }
 
                     if (!details.trim()) {
-                        // Fallback to ID if no stats
-                        details = model.modelId;
+                        // details = ""; // Leave empty if no stats
                     }
 
                     items.push({

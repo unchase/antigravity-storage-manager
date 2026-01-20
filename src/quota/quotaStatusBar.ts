@@ -74,7 +74,10 @@ export class QuotaStatusBar {
                 // Add Speed / Estimation
                 if (this.lastTracker) {
                     const est = this.lastTracker.getEstimation(m.modelId);
-                    if (est && est.speedPerHour > 0.1) {
+                    if (m.isExhausted || pct === 0) {
+                        // Quota exhausted - show 0 remaining time
+                        md.appendMarkdown(`- ${lm.t('Estimated Remaining Time')}: 0\n`);
+                    } else if (est && est.speedPerHour > 0.1) {
                         md.appendMarkdown(`- ${lm.t('Speed')}: ~${est.speedPerHour.toFixed(1)}%${lm.t('/h')}\n`);
                         if (est.estimatedTimeRemainingMs) {
                             md.appendMarkdown(`- ${lm.t('Estimated Remaining Time')}: ~${this.formatDuration(est.estimatedTimeRemainingMs)}\n`);
@@ -83,18 +86,26 @@ export class QuotaStatusBar {
                 }
 
                 if (m.resetTime) {
-                    md.appendMarkdown(`- ${lm.t('Resets')}: ${formatResetTime(m.resetTime)}\n`);
+                    const now = new Date();
+                    const reset = new Date(m.resetTime);
+                    const msUntilReset = reset.getTime() - now.getTime();
 
-                    // Visual Scale for Pro and Ultra
-                    if (m.label.includes('Pro') || m.label.includes('Ultra')) {
-                        const now = new Date();
-                        const reset = new Date(m.resetTime);
-                        const msUntilReset = reset.getTime() - now.getTime();
+                    // Only show reset time if it's in the future
+                    if (msUntilReset > 0) {
+                        // Show countdown timer if less than 1 hour
+                        if (msUntilReset < 60 * 60 * 1000) {
+                            const mins = Math.floor(msUntilReset / 60000);
+                            const secs = Math.floor((msUntilReset % 60000) / 1000);
+                            const countdown = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
+                            md.appendMarkdown(`- ${lm.t('Resets')}: ${formatResetTime(m.resetTime)} ${countdown}\n`);
+                        } else {
+                            md.appendMarkdown(`- ${lm.t('Resets')}: ${formatResetTime(m.resetTime)}\n`);
+                        }
 
-                        // Assume 24h cycle for Pro, 4h for Ultra (adjust if detailed specs confirm otherwise)
-                        const cycleDuration = m.label.includes('Ultra') ? 4 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-
-                        if (msUntilReset > 0) {
+                        // Visual Scale for Pro and Ultra
+                        if (m.label.includes('Pro') || m.label.includes('Ultra')) {
+                            // Assume 24h cycle for Pro, 4h for Ultra (adjust if detailed specs confirm otherwise)
+                            const cycleDuration = m.label.includes('Ultra') ? 4 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
                             const progress = Math.max(0, Math.min(1, 1 - (msUntilReset / cycleDuration)));
                             const bars = 10;
                             const filled = Math.round(progress * bars);
@@ -106,6 +117,7 @@ export class QuotaStatusBar {
                             md.appendMarkdown(`- ${cycleText}: \`${progressBar}\` (${this.formatDuration(msUntilReset)} ${leftText})\n`);
                         }
                     }
+                    // If reset time has passed, don't show it (quota should refresh soon)
                 }
 
                 // Request/Token Stats

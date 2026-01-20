@@ -163,5 +163,18 @@
     "Conversation downloaded.": "Conversación descargada.",
     "Are you sure you want to remove machine \"{0}\" from sync stats?": "¿Está seguro de que desea eliminar la máquina \"{0}\" de las estadísticas?",
     "Remove": "Eliminar",
-    "Machine removed.": "Máquina eliminada."
+    "Machine removed.": "Máquina eliminada.",
+    "Show Dashboard": "Mostrar panel",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "Presione 'Enter' para confirmar o 'Escape' para cancelar",
+    "ms": "ms",
+    "s": "s",
+    "Not yet pushed to Drive": "Aún no se ha subido a Drive",
+    "Not present on this machine": "No presente en esta máquina",
+    "Created": "Creado",
+    "Modified": "Modificado",
+    "Select conversations to sync from Google Drive": "Seleccionar conversaciones a sincronizar",
+    "Use Space to select/deselect, Enter to confirm": "Espacio para seleccionar, Enter para confirmar",
+    "by": "por",
+    "Synced on {0}": "Sincronizado en {0} dispositivos",
+    "Created on another machine": "Creado en otra máquina"
 }

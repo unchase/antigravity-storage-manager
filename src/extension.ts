@@ -100,7 +100,7 @@ export async function activate(context: vscode.ExtensionContext) {
             ];
 
             if (quotaManager.isFeatureEnabled()) {
-                items.splice(2, 0, { label: `$(dashboard) ${lm.t('Show Quota')}`, description: lm.t('View Antigravity quota usage'), command: `${EXT_NAME}.showQuota` });
+                items.splice(2, 0, { label: `$(dashboard) ${lm.t('Show Quota')}`, description: `${lm.t('View Antigravity quota usage')} ${getKeybindingLabel(`${EXT_NAME}.showQuota`)}`, command: `${EXT_NAME}.showQuota` });
             }
 
             const selected = await vscode.window.showQuickPick(items, {
@@ -227,6 +227,47 @@ export async function activate(context: vscode.ExtensionContext) {
     importButton.command = `${EXT_NAME}.import`;
     importButton.show();
     context.subscriptions.push(importButton);
+
+    // Prompt for reload on language change
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration(`${EXT_NAME}.language`)) {
+            vscode.window.showInformationMessage(
+                lm.t('{0}. Reload window to refresh?', lm.t('Language changed.')),
+                lm.t('Reload'),
+                lm.t('Later')
+            ).then(selection => {
+                if (selection === lm.t('Reload')) {
+                    vscode.commands.executeCommand('workbench.action.reloadWindow');
+                }
+            });
+        }
+    }));
+
+    // Check if sync is configured (if not suppressed)
+    if (!syncManager.isReady()) {
+        const suppress = context.globalState.get<boolean>('suppressSyncSetupPrompt');
+        if (!suppress) {
+            const config = vscode.workspace.getConfiguration(EXT_NAME);
+            const autoSync = config.get<boolean>('sync.autoSync');
+
+            // Only prompt if autoSync is enabled by default or user hasn't disabled it explicitly?
+            // Actually, if user hasn't configured sync, we should prompt regardless of autoSync setting?
+            // But if autoSync is false, maybe they don't want sync.
+            // Default autoSync is true.
+
+            if (autoSync) {
+                vscode.window.showWarningMessage(
+                    lm.t('Sync is not configured. Would you like to set it up now?'),
+                    lm.t('Setup Sync'),
+                    lm.t('Cancel')
+                ).then(selection => {
+                    if (selection === lm.t('Setup Sync')) {
+                        vscode.commands.executeCommand(`${EXT_NAME}.syncSetup`);
+                    }
+                });
+            }
+        }
+    }
 }
 
 

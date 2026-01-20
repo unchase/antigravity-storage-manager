@@ -104,4 +104,20 @@ export class LocalizationManager {
     public getLocale(): string {
         return this.currentLanguage;
     }
+
+    /**
+     * Format a date according to the current locale
+     */
+    public formatDateTime(date: Date | string): string {
+        const d = typeof date === 'string' ? new Date(date) : date;
+        return d.toLocaleString(this.currentLanguage);
+    }
+
+    /**
+     * Format just the date (no time) according to the current locale
+     */
+    public formatDate(date: Date | string): string {
+        const d = typeof date === 'string' ? new Date(date) : date;
+        return d.toLocaleDateString(this.currentLanguage);
+    }
 }

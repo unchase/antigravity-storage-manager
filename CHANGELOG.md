@@ -5,7 +5,7 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - 2026-01-20
+## [0.7.0] - 2026-01-21
 ### Localization & Internationalization
 - **16 Languages Support**: Added native localization for: English, Russian, Chinese (Simplified/Traditional), Japanese, Korean, German, French, Spanish, Italian, Portuguese (Brazil), Turkish, Polish, Czech, Arabic, and Vietnamese.
 - **Smart Formatting**: Dates and times (e.g., "Tomorrow 09:00", "Last Sync") are now formatted according to the user's locale.
@@ -24,11 +24,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Better Formatting**: Sync Statistics now display load times in a more readable format (seconds/ms).
 - **Keybinding**: Added `Ctrl+Alt+Q` (Mac: `Cmd+Alt+Q`) shortcut to directly open the Antigravity Quota view.
 - **Chat Refresh**: Added a "Reload Window" prompt after syncing to ensure new conversations appear in the list.
+- **Menu**: Added keybinding hint `(Ctrl+Alt+Q)` to the **Show Quota** menu item for better discoverability.
+- **Smart Setup**: Added a warning prompt on startup if sync is enabled but not configured, guiding the user to setup.
+- **Configuration**: Added "Reload Window" prompt when changing the extension language to apply changes immediately.
+- **UI**: "Next Sync" and "Resets" timers now automatically hide if the time has passed to reduce clutter.
 
 ### Bug Fixes
 - **Sync Titles**: Resolved issue where Sync Statistics displayed outdated conversation titles. Titles are prioritized from local `task.md`.
 - **Sorting**: Fixed "Sort by Reset Time" behavior in Quota Usage window.
 - **Validation**: Fixed validation error for `pinnedModels` setting to support readable labels and custom IDs.
+- **Localization**: Fixed duplicate keys in language bundles (ru, ja, de, etc.) to prevent potential conflicts.
+
+### Localization Improvements
+- **Locale-Aware Dates**: All date/time displays now format according to the user's selected locale (e.g., "21.01.2026" for Russian, "1/21/2026" for English).
+- **Conversation Picker**: Added creation/modification dates to conversation selection during sync setup, sorted by newest first.
+- **Dashboard**: Localized "by {machine}" text in the Modified column.
+- **Rename Dialog**: Improved UX with localized title and confirmation prompt hint.
+- **Load Time**: Localized "ms" and "s" units in the "Data loaded in" display.
+
+### Quota Tooltip
+- **Remaining Time**: Shows "0" when quota is fully exhausted (0%) instead of hiding the field.
+
+### Code Quality
+- **Tests**: Added unit tests for `LocalizationManager` (`formatDateTime`, `formatDate`, `getLocale`, `t`).
+- **Translations**: Added new strings to all 14 language bundles: `by`, `Created`, `Modified`, `ms`, `s`, status tooltips.
 
 ## [0.6.0] - 2026-01-20
 - **Feature**: Parallel Sync! Uploads and downloads now run in parallel chains for significantly faster synchronization.

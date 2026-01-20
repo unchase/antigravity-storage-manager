@@ -163,5 +163,18 @@
     "Conversation downloaded.": "Cuộc hội thoại đã được tải xuống.",
     "Are you sure you want to remove machine \"{0}\" from sync stats?": "Bạn có chắc muốn xóa máy \"{0}\" khỏi thống kê đồng bộ hóa không?",
     "Remove": "Xóa",
-    "Machine removed.": "Đã xóa máy."
+    "Machine removed.": "Đã xóa máy.",
+    "Show Dashboard": "Hiện bảng điều khiển",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "Nhấn 'Enter' để xác nhận hoặc 'Escape' để hủy",
+    "ms": "mili giây",
+    "s": "giây",
+    "Not yet pushed to Drive": "Chưa đẩy lên Drive",
+    "Not present on this machine": "Không có trên máy này",
+    "Created": "Tạo",
+    "Modified": "Sửa đổi",
+    "Select conversations to sync from Google Drive": "Chọn cuộc trò chuyện để đồng bộ từ Google Drive",
+    "Use Space to select/deselect, Enter to confirm": "Nhấn Space để chọn/bỏ chọn, Enter để xác nhận",
+    "by": "bởi",
+    "Synced on {0}": "Đã đồng bộ trên {0} thiết bị",
+    "Created on another machine": "Tạo trên máy khác"
 }

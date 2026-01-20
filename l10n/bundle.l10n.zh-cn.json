@@ -163,5 +163,18 @@
     "Conversation downloaded.": "对话已下载。",
     "Are you sure you want to remove machine \"{0}\" from sync stats?": "您确定要从同步统计中移除设备 \"{0}\" 吗？",
     "Remove": "移除",
-    "Machine removed.": "设备已移除。"
+    "Machine removed.": "设备已移除。",
+    "Show Dashboard": "显示仪表板",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "按 'Enter' 确认或按 'Escape' 取消",
+    "ms": "毫秒",
+    "s": "秒",
+    "Not yet pushed to Drive": "尚未推送到 Drive",
+    "Not present on this machine": "此设备上不存在",
+    "Created": "创建",
+    "Modified": "修改",
+    "Select conversations to sync from Google Drive": "选择要从 Google Drive 同步的对话",
+    "Use Space to select/deselect, Enter to confirm": "按空格选择/取消，Enter 确认",
+    "by": "",
+    "Synced on {0}": "已在 {0} 台设备上同步",
+    "Created on another machine": "在其他设备上创建"
 }

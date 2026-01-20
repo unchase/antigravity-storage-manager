@@ -163,5 +163,18 @@
     "Conversation downloaded.": "تم تنزيل المحادثة.",
     "Are you sure you want to remove machine \"{0}\" from sync stats?": "هل أنت متأكد من أنك تريد إزالة الجهاز \"{0}\" من إحصائيات المزامنة؟",
     "Remove": "إزالة",
-    "Machine removed.": "تمت إزالة الجهاز."
+    "Machine removed.": "تمت إزالة الجهاز.",
+    "Show Dashboard": "عرض لوحة القيادة",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "اضغط على 'Enter' للتأكيد أو 'Escape' للإلغاء",
+    "ms": "مس",
+    "s": "ث",
+    "Not yet pushed to Drive": "لم يتم رفعه إلى Drive بعد",
+    "Not present on this machine": "غير موجود على هذا الجهاز",
+    "Created": "إنشاء",
+    "Modified": "تعديل",
+    "Select conversations to sync from Google Drive": "حدد المحادثات للمزامنة",
+    "Use Space to select/deselect, Enter to confirm": "مسافة للتحديد، Enter للتأكيد",
+    "by": "بواسطة",
+    "Synced on {0}": "مزامن على {0} أجهزة",
+    "Created on another machine": "أنشئ على جهاز آخر"
 }

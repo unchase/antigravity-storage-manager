@@ -236,8 +236,22 @@
                     "type": "string",
                     "enum": [
                         "auto",
+                        "ar",
+                        "cs",
+                        "de",
                         "en",
-                        "ru"
+                        "es",
+                        "fr",
+                        "it",
+                        "ja",
+                        "ko",
+                        "pl",
+                        "pt-br",
+                        "ru",
+                        "tr",
+                        "vi",
+                        "zh-cn",
+                        "zh-tw"
                     ],
                     "default": "auto",
                     "description": "%antigravity.config.language%"

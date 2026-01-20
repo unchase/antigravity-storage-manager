@@ -5,8 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Export and Import Antigravity/Cline conversation history with a single click.</strong><br>
-  Backup your AI conversations to zip files and restore them anytime.
+  <strong>Securely sync Antigravity history with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.</strong><br>
 </p>
 
 <p align="center">
@@ -50,6 +49,7 @@ If you find this extension useful, consider supporting the development:
 - 📉 **Advanced Quota Dashboard** — Real-time tracking with consumption speed, remaining time estimates, and visual progress bars.
 - 🚦 **Smart Status Indicators** — Colored icons (🟢/🟡/🟠/🔴) and visual scales `[██░░]` to track quota and sync health at a glance.
 - 🛑 **Cancellation Support** — Abort long-running operations (Sync, Export, Backup) safely at any time.
+- 🛠️ **Smart Configuration** — Auto-detects missing sync setup and prompts for configuration on startup. Hot-reloads on language changes.
 - 🎨 **Command Palette** — All commands available via `Ctrl+Shift+P`
 
 ---
@@ -87,11 +87,8 @@ Keep your conversations synchronized across multiple machines using your Google 
     - **View Details**: Click on file sizes to see individual file breakdowns (scrollable). Hover over badges to see sync details.
     - **Visual Analytics**: Interactive pie charts showing sync coverage (Local vs Synced, Remote vs Synced).
     - **Machine Stats**: View "Uploads" and "Downloads" per machine, including total **data volume** (MB).
-    
-    ![Connected Machines](screenshots/sync-machines.png)
-
-    - **Manage Machines**: Remove stale machines from the list using the **Delete (🗑️)** button.
-    - **Force Sync**: Proactively push a sync signal to other machines with the **Push (🔄)** button (requires target machine to process signals).
+      - **Manage Machines**: Remove stale machines from the list using the **Delete (🗑️)** button.
+      - **Force Sync**: Proactively push a sync signal to other machines with the **Push (🔄)** button (requires target machine to process signals).
     - **Real-time Data**: Use the **Refresh Data (🔄)** button to reload statistics immediately.
 - **Status Bar**: The **AG Sync** icon updates dynamically (☁️ Cloud, 🔄 Spinning, ⚠️ Error, ✅ Check) to reflect the current state.
 - **Shortcuts**: Default hotkeys are provided for common actions (e.g., `Ctrl+Alt+S` for Sync Now) and are displayed in the menu.

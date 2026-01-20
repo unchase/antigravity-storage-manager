@@ -163,5 +163,18 @@
     "Conversation downloaded.": "대화 다운로드됨.",
     "Are you sure you want to remove machine \"{0}\" from sync stats?": "동기화 통계에서 머신 \"{0}\"을(를) 제거하시겠습니까?",
     "Remove": "제거",
-    "Machine removed.": "머신 제거됨."
+    "Machine removed.": "머신 제거됨.",
+    "Show Dashboard": "대시보드 보기",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "'Enter'를 눌러 확인하거나 'Escape'를 눌러 취소하세요",
+    "ms": "밀리초",
+    "s": "초",
+    "Not yet pushed to Drive": "아직 Drive에 푸시되지 않음",
+    "Not present on this machine": "이 기기에 없음",
+    "Created": "생성",
+    "Modified": "수정",
+    "Select conversations to sync from Google Drive": "Google Drive에서 동기할 대화 선택",
+    "Use Space to select/deselect, Enter to confirm": "스페이스로 선택/해제, Enter로 확인",
+    "by": "",
+    "Synced on {0}": "{0}대의 기기에서 동기됨",
+    "Created on another machine": "다른 기기에서 생성됨"
 }

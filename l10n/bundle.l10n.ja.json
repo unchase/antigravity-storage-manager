@@ -163,5 +163,18 @@
     "Conversation downloaded.": "会話をダウンロードしました。",
     "Are you sure you want to remove machine \"{0}\" from sync stats?": "同期統計からマシン \"{0}\" を削除してもよろしいですか？",
     "Remove": "削除",
-    "Machine removed.": "マシンを削除しました。"
+    "Machine removed.": "マシンを削除しました。",
+    "Show Dashboard": "ダッシュボードを表示",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "'Enter' を押して確認、または 'Escape' でキャンセル",
+    "ms": "ミリ秒",
+    "s": "秒",
+    "Not yet pushed to Drive": "まだ Drive にプッシュされていません",
+    "Not present on this machine": "このマシンには存在しません",
+    "Created": "作成",
+    "Modified": "更新",
+    "Select conversations to sync from Google Drive": "Google Drive から同期する会話を選択",
+    "Use Space to select/deselect, Enter to confirm": "スペースで選択/解除、Enter で確定",
+    "by": "",
+    "Synced on {0}": "{0} 台のデバイスで同期済み",
+    "Created on another machine": "別のマシンで作成"
 }

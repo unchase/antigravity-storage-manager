@@ -193,5 +193,22 @@
     "Uploading conversation...": "Загрузка диалога...",
     "Downloading conversation...": "Скачивание диалога...",
     "Sending sync signal...": "Отправка сигнала синхронизации...",
-    "Error loading statistics": "Ошибка загрузки статистики"
+    "Error loading statistics": "Ошибка загрузки статистики",
+    "Today": "Сегодня",
+    "Tomorrow": "Завтра",
+    "Show Dashboard": "Открыть дашборд",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "Нажмите 'Enter' для подтверждения или 'Escape' для отмены",
+    "ms": "мс",
+    "s": "с",
+    "Not yet pushed to Drive": "Ещё не отправлено на Drive",
+    "Not present on this machine": "Отсутствует на этой машине",
+    "Created": "Создано",
+    "Modified": "Изменено",
+    "Select conversations to sync from Google Drive": "Выберите диалоги для синхронизации с Google Drive",
+    "Use Space to select/deselect, Enter to confirm": "Пробел — выбрать/отменить, Enter — подтвердить",
+    "by": "",
+    "Synced on {0}": "Синхронизировано на {0} машинах",
+    "Created on another machine": "Создано на другой машине",
+    "Language changed.": "Язык изменён.",
+    "Don't ask again": "Больше не спрашивать"
 }

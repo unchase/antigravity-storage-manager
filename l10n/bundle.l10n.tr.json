@@ -163,5 +163,18 @@
     "Conversation downloaded.": "Konuşma indirildi.",
     "Are you sure you want to remove machine \"{0}\" from sync stats?": "\"{0}\" makinesini istatistiklerden kaldırmak istediğinizden emin misiniz?",
     "Remove": "Kaldır",
-    "Machine removed.": "Makine kaldırıldı."
+    "Machine removed.": "Makine kaldırıldı.",
+    "Show Dashboard": "Paneli Göster",
+    "Press 'Enter' to confirm or 'Escape' to cancel": "Onaylamak için 'Enter', iptal etmek için 'Escape' tuşuna basın",
+    "ms": "ms",
+    "s": "s",
+    "Not yet pushed to Drive": "Henüz Drive'a yülenmedi",
+    "Not present on this machine": "Bu makinede yok",
+    "Created": "Oluşturuldu",
+    "Modified": "Değiştirildi",
+    "Select conversations to sync from Google Drive": "Senkronize edilecek konuşmaları seçin",
+    "Use Space to select/deselect, Enter to confirm": "Boşluk ile seçin, Enter ile onayla",
+    "by": "",
+    "Synced on {0}": "{0} cihazda senkronize edildi",
+    "Created on another machine": "Başka bir makinede oluşturuldu"
 }
