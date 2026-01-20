@@ -62,7 +62,7 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand(`${EXT_NAME}.showMenu`, async () => {
             const items = [
                 { label: '$(sync) Sync Now', description: 'Trigger immediate synchronization', command: `${EXT_NAME}.syncNow` },
-                { label: '$(graph) Show Statistics', description: 'View detailed sync status and history', command: `${EXT_NAME}.syncStats` },
+                { label: '$(graph) Show Statistics', description: 'View detailed sync status and history', command: `${EXT_NAME}.showSyncStats` },
                 { label: '$(cloud-upload) Setup Sync', description: 'Configure Google Drive synchronization', command: `${EXT_NAME}.syncSetup` },
                 { label: '$(archive) Backup Now', description: 'Create a local zip backup', command: `${EXT_NAME}.triggerBackup` },
                 { label: '$(arrow-down) Import Conversations', description: 'Import from archive', command: `${EXT_NAME}.import` },

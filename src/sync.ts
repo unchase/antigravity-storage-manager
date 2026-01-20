@@ -555,8 +555,8 @@ export class SyncManager {
                 this.statusBarItem.backgroundColor = undefined;
                 break;
             case 'syncing':
-                this.statusBarItem.text = "$(sync~spin) AG Syncing...";
-                this.statusBarItem.tooltip = text || vscode.l10n.t("Antigravity Sync: Syncing...");
+                this.statusBarItem.text = `$(sync~spin) ${text || "AG Syncing..."}`;
+                this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Syncing...");
                 this.statusBarItem.backgroundColor = undefined;
                 break;
             case 'error':
