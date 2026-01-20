@@ -20,5 +20,6 @@
     "antigravity.config.backupEnabled": "Enable scheduled local backups",
     "antigravity.config.backupInterval": "Backup interval in hours (default: 24)",
     "antigravity.config.backupPath": "Custom path for backups (leave empty for default)",
-    "antigravity.config.backupRetention": "Number of backups to keep"
+    "antigravity.config.backupRetention": "Number of backups to keep",
+    "antigravity.config.language": "Language for the extension UI (auto = system language)."
 }

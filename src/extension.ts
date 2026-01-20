@@ -10,6 +10,7 @@ import { getConversationsAsync } from './utils';
 import { resolveConflictsCommand } from './conflicts';
 import { BackupManager } from './backup';
 import { QuotaManager } from './quota/quotaManager';
+import { LocalizationManager } from './l10n/localizationManager';
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
@@ -27,6 +28,9 @@ let quotaManager: QuotaManager;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log(`Congratulations, "${EXT_NAME}" is now active!`);
+
+    // Initialize Localization
+    LocalizationManager.getInstance().initialize(context);
 
     // Initialize Google Auth Provider
     authProvider = new GoogleAuthProvider(context);

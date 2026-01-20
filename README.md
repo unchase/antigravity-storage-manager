@@ -54,6 +54,7 @@ If you find this extension useful, consider supporting the development:
 - 📊 **Interactive Statistics** — Dashboard with sortable tables, visual analytics, and machine management.
 - 🛑 **Cancellation Support** — Abort long-running operations (Sync, Export, Backup) safely at any time.
 - 🎯 **Status Bar Integration** — Quick access to Export, Import, Sync, and Quota.
+- 🌍 **Localization** — Supports English and Russian interfaces (customizable in settings).
 - 🎨 **Command Palette** — All commands available via `Ctrl+Shift+P`
 
 ---
@@ -94,8 +95,8 @@ Keep your conversations synchronized across multiple machines using your Google 
     
     ![Connected Machines](screenshots/sync-machines.png)
 
-        - **Manage Machines**: Remove stale machines from the list using the **Delete (🗑️)** button.
-        - **Force Sync**: Proactively push a sync signal to other machines with the **Push (🔄)** button (requires target machine to process signals).
+    - **Manage Machines**: Remove stale machines from the list using the **Delete (🗑️)** button.
+    - **Force Sync**: Proactively push a sync signal to other machines with the **Push (🔄)** button (requires target machine to process signals).
     - **Real-time Data**: Use the **Refresh Data (🔄)** button to reload statistics immediately.
 - **Status Bar**: The **AG Sync** icon updates dynamically (☁️ Cloud, 🔄 Spinning, ⚠️ Error, ✅ Check) to reflect the current state.
 - **Shortcuts**: Default hotkeys are provided for common actions (e.g., `Ctrl+Alt+S` for Sync Now) and are displayed in the menu.
@@ -113,6 +114,7 @@ Monitor your AI usage limits and remaining credits directly within VS Code.
 - **Model Monitoring**: Pin specific models (e.g., Gemini 3 Pro, Claude Sonnet 4.5) to the status bar for quick access.
 - **Visual Indicators**: ASCII progress bars show exactly how much quota is remaining.
 - **Sorting**: Sort models by "Quota Remaining" or "Reset Time" to prioritize what's important.
+- **Visual Scale**: Pro/Ultra models show a visual time scale `[████░░]` indicating time within the quota cycle.
 - **Architecture Aware**: Works seamlessly on Windows, macOS (Intel/M1/M2), and Linux.
 
 ### Usage

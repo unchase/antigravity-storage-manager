@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **Smart Titles**: Conversations now display their actual readable titles (from `task.md`) instead of just IDs, even for remote items.
     - **Visuals**: Added visual sort indicators (▲/▼) and hover effects.
 - **Fix**: Setup Wizard now allows cancellation.
+- **Localization**: Added full English and Russian localization support.
+    - **Configurable**: Switch language in settings (`antigravity-storage-manager.language`) without restarting VS Code.
+- **Visuals**:
+    - **Colored Icons**: Quota status now uses colored circles (🟢/🟡/🔴) for better visibility.
+    - **Time Scale**: Visual progress bar for Pro/Ultra models showing time remaining in current cycle.
 
 ## [0.5.0] - 2026-01-20
 - **UI/UX**: Major overhaul of Sync Statistics and Status Bar.

@@ -20,5 +20,6 @@
     "antigravity.config.backupEnabled": "Включить автоматические локальные бэкапы",
     "antigravity.config.backupInterval": "Интервал бэкапов в часах (по умолчанию: 24)",
     "antigravity.config.backupPath": "Путь для бэкапов (пусто = по умолчанию)",
-    "antigravity.config.backupRetention": "Количество хранимых бэкапов"
+    "antigravity.config.backupRetention": "Количество хранимых бэкапов",
+    "antigravity.config.language": "Язык интерфейса расширения (auto = язык системы)."
 }
