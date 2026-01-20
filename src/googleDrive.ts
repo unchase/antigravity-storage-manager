@@ -606,7 +606,7 @@ export class GoogleDriveService {
 
                     // Expired or owned by us - refresh/overwrite
                     await this.drive.files.delete({ fileId });
-                } catch (e) {
+                } catch {
                     // Invalid lock file or download failed - assume we can take over
                     try { await this.drive.files.delete({ fileId }); } catch { /* ignore */ }
                 }
@@ -669,6 +669,14 @@ export class GoogleDriveService {
         } catch (e) {
             console.error('Failed to release lock:', e);
         }
+    }
+    /**
+     * Delete any file by ID
+     */
+    async deleteFile(fileId: string): Promise<void> {
+        await this.drive.files.delete({
+            fileId: fileId
+        });
     }
 }
 

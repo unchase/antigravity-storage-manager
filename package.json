@@ -2,17 +2,23 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Export and Import Antigravity/Cline conversation history with a single click. Backup your AI conversations to zip files and restore them anytime.",
-    "version": "0.4.14",
+    "version": "0.5.0",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
     },
     "icon": "icon.png",
     "license": "MIT",
-    "funding": {
-        "type": "patreon",
-        "url": "https://www.patreon.com/unchase"
-    },
+    "funding": [
+        {
+            "type": "patreon",
+            "url": "https://www.patreon.com/unchase"
+        },
+        {
+            "type": "custom",
+            "url": "https://www.buymeacoffee.com/nikolaychebotov"
+        }
+    ],
     "repository": {
         "type": "git",
         "url": "https://github.com/unchase/antigravity-storage-manager"
@@ -228,6 +234,11 @@
                     "default": "",
                     "description": "%antigravity.config.machineName%"
                 },
+                "antigravity-storage-manager.sync.suggestSolutions": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Suggest solutions when sync errors occur (e.g., file not found in Drive)"
+                },
                 "antigravity-storage-manager.google.clientId": {
                     "type": "string",
                     "default": "",
@@ -259,7 +270,19 @@
                     "description": "%antigravity.config.backupRetention%"
                 }
             }
-        }
+        },
+        "keybindings": [
+            {
+                "command": "antigravity-storage-manager.syncNow",
+                "key": "ctrl+alt+s",
+                "mac": "cmd+alt+s"
+            },
+            {
+                "command": "antigravity-storage-manager.showSyncStats",
+                "key": "ctrl+alt+i",
+                "mac": "cmd+alt+i"
+            }
+        ]
     },
     "scripts": {
         "compile": "C:\\PROGRA~1\\nodejs\\node.exe esbuild.js",

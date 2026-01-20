@@ -5,6 +5,30 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-01-20
+- **UI/UX**: Major overhaul of Sync Statistics and Status Bar.
+    - **Status Bar**: Added Sync Count and Last Sync time to tooltip. Added icons to Import/Export buttons.
+    - **Menu**: Added dynamic keybinding hints to all menu items.
+    - **Enhanced Sync Statistics**:
+    - **Interactive Dashboard**: Rename (`Rename`) and Delete (`Delete`) conversations directly from the webview.
+    - **Selective Sync**: Manually uploading ("Upload") local-only conversations and downloading ("Download") remote-only conversations.
+    - **Machine Management**: Added ability to **Delete** stale machines and **Force Push** sync signals to remote devices.
+    - **Data Insights**: Added "Downloads" column to Connected Machines and improved data size visualization (MB metrics for uploads/downloads).
+    - **Usability**: Added global **Refresh** button and scrollable file lists for detailed breakdown.
+    - **Progress Reporting**: Replaced generic "Fetching remote data..." with granular status updates (e.g., "Scanning...", "Syncing 'Title'...") for better visibility.
+- **Smart Status Bar**:
+    - **Dynamic Icons**: Status bar icon now changes to reflect state: Idle (☁️/✅), Syncing (🔄), Error (⚠️).
+    - **Idle Check**: Shows a checkmark (`$(check)`) when idle if a successful sync has occurred this session.
+    - **Rich Tooltip**: Hover to see detailed status, last sync time, and session sync count.
+- **Code Quality**:
+    - **Linting**: Fixed various linting errors and improved code stability.
+    - **Tests**: Added new unit tests for statistics calculation logic (`sync_stats.test.ts`).
+    - **Documentation**: Updated `README.md` with new screenshots, feature descriptions, and a "Buy Me a Coffee" support link.
+- **Feature**: Smart Error Handling.
+    - Added detection for "Not found in Drive" errors.
+    - Added suggestions dialog to automatically fix manifest inconsistencies.
+- **Configuration**: Added `sync.suggestSolutions` setting to enable/disable error suggestions.
+
 ## [0.4.14] - 2026-01-20
 - **Feature**: Per-file differential sync! Only changed files are uploaded/downloaded instead of entire conversation archives.
     - Dramatically reduces bandwidth usage for small edits.

@@ -34,6 +34,9 @@ If you find this extension useful, consider supporting the development:
 <a href="https://www.patreon.com/unchase">
   <img src="https://img.shields.io/badge/Patreon-Support-orange?logo=patreon" alt="Support on Patreon">
 </a>
+<a href="https://www.buymeacoffee.com/nikolaychebotov">
+  <img src="https://img.shields.io/badge/Buy_Me_a_Coffee-Support-yellow?logo=buymeacoffee" alt="Buy Me a Coffee">
+</a>
 
 ---
 
@@ -74,8 +77,27 @@ Keep your conversations synchronized across multiple machines using your Google 
 - Or run `Antigravity Storage: Sync Now`
 
 ### Manage Sync
-- Run `Antigravity Storage: Manage Synced Conversations` to choose which conversations to sync.
-- Default: All conversations are synchronized.
+- Click the **AG Sync** button in the status bar to open the menu.
+- **Status Bar Tooltip**: Hover over "AG Sync" to see your Last Sync time and session Sync Count.
+- **Sync Statistics**: Run `Antigravity Storage: Show Statistics` (or `Ctrl+Alt+I`) to view the interactive dashboard:
+    - **Manage Conversations**: Rename or Delete conversations directly from the list.
+    
+    ![Sync Statistics Dashboard](screenshots/sync-dashboard.png)
+
+    - **Selective Sync**: Manually **Upload** (Local Only) or **Download** (Remote Only) individual conversations.
+    - **View Details**: Click on file sizes to see individual file breakdowns (scrollable). Hover over badges to see sync details.
+    - **Visual Analytics**: Interactive pie charts showing sync coverage (Local vs Synced, Remote vs Synced).
+    - **Machine Stats**: View "Uploads" and "Downloads" per machine, including total **data volume** (MB).
+    
+    ![Connected Machines](screenshots/sync-machines.png)
+
+        - **Manage Machines**: Remove stale machines from the list using the **Delete (🗑️)** button.
+        - **Force Sync**: Proactively push a sync signal to other machines with the **Push (🔄)** button (requires target machine to process signals).
+    - **Real-time Data**: Use the **Refresh Data (🔄)** button to reload statistics immediately.
+- **Status Bar**: The **AG Sync** icon updates dynamically (☁️ Cloud, 🔄 Spinning, ⚠️ Error, ✅ Check) to reflect the current state.
+- **Shortcuts**: Default hotkeys are provided for common actions (e.g., `Ctrl+Alt+S` for Sync Now) and are displayed in the menu.
+
+![Status Bar Menu](screenshots/status-menu.png)
 
 ---
 
@@ -85,7 +107,7 @@ Keep your conversations synchronized across multiple machines using your Google 
  
 The extension adds **AG Export**, **AG Import**, and **AG Sync** buttons to your VS Code status bar:
 
-![Status Bar Buttons](screenshots/status-bar.png)
+![Status Bar Buttons](screenshots/status-bar-icons.png)
 
 ### 2. Command Palette Integration
 
@@ -136,6 +158,19 @@ Conversations are stored locally in:
 - **Conversation files:** `~/.gemini/antigravity/conversations/`
 
 Synced data is stored in your Google Drive in the `AntigravitySync` folder.
+
+## Keyboard Shortcuts
+
+The extension comes with default keybindings for common actions:
+- `Ctrl+Alt+S` (Windows/Linux) / `Cmd+Alt+S` (Mac): **Sync Now**
+- `Ctrl+Alt+I` (Windows/Linux) / `Cmd+Alt+I` (Mac): **Show Sync Statistics**
+
+### Customizing Shortcuts
+You can customize these shortcuts to fit your workflow:
+1. Open **Keyboard Shortcuts** (`Ctrl+K Ctrl+S`).
+2. Type `antigravity` in the search bar.
+3. Right-click on any command (e.g., `Antigravity Storage: Import Conversations`) and select **Change Keybinding**.
+
 
 ## Contributing
 

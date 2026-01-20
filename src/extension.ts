@@ -6,7 +6,7 @@ import archiver from 'archiver';
 import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
 import { SyncManager } from './sync';
-import { formatRelativeTime, getConversationsAsync } from './utils';
+import { getConversationsAsync } from './utils';
 import { resolveConflictsCommand } from './conflicts';
 import { BackupManager } from './backup';
 
@@ -60,14 +60,33 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register sync commands
     context.subscriptions.push(
         vscode.commands.registerCommand(`${EXT_NAME}.showMenu`, async () => {
+            // Helper to get keybinding label
+            const getKeybindingLabel = (commandId: string): string => {
+                const packageJSON = context.extension.packageJSON;
+                const keybindings = packageJSON.contributes?.keybindings;
+                if (!keybindings) return '';
+
+                const isMac = vscode.env.appHost === 'desktop' && process.platform === 'darwin'; // approximate check
+                const kb = keybindings.find((k: any) => k.command === commandId);
+
+                if (kb) {
+                    const key = isMac && kb.mac ? kb.mac : kb.key;
+                    if (key) {
+                        // formats like "ctrl+alt+s" -> "Ctrl+Alt+S"
+                        return `(${key.split('+').map((p: string) => p.charAt(0).toUpperCase() + p.slice(1)).join('+')})`;
+                    }
+                }
+                return '';
+            };
+
             const items = [
-                { label: '$(sync) Sync Now', description: 'Trigger immediate synchronization', command: `${EXT_NAME}.syncNow` },
-                { label: '$(graph) Show Statistics', description: 'View detailed sync status and history', command: `${EXT_NAME}.showSyncStats` },
-                { label: '$(cloud-upload) Setup Sync', description: 'Configure Google Drive synchronization', command: `${EXT_NAME}.syncSetup` },
-                { label: '$(archive) Backup Now', description: 'Create a local zip backup', command: `${EXT_NAME}.triggerBackup` },
-                { label: '$(arrow-down) Import Conversations', description: 'Import from archive', command: `${EXT_NAME}.import` },
-                { label: '$(arrow-up) Export Conversations', description: 'Export to archive', command: `${EXT_NAME}.export` },
-                { label: '$(settings-gear) Settings', description: 'Open extension settings', command: 'workbench.action.openSettings', args: [`@ext:${EXT_NAME}`] }
+                { label: '$(sync) Sync Now', description: `Trigger immediate synchronization ${getKeybindingLabel(`${EXT_NAME}.syncNow`)}`, command: `${EXT_NAME}.syncNow` },
+                { label: '$(graph) Show Statistics', description: `View detailed sync status and history ${getKeybindingLabel(`${EXT_NAME}.showSyncStats`)}`, command: `${EXT_NAME}.showSyncStats` },
+                { label: '$(cloud-upload) Setup Sync', description: `Configure Google Drive synchronization ${getKeybindingLabel(`${EXT_NAME}.syncSetup`)}`, command: `${EXT_NAME}.syncSetup` },
+                { label: '$(archive) Backup Now', description: `Create a local zip backup ${getKeybindingLabel(`${EXT_NAME}.triggerBackup`)}`, command: `${EXT_NAME}.triggerBackup` },
+                { label: '$(arrow-down) Import Conversations', description: `Import from archive ${getKeybindingLabel(`${EXT_NAME}.import`)}`, command: `${EXT_NAME}.import` },
+                { label: '$(arrow-up) Export Conversations', description: `Export to archive ${getKeybindingLabel(`${EXT_NAME}.export`)}`, command: `${EXT_NAME}.export` },
+                { label: '$(settings-gear) Settings', description: 'Open extension settings', command: 'workbench.action.openSettings', args: [`@ext:unchase.${EXT_NAME}`] }
             ];
 
             const selected = await vscode.window.showQuickPick(items, {
@@ -166,14 +185,14 @@ export async function activate(context: vscode.ExtensionContext) {
     // Create status bar items for export/import
     const exportButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     exportButton.text = "$(export) AG Export";
-    exportButton.tooltip = vscode.l10n.t("Export Antigravity Conversations");
+    exportButton.tooltip = vscode.l10n.t("Export Antigravity Conversations (via .zip file)");
     exportButton.command = `${EXT_NAME}.export`;
     exportButton.show();
     context.subscriptions.push(exportButton);
 
     const importButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
-    importButton.text = "$(import) AG Import";
-    importButton.tooltip = vscode.l10n.t("Import Antigravity Conversations");
+    importButton.text = "$(cloud-download) AG Import";
+    importButton.tooltip = vscode.l10n.t("Import Antigravity Conversations (via .zip file)");
     importButton.command = `${EXT_NAME}.import`;
     importButton.show();
     context.subscriptions.push(importButton);
@@ -285,7 +304,7 @@ async function backupAll() {
         location: vscode.ProgressLocation.Notification,
         title: vscode.l10n.t('Backing up {0} conversations...', conversations.length),
         cancellable: false
-    }, async (progress) => {
+    }, async (_progress) => {
         try {
             const filePath = await backupManager.backupNow(uri.fsPath);
 

@@ -116,7 +116,7 @@ export function decrypt(encryptedData: Buffer, password: string): Buffer {
             decipher.final()
         ]);
         return decrypted;
-    } catch (error) {
+    } catch {
         throw new Error('Decryption failed: incorrect password or corrupted data');
     }
 }

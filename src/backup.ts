@@ -30,7 +30,7 @@ export class BackupManager {
         // Listen for config changes
         this.context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration('antigravity-storage-manager.backup')) {
+                if (e.affectsConfiguration(`${EXT_NAME}.backup`)) {
                     this.checkAndSchedule();
                 }
             })
@@ -43,7 +43,7 @@ export class BackupManager {
             this.timer = undefined;
         }
 
-        const config = vscode.workspace.getConfiguration('antigravity-storage-manager.backup');
+        const config = vscode.workspace.getConfiguration(`${EXT_NAME}.backup`);
         const enabled = config.get<boolean>('enabled', false);
 
         if (!enabled) {
@@ -85,7 +85,7 @@ export class BackupManager {
      * Perform immediate backup
      */
     async backupNow(targetPath?: string): Promise<string> {
-        const config = vscode.workspace.getConfiguration('antigravity-storage-manager.backup');
+        const config = vscode.workspace.getConfiguration(`${EXT_NAME}.backup`);
 
         let backupDir = targetPath;
         if (!backupDir) {
@@ -136,7 +136,7 @@ export class BackupManager {
     }
 
     private async cleanOldBackups(backupDir: string) {
-        const config = vscode.workspace.getConfiguration('antigravity-storage-manager.backup');
+        const config = vscode.workspace.getConfiguration(`${EXT_NAME}.backup`);
         const retention = config.get<number>('retention', 10);
 
         if (retention <= 0) return;
