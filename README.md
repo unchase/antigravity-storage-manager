@@ -41,11 +41,12 @@ If you find this extension useful, consider supporting the development:
 
 - ☁️ **Google Drive Sync** — Automatically sync conversations between devices
 - 🔒 **End-to-End Encryption** — All synced data is encrypted using AES-256-GCM
+- ⚡ **Optimized Sync** — Async I/O, hash caching, and parallel uploads for fast synchronization
 - 📦 **Export Conversations** — Select one or multiple conversations and save them to a ZIP archive
 - 💾 **Local Backup** — One-click backup of ALL conversations to a single local archive
 - 📥 **Import Conversations** — Restore conversations from ZIP archives
 - ✏️ **Rename Conversations** — Change conversation titles directly from VS Code
-- ⚔️ **Advanced Conflict Resolution** — UI to manualy resolve synchronization conflicts (Keep Local vs. Keep Remote)
+- ⚔️ **Advanced Conflict Resolution** — UI to manually resolve synchronization conflicts (Keep Local vs. Keep Remote)
 - 🎯 **Status Bar Integration** — Quick access to Export, Import, and Sync
 - 🎨 **Command Palette** — All commands available via `Ctrl+Shift+P`
 

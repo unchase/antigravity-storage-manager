@@ -147,6 +147,13 @@ export function computeHash(data: Buffer): string {
 }
 
 /**
+ * Computes MD5 hash of data
+ */
+export function computeMd5Hash(data: Buffer): string {
+    return crypto.createHash('md5').update(data).digest('hex');
+}
+
+/**
  * Generates a unique machine ID
  */
 export function generateMachineId(): string {

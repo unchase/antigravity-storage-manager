@@ -56,6 +56,7 @@ export class SyncManager {
     private masterPassword: string | null = null;
     private autoSyncTimer: NodeJS.Timeout | null = null;
     private isSyncing: boolean = false;
+    private fileHashCache: Map<string, { mtime: number, hash: string }> = new Map();
 
     // Status bar item for sync status
     private statusBarItem: vscode.StatusBarItem | null = null;
@@ -237,7 +238,7 @@ export class SyncManager {
                 }
 
                 // Get local conversations
-                const localConversations = this.getLocalConversations();
+                const localConversations = await this.getLocalConversationsAsync();
 
                 // Determine which conversations to sync
                 const toSync = this.config!.selectedConversations === 'all'
@@ -255,9 +256,13 @@ export class SyncManager {
                     }
                 }
 
-                // Process each conversation
-                for (const convId of toSync) {
-                    await this.processSyncItem(convId, localConversations, remoteManifest, result);
+                // Process conversations in parallel chunks to avoid hitting API limits or excessive resource usage
+                const chunkSize = 5;
+                for (let i = 0; i < toSync.length; i += chunkSize) {
+                    const chunk = toSync.slice(i, i + chunkSize);
+                    await Promise.all(chunk.map(convId =>
+                        this.processSyncItem(convId, localConversations, remoteManifest, result)
+                    ));
                 }
 
                 // Update last sync time
@@ -333,7 +338,8 @@ export class SyncManager {
             await this.driveService.uploadConversation(conversationId, encrypted);
 
             // Update manifest
-            await this.updateManifestEntry(conversationId, crypto.computeHash(zipData), zipData.length);
+            const contentHash = await this.computeConversationHashAsync(conversationId);
+            await this.updateManifestEntry(conversationId, contentHash, zipData.length);
         } finally {
             // Cleanup
             fs.rmSync(tempDir, { recursive: true, force: true });
@@ -472,7 +478,8 @@ export class SyncManager {
         // Get current manifest, update entry, save back
         // This is a simplified version - in production you'd want locking
         const now = new Date().toISOString();
-        const local = this.getLocalConversations().find(c => c.id === conversationId);
+        const localConversations = await this.getLocalConversationsAsync();
+        const local = localConversations.find(c => c.id === conversationId);
 
         const manifest = await this.getDecryptedManifest();
         if (!manifest) {
@@ -522,7 +529,7 @@ export class SyncManager {
             machineId: this.config.machineId,
             machineName: machineName,
             lastSync: new Date().toISOString(),
-            conversationStates: this.getLocalConversations().map(c => ({
+            conversationStates: (await this.getLocalConversationsAsync()).map(c => ({
                 id: c.id,
                 localHash: c.hash,
                 lastSynced: new Date().toISOString()
@@ -589,46 +596,139 @@ export class SyncManager {
     }
 
     /**
-     * Get local conversations with metadata
+     * Helper to get hash with caching based on mtime
      */
-    private getLocalConversations(): Array<{ id: string; title: string; lastModified: string; hash: string }> {
+    private async getFileHashWithCacheAsync(filePath: string): Promise<string> {
+        try {
+            const stats = await fs.promises.stat(filePath);
+            const cached = this.fileHashCache.get(filePath);
+
+            if (cached && cached.mtime === stats.mtimeMs) {
+                return cached.hash;
+            }
+
+            const content = await fs.promises.readFile(filePath);
+            const hash = crypto.computeMd5Hash(content);
+            this.fileHashCache.set(filePath, { mtime: stats.mtimeMs, hash });
+            return hash;
+        } catch {
+            return '';
+        }
+    }
+
+    /**
+     * recursively get all files in a directory (Async)
+     */
+    private async getAllFilesAsync(dirPath: string): Promise<string[]> {
+        let files: string[] = [];
+        if (!fs.existsSync(dirPath)) return files;
+
+        try {
+            const dirents = await fs.promises.readdir(dirPath, { withFileTypes: true });
+            for (const dirent of dirents) {
+                const fullPath = path.join(dirPath, dirent.name);
+                try {
+                    if (dirent.isDirectory()) {
+                        const subFiles = await this.getAllFilesAsync(fullPath);
+                        files = files.concat(subFiles);
+                    } else {
+                        files.push(fullPath);
+                    }
+                } catch {
+                    // ignore
+                }
+            }
+        } catch {
+            // ignore
+        }
+
+        return files;
+    }
+
+    /**
+     * Compute a deterministic hash of the conversation content (Async)
+     */
+    private async computeConversationHashAsync(conversationId: string): Promise<string> {
+        const parts: string[] = [];
+
+        // 1. Conversation PB file
+        const pbPath = path.join(CONV_DIR, `${conversationId}.pb`);
+        if (fs.existsSync(pbPath)) {
+            const hash = await this.getFileHashWithCacheAsync(pbPath);
+            if (hash) parts.push(`pb:${hash}`);
+        }
+
+        // 2. Brain directory files
+        const brainDir = path.join(BRAIN_DIR, conversationId);
+        if (fs.existsSync(brainDir)) {
+            const files = await this.getAllFilesAsync(brainDir);
+
+            // Sort
+            const relativeFiles: { path: string, fullPath: string }[] = files.map(f => ({
+                path: path.relative(brainDir, f).replace(/\\/g, '/'),
+                fullPath: f
+            }));
+
+            relativeFiles.sort((a, b) => a.path.localeCompare(b.path));
+
+            for (const file of relativeFiles) {
+                const hash = await this.getFileHashWithCacheAsync(file.fullPath);
+                if (hash) parts.push(`${file.path}:${hash}`);
+            }
+        }
+
+        if (parts.length === 0) return '';
+
+        return crypto.computeMd5Hash(Buffer.from(parts.join('|')));
+    }
+
+    /**
+     * Get local conversations with metadata (Async)
+     */
+    private async getLocalConversationsAsync(): Promise<Array<{ id: string; title: string; lastModified: string; hash: string }>> {
         if (!fs.existsSync(BRAIN_DIR)) {
             return [];
         }
 
-        const dirs = fs.readdirSync(BRAIN_DIR).filter(d => {
-            try {
-                return fs.statSync(path.join(BRAIN_DIR, d)).isDirectory();
-            } catch { return false; }
-        });
+        let dirs: string[] = [];
+        try {
+            const entries = await fs.promises.readdir(BRAIN_DIR, { withFileTypes: true });
+            dirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+        } catch {
+            return [];
+        }
 
-        return dirs.map(id => {
+        return Promise.all(dirs.map(async id => {
             const dirPath = path.join(BRAIN_DIR, id);
-            const taskPath = path.join(dirPath, 'task.md');
-            let title = id;
-            let hash = '';
+            const hash = await this.computeConversationHashAsync(id);
 
+            let title = id;
+            const taskPath = path.join(dirPath, 'task.md');
             if (fs.existsSync(taskPath)) {
                 try {
-                    const content = fs.readFileSync(taskPath, 'utf8');
+                    const content = await fs.promises.readFile(taskPath, 'utf8');
                     const match = content.match(/^#\s*Task:?\s*(.*)$/im);
                     if (match && match[1]) {
                         title = match[1].trim();
                     }
-                    hash = crypto.computeHash(Buffer.from(content));
                 } catch {
-                    // Ignore error reading task.md
+                    // Ignore error
                 }
             }
 
-            const stats = fs.statSync(dirPath);
+            let lastModified = new Date().toISOString();
+            try {
+                const stats = await fs.promises.stat(dirPath);
+                lastModified = stats.mtime.toISOString();
+            } catch { }
+
             return {
                 id,
                 title,
-                lastModified: stats.mtime.toISOString(),
+                lastModified,
                 hash
             };
-        });
+        }));
     }
 
     /**
@@ -1004,7 +1104,7 @@ export class SyncManager {
 
         try {
             // Gather data
-            const localConversations = this.getLocalConversations();
+            const localConversations = await this.getLocalConversationsAsync();
             const start = Date.now();
             const remoteManifest = await this.getDecryptedManifest();
 
@@ -1030,7 +1130,7 @@ export class SyncManager {
                             id: machineId,
                             lastSync: lastSync,
                             isCurrent: true,
-                            conversationStates: this.getLocalConversations().map(c => ({ id: c.id })) // Current machine has these
+                            conversationStates: (await this.getLocalConversationsAsync()).map(c => ({ id: c.id })) // Current machine has these
                         });
                         continue;
                     }

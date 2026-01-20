@@ -5,6 +5,18 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.13] - 2026-01-20
+- **Performance**: Major sync optimization overhaul:
+    - **Async I/O**: File operations now use asynchronous methods (`fs.promises`) to prevent blocking the editor.
+    - **Hash Caching**: File hashes are cached based on modification time (`mtime`), avoiding redundant hash calculations.
+    - **Parallel Sync**: Conversations are now synced in parallel chunks (up to 5 concurrent) for faster synchronization.
+    - **MD5 Content Hashing**: Switched to MD5 for content-based change detection, reducing unnecessary uploads when content hasn't changed.
+- **Tests**: Added unit tests for `computeMd5Hash` function.
+
+## [0.4.12] - 2026-01-20
+- **Feature**: Dynamic sync status bar! Now shows the specific sync stage (e.g., "Fetching remote data...", "Compressing...", "Uploading...").
+- **Fix**: Resolved "Show Statistics" button not working in the status bar menu.
+
 ## [0.4.11] - 2026-01-20
 - **Fix**: Resolved a potential error when disconnecting sync (null check fix).
 

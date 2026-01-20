@@ -38,4 +38,19 @@ describe('Crypto Utils', () => {
         const hash2 = crypto.computeHash(content2);
         expect(hash1).not.toBe(hash2);
     });
+
+    test('computeMd5Hash returns correct MD5 hash', () => {
+        const content = Buffer.from('hello');
+        // MD5 of 'hello' is '5d41402abc4b2a76b9719d911017c592'
+        const hash = crypto.computeMd5Hash(content);
+        expect(hash).toBe('5d41402abc4b2a76b9719d911017c592');
+    });
+
+    test('computeMd5Hash returns distinct hashes for different content', () => {
+        const content1 = Buffer.from('content1');
+        const content2 = Buffer.from('content2');
+        const hash1 = crypto.computeMd5Hash(content1);
+        const hash2 = crypto.computeMd5Hash(content2);
+        expect(hash1).not.toBe(hash2);
+    });
 });
