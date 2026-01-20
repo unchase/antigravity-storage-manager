@@ -89,7 +89,7 @@ jobs:
 
           # Replace header: remove first line, add new title
           BODY_WITHOUT_HEADER=$(echo "$CONTENT" | tail -n +2)
-          NEW_HEADER="Antigravity Storage Manager v$VERSION"
+          NEW_HEADER="## Antigravity Storage Manager v$VERSION"
 
           # Combine structure
           FULL_BODY="${NEW_HEADER}"$'\n\n'"${BODY_WITHOUT_HEADER}"

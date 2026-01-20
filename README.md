@@ -41,6 +41,8 @@ If you find this extension useful, consider supporting the development:
 
 ## Features
 
+![Status Bar Menu](screenshots/status-menu.png)
+
 - ☁️ **Google Drive Sync** — Automatically sync conversations between devices with end-to-end encryption.
 - ⚡ **Parallel Per-File Sync** — Fast differential sync with parallel processing and hash caching.
 - 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
@@ -55,6 +57,8 @@ If you find this extension useful, consider supporting the development:
 ---
 
 ## Google Drive Synchronization (New!)
+
+![Sync Statistics Dashboard](screenshots/sync-dashboard.png)
 
 Keep your conversations synchronized across multiple machines using your Google Drive.
 
@@ -80,9 +84,6 @@ Keep your conversations synchronized across multiple machines using your Google 
 - **Status Bar Tooltip**: Hover over "AG Sync" to see your Last Sync time and session Sync Count.
 - **Sync Statistics**: Run `Antigravity Storage: Show Statistics` (or `Ctrl+Alt+I`) to view the interactive dashboard:
     - **Manage Conversations**: Rename or Delete conversations directly from the list.
-    
-    ![Sync Statistics Dashboard](screenshots/sync-dashboard.png)
-
     - **Selective Sync**: Manually **Upload** (Local Only) or **Download** (Remote Only) individual conversations.
     - **View Details**: Click on file sizes to see individual file breakdowns (scrollable). Hover over badges to see sync details.
     - **Visual Analytics**: Interactive pie charts showing sync coverage (Local vs Synced, Remote vs Synced).
@@ -93,11 +94,13 @@ Keep your conversations synchronized across multiple machines using your Google 
 - **Status Bar**: The **AG Sync** icon updates dynamically (☁️ Cloud, 🔄 Spinning, ⚠️ Error, ✅ Check) to reflect the current state.
 - **Shortcuts**: Default hotkeys are provided for common actions (e.g., `Ctrl+Alt+S` for Sync Now) and are displayed in the menu.
 
-![Status Bar Menu](screenshots/status-menu.png)
-
 ---
 
 ## Antigravity Quota Dashboard (New!)
+
+![Quota Dashboard](images/quota-dashboard.png)
+
+*(Fig. 1: Quota Dashboard showing models sorted by Quota)*
 
 Monitor your AI usage limits and remaining credits directly within VS Code.
 
@@ -114,15 +117,18 @@ Monitor your AI usage limits and remaining credits directly within VS Code.
 2. Pin/Unpin models by clicking on them in the menu.
 3. The status bar auto-updates every minute.
 
-![Quota Dashboard](images/quota-dashboard.png)
-*(Fig. 1: Quota Dashboard showing models sorted by Quota)*
-
 ### Status Bar & Settings
+
+![Quota Tooltip](images/quota-tooltip.png)
+
+*(Fig. 2: Rich Tooltip)*
+
 - Hover over the database icon in the status bar to see a rich tooltip with pinned model details.
 - Configure which models to pin in your User Settings.
 
-![Quota Tooltip](images/quota-tooltip.png) | ![Quota Settings](images/quota-settings.png)
-*(Fig. 2: Rich Tooltip and Settings UI)*
+![Quota Settings](images/quota-settings.png)
+
+*(Fig. 3: Settings UI)*
 
 ---
 
