@@ -9,6 +9,7 @@ import { SyncManager } from './sync';
 import { getConversationsAsync } from './utils';
 import { resolveConflictsCommand } from './conflicts';
 import { BackupManager } from './backup';
+import { QuotaManager } from './quota/quotaManager';
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
@@ -22,6 +23,7 @@ const CONV_DIR = path.join(STORAGE_ROOT, 'conversations');
 let authProvider: GoogleAuthProvider;
 let syncManager: SyncManager;
 let backupManager: BackupManager;
+let quotaManager: QuotaManager;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log(`Congratulations, "${EXT_NAME}" is now active!`);
@@ -37,6 +39,9 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize Backup Manager
     backupManager = new BackupManager(context, STORAGE_ROOT);
     backupManager.initialize();
+
+    // Initialize Quota Manager
+    quotaManager = new QuotaManager(context);
 
     // Register existing commands
     context.subscriptions.push(
@@ -89,6 +94,10 @@ export async function activate(context: vscode.ExtensionContext) {
                 { label: '$(settings-gear) Settings', description: 'Open extension settings', command: 'workbench.action.openSettings', args: [`@ext:unchase.${EXT_NAME}`] }
             ];
 
+            if (quotaManager.isFeatureEnabled()) {
+                items.splice(2, 0, { label: '$(dashboard) Show Quota', description: 'View Antigravity quota usage', command: `${EXT_NAME}.showQuota` });
+            }
+
             const selected = await vscode.window.showQuickPick(items, {
                 placeHolder: vscode.l10n.t('Antigravity Storage Manager'),
                 title: vscode.l10n.t('Select an action')
@@ -121,9 +130,9 @@ export async function activate(context: vscode.ExtensionContext) {
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: vscode.l10n.t('Syncing conversations...'),
-                cancellable: false
-            }, async (progress) => {
-                const result = await syncManager.syncNow(progress);
+                cancellable: true
+            }, async (progress, token) => {
+                const result = await syncManager.syncNow(progress, token);
 
                 if (result.success) {
                     const message = [];
@@ -179,6 +188,9 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.showSyncStats`, async () => {
             await syncManager.showStatistics();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.showQuota`, async () => {
+            await quotaManager.showQuota();
         })
     );
 
@@ -238,11 +250,19 @@ async function exportConversations() {
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: vscode.l10n.t('Exporting {0} conversation(s)...', selected.length),
-        cancellable: false
-    }, async () => {
+        cancellable: true
+    }, async (_progress, token) => {
+        if (token.isCancellationRequested) return;
         return new Promise<void>((resolve, reject) => {
             const output = fs.createWriteStream(destPath);
             const archive = archiver('zip', { zlib: { level: 9 } });
+
+            token.onCancellationRequested(() => {
+                archive.abort();
+                output.close();
+                fs.unlink(destPath, () => { }); // cleanup
+                reject(new vscode.CancellationError());
+            });
 
             output.on('close', () => {
                 vscode.window.showInformationMessage(
@@ -303,10 +323,10 @@ async function backupAll() {
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: vscode.l10n.t('Backing up {0} conversations...', conversations.length),
-        cancellable: false
-    }, async (_progress) => {
+        cancellable: true
+    }, async (_progress, token) => {
         try {
-            const filePath = await backupManager.backupNow(uri.fsPath);
+            const filePath = await backupManager.backupNow(uri.fsPath, token);
 
             const stats = fs.statSync(filePath);
             const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
@@ -342,9 +362,10 @@ async function importConversations() {
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: vscode.l10n.t('Importing {0} archive(s)...', uris.length),
-        cancellable: false
-    }, async (progress) => {
+        cancellable: true
+    }, async (progress, token) => {
         for (const uri of uris) {
+            if (token.isCancellationRequested) break;
             const zipPath = uri.fsPath;
             progress.report({ message: path.basename(zipPath) });
 

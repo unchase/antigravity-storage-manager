@@ -1,8 +1,8 @@
 {
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
-    "description": "Export and Import Antigravity/Cline conversation history with a single click. Backup your AI conversations to zip files and restore them anytime.",
-    "version": "0.5.0",
+    "description": "Securely sync Antigravity history with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.",
+    "version": "0.6.0",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -113,6 +113,12 @@
                 "title": "Show Sync Statistics",
                 "icon": "$(graph)",
                 "category": "%antigravity.submenu.label%"
+            },
+            {
+                "command": "antigravity-storage-manager.showQuota",
+                "title": "Show Antigravity Quota",
+                "icon": "$(dashboard)",
+                "category": "%antigravity.submenu.label%"
             }
         ],
         "submenus": [
@@ -146,6 +152,9 @@
                 },
                 {
                     "command": "antigravity-storage-manager.showSyncStats"
+                },
+                {
+                    "command": "antigravity-storage-manager.showQuota"
                 }
             ],
             "antigravity-storage-manager.submenu": [
@@ -176,6 +185,10 @@
                 {
                     "command": "antigravity-storage-manager.syncDisconnect",
                     "group": "3_sync@4"
+                },
+                {
+                    "command": "antigravity-storage-manager.showQuota",
+                    "group": "4_quota@1"
                 }
             ],
             "view/title": [
@@ -218,6 +231,13 @@
                     "type": "number",
                     "default": 300000,
                     "description": "%antigravity.config.syncInterval%"
+                },
+                "antigravity-storage-manager.sync.concurrency": {
+                    "type": "number",
+                    "default": 3,
+                    "minimum": 1,
+                    "maximum": 50,
+                    "description": "Number of parallel uploads/downloads during sync."
                 },
                 "antigravity-storage-manager.sync.showStatusBar": {
                     "type": "boolean",
@@ -268,6 +288,37 @@
                     "type": "number",
                     "default": 10,
                     "description": "%antigravity.config.backupRetention%"
+                },
+                "antigravity-storage-manager.enableQuota": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable or disable fetching and displaying Antigravity quota usage."
+                },
+                "antigravity-storage-manager.quota.pinnedModels": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "Claude Sonnet 4.5",
+                            "Claude Sonnet 4.5 (Thinking)",
+                            "Claude Opus 4.5 (Thinking)",
+                            "GPT-OSS 120B (Medium)",
+                            "Gemini 3 Pro (High)",
+                            "Gemini 3 Pro (Low)",
+                            "Gemini 3 Flash"
+                        ],
+                        "enumDescriptions": [
+                            "Claude Sonnet 4.5",
+                            "Claude Sonnet 4.5 (Thinking)",
+                            "Claude Opus 4.5 (Thinking)",
+                            "GPT-OSS 120B (Medium)",
+                            "Gemini 3 Pro (High)",
+                            "Gemini 3 Pro (Low)",
+                            "Gemini 3 Flash"
+                        ]
+                    },
+                    "default": [],
+                    "description": "List of model IDs to always show in the status bar."
                 }
             }
         },

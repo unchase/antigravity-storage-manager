@@ -56,7 +56,8 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
 
                 try {
                     const content = await fs.promises.readFile(taskPath, 'utf8');
-                    const match = content.match(/^#\s*Task:?\s*(.*)$/im);
+                    // Match "# Task: Title" OR "# Title"
+                    const match = content.match(/^#\s*(?:Task:?\s*)?(.+)$/im);
                     if (match && match[1]) {
                         label = match[1].trim();
                     }
@@ -89,4 +90,32 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
         console.error('Error loading conversations:', e);
         return [];
     }
+}
+
+/**
+ * Run tasks with limited concurrency
+ */
+export async function limitConcurrency<T>(
+    items: T[],
+    limit: number,
+    task: (item: T) => Promise<void>,
+    token?: vscode.CancellationToken
+): Promise<void> {
+    const workerCount = Math.min(limit, items.length);
+    if (workerCount <= 0) return;
+
+    const queue = [...items]; // Clone to consume
+
+    const worker = async () => {
+        while (queue.length > 0) {
+            if (token?.isCancellationRequested) throw new vscode.CancellationError();
+            const item = queue.shift();
+            if (!item) break;
+
+            await task(item);
+        }
+    };
+
+    // Start workers
+    await Promise.all(Array(workerCount).fill(null).map(() => worker()));
 }

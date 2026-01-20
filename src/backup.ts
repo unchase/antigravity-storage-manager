@@ -84,7 +84,11 @@ export class BackupManager {
     /**
      * Perform immediate backup
      */
-    async backupNow(targetPath?: string): Promise<string> {
+    /**
+     * Perform immediate backup
+     */
+    async backupNow(targetPath?: string, token?: vscode.CancellationToken): Promise<string> {
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
         const config = vscode.workspace.getConfiguration(`${EXT_NAME}.backup`);
 
         let backupDir = targetPath;
@@ -95,6 +99,8 @@ export class BackupManager {
             }
         }
 
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
         if (!fs.existsSync(backupDir)) {
             fs.mkdirSync(backupDir, { recursive: true });
         }
@@ -103,7 +109,9 @@ export class BackupManager {
         const filename = `backup-${timestamp}.zip`;
         const filePath = path.join(backupDir, filename);
 
-        await this.createZip(filePath);
+        await this.createZip(filePath, token);
+
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
         // Update last backup time
         await this.context.globalState.update('lastBackupTime', new Date().toISOString());
@@ -114,10 +122,20 @@ export class BackupManager {
         return filePath;
     }
 
-    private createZip(zipPath: string): Promise<void> {
+    private createZip(zipPath: string, token?: vscode.CancellationToken): Promise<void> {
+        if (token?.isCancellationRequested) return Promise.reject(new vscode.CancellationError());
         return new Promise((resolve, reject) => {
             const output = fs.createWriteStream(zipPath);
             const archive = archiver('zip', { zlib: { level: 9 } });
+
+            if (token) {
+                token.onCancellationRequested(() => {
+                    archive.abort();
+                    output.close();
+                    fs.unlink(zipPath, () => { }); // Clean up partial file
+                    reject(new vscode.CancellationError());
+                });
+            }
 
             output.on('close', resolve);
             archive.on('error', reject);

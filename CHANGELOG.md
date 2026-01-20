@@ -5,6 +5,18 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-20
+- **Feature**: Parallel Sync! Uploads and downloads now run in parallel chains for significantly faster synchronization.
+    - **Configurable**: Added `sync.concurrency` setting (default 3, max 10) to control parallelism.
+- **Feature**: Cancellation Support. All long-running operations (Sync, Export, Backup) are now interceptable via the "Cancel" button.
+    - Graceful rollback and cleanup of partial operations.
+- **Quota**: Added "Antigravity Quota Dashboard" in status bar for tracking AI credit usage.
+- **UX**: Enhanced Sync Statistics Dashboard.
+    - **Sorting**: Added clickable headers to sort tables by Title, Size, Date, etc.
+    - **Smart Titles**: Conversations now display their actual readable titles (from `task.md`) instead of just IDs, even for remote items.
+    - **Visuals**: Added visual sort indicators (▲/▼) and hover effects.
+- **Fix**: Setup Wizard now allows cancellation.
+
 ## [0.5.0] - 2026-01-20
 - **UI/UX**: Major overhaul of Sync Statistics and Status Bar.
     - **Status Bar**: Added Sync Count and Last Sync time to tooltip. Added icons to Import/Export buttons.

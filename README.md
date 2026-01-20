@@ -44,13 +44,16 @@ If you find this extension useful, consider supporting the development:
 
 - ☁️ **Google Drive Sync** — Automatically sync conversations between devices
 - 🔒 **End-to-End Encryption** — All synced data is encrypted using AES-256-GCM
-- ⚡ **Smart Per-File Sync** — Only changed files are synced, not entire archives. Hash caching and parallel uploads for maximum speed.
+- ⚡ **Parallel Per-File Sync** — Fast differential sync with parallel processing and hash caching.
+- 📉 **Quota Dashboard** — Monitor your AI usage limits and remaining credits directly in the status bar.
 - 📦 **Export Conversations** — Select one or multiple conversations and save them to a ZIP archive
 - 💾 **Local Backup** — One-click backup of ALL conversations to a single local archive
-- 📥 **Import Conversations** — Restore conversations from ZIP archives
+- 📥 **Import Conversations** — Restore conversations from ZIP archives with smart conflict detection.
 - ✏️ **Rename Conversations** — Change conversation titles directly from VS Code
 - ⚔️ **Advanced Conflict Resolution** — UI to manually resolve synchronization conflicts (Keep Local vs. Keep Remote)
-- 🎯 **Status Bar Integration** — Quick access to Export, Import, and Sync
+- 📊 **Interactive Statistics** — Dashboard with sortable tables, visual analytics, and machine management.
+- 🛑 **Cancellation Support** — Abort long-running operations (Sync, Export, Backup) safely at any time.
+- 🎯 **Status Bar Integration** — Quick access to Export, Import, Sync, and Quota.
 - 🎨 **Command Palette** — All commands available via `Ctrl+Shift+P`
 
 ---
@@ -98,6 +101,34 @@ Keep your conversations synchronized across multiple machines using your Google 
 - **Shortcuts**: Default hotkeys are provided for common actions (e.g., `Ctrl+Alt+S` for Sync Now) and are displayed in the menu.
 
 ![Status Bar Menu](screenshots/status-menu.png)
+
+---
+
+## Antigravity Quota Dashboard (New!)
+
+Monitor your AI usage limits and remaining credits directly within VS Code.
+
+### Features
+- **Real-time Quota**: View your plan (Free/Pro/Ultra) status and remaining prompt credits.
+- **Model Monitoring**: Pin specific models (e.g., Gemini 3 Pro, Claude Sonnet 4.5) to the status bar for quick access.
+- **Visual Indicators**: ASCII progress bars show exactly how much quota is remaining.
+- **Sorting**: Sort models by "Quota Remaining" or "Reset Time" to prioritize what's important.
+- **Architecture Aware**: Works seamlessly on Windows, macOS (Intel/M1/M2), and Linux.
+
+### Usage
+1. Click the **AG Quota** (`AGQ`) indicator in the status bar (or run `Antigravity Quota: Show Quota`).
+2. Pin/Unpin models by clicking on them in the menu.
+3. The status bar auto-updates every minute.
+
+![Quota Dashboard](images/quota-dashboard.png)
+*(Fig. 1: Quota Dashboard showing models sorted by Quota)*
+
+### Status Bar & Settings
+- Hover over the database icon in the status bar to see a rich tooltip with pinned model details.
+- Configure which models to pin in your User Settings.
+
+![Quota Tooltip](images/quota-tooltip.png) | ![Quota Settings](images/quota-settings.png)
+*(Fig. 2: Rich Tooltip and Settings UI)*
 
 ---
 

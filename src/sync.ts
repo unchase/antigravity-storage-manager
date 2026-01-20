@@ -7,7 +7,7 @@ import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
 import { GoogleDriveService, SyncManifest, SyncedConversation, MachineState, FileHashInfo } from './googleDrive';
 import * as crypto from './crypto';
-import { formatRelativeTime, getConversationsAsync } from './utils';
+import { formatRelativeTime, getConversationsAsync, limitConcurrency } from './utils';
 
 const EXT_NAME = 'antigravity-storage-manager';
 const STORAGE_ROOT = path.join(os.homedir(), '.gemini', 'antigravity');
@@ -188,7 +188,7 @@ export class SyncManager {
     /**
      * Sync now - manual or automatic sync trigger
      */
-    async syncNow(progress?: vscode.Progress<{ message?: string; increment?: number }>): Promise<SyncResult> {
+    async syncNow(progress?: vscode.Progress<{ message?: string; increment?: number }>, token?: vscode.CancellationToken): Promise<SyncResult> {
         if (this.isSyncing) {
             return {
                 success: false,
@@ -197,6 +197,10 @@ export class SyncManager {
                 conflicts: [],
                 errors: [vscode.l10n.t('Sync already in progress')]
             };
+        }
+
+        if (token?.isCancellationRequested) {
+            throw new vscode.CancellationError();
         }
 
         if (!this.isReady()) {
@@ -262,13 +266,16 @@ export class SyncManager {
                 this.reportProgress(progress, vscode.l10n.t('Starting synchronization...'));
                 const chunkSize = 5;
                 for (let i = 0; i < toSync.length; i += chunkSize) {
+                    if (token?.isCancellationRequested) throw new vscode.CancellationError();
                     const chunk = toSync.slice(i, i + chunkSize);
-                    await Promise.all(chunk.map(convId =>
-                        this.processSyncItem(convId, localConversations, remoteManifest, result)
-                    ));
+                    await Promise.all(chunk.map(convId => {
+                        if (token?.isCancellationRequested) return Promise.reject(new vscode.CancellationError());
+                        return this.processSyncItem(convId, localConversations, remoteManifest, result, progress, token);
+                    }));
                 }
 
                 // Update last sync time
+                if (token?.isCancellationRequested) throw new vscode.CancellationError();
                 this.config!.lastSync = new Date().toISOString();
                 this.syncCount++;
                 await this.saveConfig();
@@ -373,7 +380,11 @@ export class SyncManager {
     /**
      * Push a single conversation to Google Drive (per-file sync)
      */
-    async pushConversation(conversationId: string, progress?: vscode.Progress<{ message?: string; increment?: number }>): Promise<void> {
+    /**
+     * Push a single conversation to Google Drive (per-file sync)
+     */
+    async pushConversation(conversationId: string, progress?: vscode.Progress<{ message?: string; increment?: number }>, token?: vscode.CancellationToken): Promise<void> {
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
         if (!this.masterPassword) {
             throw new Error(vscode.l10n.t('Encryption password not set'));
         }
@@ -386,6 +397,8 @@ export class SyncManager {
         const manifest = await this.getDecryptedManifest();
         const remoteConv = manifest?.conversations.find(c => c.id === conversationId);
         const remoteHashes = remoteConv?.fileHashes || {};
+
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
         // Determine which files need to be uploaded
         const filesToUpload: string[] = [];
@@ -408,7 +421,12 @@ export class SyncManager {
 
         // Upload changed files
         let uploadedCount = 0;
-        for (const relativePath of filesToUpload) {
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
+        const concurrency = config.get<number>('sync.concurrency', 3);
+
+        await limitConcurrency(filesToUpload, concurrency, async (relativePath) => {
+            if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
             uploadedCount++;
             this.reportProgress(progress, vscode.l10n.t('Uploading: {0} ({1}/{2})...', relativePath, uploadedCount, filesToUpload.length));
 
@@ -418,10 +436,11 @@ export class SyncManager {
             const encrypted = crypto.encrypt(content, this.masterPassword!);
 
             await this.driveService.uploadConversationFile(conversationId, relativePath, encrypted);
-        }
+        }, token);
 
         // Delete removed files from remote
         for (const relativePath of filesToDelete) {
+            if (token?.isCancellationRequested) throw new vscode.CancellationError();
             await this.driveService.deleteConversationFile(conversationId, relativePath);
         }
 
@@ -448,7 +467,11 @@ export class SyncManager {
     /**
      * Pull a single conversation from Google Drive (per-file sync with legacy fallback)
      */
-    async pullConversation(conversationId: string, progress?: vscode.Progress<{ message?: string; increment?: number }>): Promise<void> {
+    /**
+     * Pull a single conversation from Google Drive (per-file sync with legacy fallback)
+     */
+    async pullConversation(conversationId: string, progress?: vscode.Progress<{ message?: string; increment?: number }>, token?: vscode.CancellationToken): Promise<void> {
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
         if (!this.masterPassword) {
             throw new Error(vscode.l10n.t('Encryption password not set'));
         }
@@ -463,21 +486,26 @@ export class SyncManager {
 
         // Check if using new per-file format (version 2) or legacy ZIP
         if (remoteConv.version === 2 && remoteConv.fileHashes) {
-            await this.pullConversationPerFile(conversationId, remoteConv.fileHashes, progress);
+            await this.pullConversationPerFile(conversationId, remoteConv.fileHashes, progress, token);
         } else {
             // Legacy format - download entire ZIP
-            await this.pullConversationLegacy(conversationId, progress);
+            await this.pullConversationLegacy(conversationId, progress, token);
         }
     }
 
     /**
      * Pull conversation using per-file sync (new format)
      */
+    /**
+     * Pull conversation using per-file sync (new format)
+     */
     private async pullConversationPerFile(
         conversationId: string,
         remoteHashes: { [relativePath: string]: FileHashInfo },
-        progress?: vscode.Progress<{ message?: string; increment?: number }>
+        progress?: vscode.Progress<{ message?: string; increment?: number }>,
+        token?: vscode.CancellationToken
     ): Promise<void> {
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
         // Get local file hashes
         this.reportProgress(progress, vscode.l10n.t('Analyzing {0}...', conversationId));
         const localData = await this.computeConversationFileHashesAsync(conversationId);
@@ -502,9 +530,15 @@ export class SyncManager {
             }
         }
 
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
         // Download changed files
         let downloadedCount = 0;
-        for (const relativePath of filesToDownload) {
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
+        const concurrency = config.get<number>('sync.concurrency', 3);
+
+        await limitConcurrency(filesToDownload, concurrency, async (relativePath) => {
+            if (token?.isCancellationRequested) throw new vscode.CancellationError();
             downloadedCount++;
             this.reportProgress(progress, vscode.l10n.t('Downloading: {0} ({1}/{2})...', relativePath, downloadedCount, filesToDownload.length));
 
@@ -517,10 +551,11 @@ export class SyncManager {
                 await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
                 await fs.promises.writeFile(fullPath, content);
             }
-        }
+        }, token);
 
         // Delete locally files that were deleted remotely
         for (const relativePath of filesToDelete) {
+            if (token?.isCancellationRequested) throw new vscode.CancellationError();
             try {
                 const fullPath = this.getFullPathForRelative(conversationId, relativePath);
                 await fs.promises.unlink(fullPath);
@@ -535,11 +570,17 @@ export class SyncManager {
      */
     private async pullConversationLegacy(
         conversationId: string,
-        progress?: vscode.Progress<{ message?: string; increment?: number }>
+        progress?: vscode.Progress<{ message?: string; increment?: number }>,
+        token?: vscode.CancellationToken
     ): Promise<void> {
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
         // Download encrypted ZIP
         this.reportProgress(progress, vscode.l10n.t('Downloading {0}...', conversationId));
         const encrypted = await this.driveService.downloadConversation(conversationId);
+
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
         if (!encrypted) {
             throw new Error(vscode.l10n.t('Conversation {0} not found in Drive', conversationId));
         }
@@ -548,11 +589,14 @@ export class SyncManager {
         this.reportProgress(progress, vscode.l10n.t('Decrypting {0}...', conversationId));
         const zipData = crypto.decrypt(encrypted, this.masterPassword!);
 
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
         // Extract to temp
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-sync-'));
         const zipPath = path.join(tempDir, `${conversationId}.zip`);
 
         try {
+            if (token?.isCancellationRequested) throw new vscode.CancellationError();
             fs.writeFileSync(zipPath, zipData);
             await extract(zipPath, { dir: tempDir });
 
@@ -783,7 +827,7 @@ export class SyncManager {
     private updateStatusBar(status: 'idle' | 'syncing' | 'error' | 'ok', text?: string) {
         if (!this.statusBarItem) return;
 
-        if (!this.config?.showStatusBar) {
+        if (this.config && !this.config.showStatusBar) {
             this.statusBarItem.hide();
             return;
         }
@@ -798,12 +842,13 @@ export class SyncManager {
             case 'error':
                 this.statusBarItem.text = `$(error) AG Sync`;
                 this.statusBarItem.tooltip = vscode.l10n.t('Sync Error');
-                this.statusBarItem.color = new vscode.ThemeColor('errorForeground');
+                this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.errorForeground');
                 break;
             case 'ok':
                 this.statusBarItem.text = "$(check) AG Sync";
                 this.statusBarItem.tooltip = vscode.l10n.t("Antigravity Sync: Up to date");
                 this.statusBarItem.backgroundColor = undefined;
+                this.statusBarItem.color = undefined;
                 // Revert to idle after 5 seconds
                 setTimeout(() => {
                     if (!this.isSyncing) this.updateStatusBar('idle');
@@ -811,26 +856,34 @@ export class SyncManager {
                 break;
             case 'idle':
             default: {
-                const sessionCount = this.syncCount || 0;
-                // If we have synced at least once this session successfully, show check.
-                // Or if user wants "Everything OK" -> Check. 
-                // Let's use Check if we have a valid lastSync time, otherwise Cloud.
-                const icon = (this.config?.lastSync && this.config.lastSync !== 'Never') ? '$(check)' : '$(cloud)';
-                this.statusBarItem.text = `${icon} AG Sync`;
+                if (!this.isReady()) {
+                    this.statusBarItem.text = `$(alert) AG Sync`;
+                    this.statusBarItem.tooltip = vscode.l10n.t('Sync is not configured. Click to setup.');
+                    this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.warningForeground');
+                    this.statusBarItem.backgroundColor = undefined;
+                } else {
+                    const sessionCount = this.syncCount || 0;
+                    // If we have synced at least once this session successfully, show check.
+                    // Or if user wants "Everything OK" -> Check. 
+                    // Let's use Check if we have a valid lastSync time, otherwise Cloud.
+                    const icon = (this.config?.lastSync && this.config.lastSync !== 'Never') ? '$(check)' : '$(cloud)';
+                    this.statusBarItem.text = `${icon} AG Sync`;
 
-                const md = new vscode.MarkdownString();
-                md.isTrusted = true;
-                md.supportThemeIcons = true;
+                    const md = new vscode.MarkdownString('', true);
+                    md.isTrusted = true;
+                    md.supportThemeIcons = true;
 
-                md.appendMarkdown(`**Antigravity Sync**\n\n`);
-                md.appendMarkdown(`$(cloud) Status: **Idle**\n\n`);
-                if (this.config?.lastSync) {
-                    md.appendMarkdown(`$(history) Last Sync: ${new Date(this.config.lastSync).toLocaleString()}\n\n`);
+                    md.appendMarkdown(`**Antigravity Sync**\n\n`);
+                    md.appendMarkdown(`$(cloud) Status: **Idle**\n\n`);
+                    if (this.config?.lastSync) {
+                        md.appendMarkdown(`$(history) Last Sync: ${new Date(this.config.lastSync).toLocaleString()}\n\n`);
+                    }
+                    md.appendMarkdown(`$(sync) Session Syncs: ${sessionCount}`);
+
+                    this.statusBarItem.tooltip = md;
+                    this.statusBarItem.color = undefined; // Default color
+                    this.statusBarItem.backgroundColor = undefined;
                 }
-                md.appendMarkdown(`$(sync) Session Syncs: ${sessionCount}`);
-
-                this.statusBarItem.tooltip = md;
-                this.statusBarItem.color = undefined; // Default color
                 break;
             }
         }
@@ -972,46 +1025,16 @@ export class SyncManager {
      * Get local conversations with metadata (Async)
      */
     private async getLocalConversationsAsync(): Promise<Array<{ id: string; title: string; lastModified: string; hash: string }>> {
-        if (!fs.existsSync(BRAIN_DIR)) {
-            return [];
-        }
+        // Reuse utils logic to ensure consistent title extraction
+        const items = await getConversationsAsync(BRAIN_DIR);
 
-        let dirs: string[] = [];
-        try {
-            const entries = await fs.promises.readdir(BRAIN_DIR, { withFileTypes: true });
-            dirs = entries.filter(e => e.isDirectory()).map(e => e.name);
-        } catch {
-            return [];
-        }
-
-        return Promise.all(dirs.map(async id => {
-            const dirPath = path.join(BRAIN_DIR, id);
-            const hash = await this.computeConversationHashAsync(id);
-
-            let title = id;
-            const taskPath = path.join(dirPath, 'task.md');
-            if (fs.existsSync(taskPath)) {
-                try {
-                    const content = await fs.promises.readFile(taskPath, 'utf8');
-                    const match = content.match(/^#\s*Task:?\s*(.*)$/im);
-                    if (match && match[1]) {
-                        title = match[1].trim();
-                    }
-                } catch {
-                    // Ignore error
-                }
-            }
-
-            let lastModified = new Date().toISOString();
-            try {
-                const stats = await fs.promises.stat(dirPath);
-                lastModified = stats.mtime.toISOString();
-            } catch { /* ignore */ }
-
+        // Map to format required by sync, computing hashes
+        return Promise.all(items.map(async item => {
+            const hash = await this.computeConversationHashAsync(item.id);
             return {
-                id,
-                title,
-                lastModified,
+                id: item.id,
+                title: item.label, // Extracted title from utils
+                lastModified: item.lastModified.toISOString(),
                 hash
             };
         }));
@@ -1134,13 +1157,16 @@ export class SyncManager {
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: vscode.l10n.t("Setting up sync storage..."),
-                cancellable: false
-            }, async (progress) => {
+                cancellable: true
+            }, async (progress, token) => {
+                if (token.isCancellationRequested) throw new vscode.CancellationError();
+
                 this.reportProgress(progress, vscode.l10n.t('Checking Google Drive folders...'));
                 await this.driveService.ensureSyncFolders();
 
                 // Try to get existing manifest
                 this.reportProgress(progress, vscode.l10n.t('Checking for existing backup...'));
+                if (token.isCancellationRequested) throw new vscode.CancellationError();
                 const manifest = await this.getDecryptedManifest();
 
                 if (manifest) {
@@ -1177,7 +1203,7 @@ export class SyncManager {
                 }
 
                 // Trigger first sync
-                await this.syncNow(progress);
+                await this.syncNow(progress, token);
             });
 
             this.updateStatusBar('idle');
@@ -1256,13 +1282,19 @@ export class SyncManager {
     /**
      * Process a single conversation synchronization
      */
+    /**
+     * Process a single conversation synchronization
+     */
     private async processSyncItem(
         convId: string,
         localConversations: Array<{ id: string; title: string; lastModified: string; hash: string }>,
         remoteManifest: SyncManifest,
         result: SyncResult,
-        progress?: vscode.Progress<{ message?: string; increment?: number }>
+        progress?: vscode.Progress<{ message?: string; increment?: number }>,
+        token?: vscode.CancellationToken
     ): Promise<void> {
+        if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
         const local = localConversations.find(c => c.id === convId);
         const remote = remoteManifest.conversations.find(c => c.id === convId);
         const title = local?.title || remote?.title || convId;
@@ -1272,17 +1304,19 @@ export class SyncManager {
         if (local && !remote) {
             // Local only - push to remote
             try {
-                await this.pushConversation(convId, progress);
+                await this.pushConversation(convId, progress, token);
                 result.pushed.push(convId);
             } catch (error: any) {
+                if (error instanceof vscode.CancellationError) throw error;
                 result.errors.push(`Failed to push ${convId}: ${error.message}`);
             }
         } else if (!local && remote) {
             // Remote only - pull to local
             try {
-                await this.pullConversation(convId, progress);
+                await this.pullConversation(convId, progress, token);
                 result.pulled.push(convId);
             } catch (error: any) {
+                if (error instanceof vscode.CancellationError) throw error;
                 result.errors.push(`Failed to pull ${convId}: ${error.message}`);
             }
         } else if (local && remote) {
@@ -1294,25 +1328,28 @@ export class SyncManager {
                 if (remote.modifiedBy === this.config!.machineId) {
                     // We modified it last, push
                     try {
-                        await this.pushConversation(convId, progress);
+                        await this.pushConversation(convId, progress, token);
                         result.pushed.push(convId);
                     } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
                         result.errors.push(`Failed to push ${convId}: ${error.message}`);
                     }
                 } else if (localDate > remoteDate) {
                     // Local is newer
                     try {
-                        await this.pushConversation(convId, progress);
+                        await this.pushConversation(convId, progress, token);
                         result.pushed.push(convId);
                     } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
                         result.errors.push(`Failed to push ${convId}: ${error.message}`);
                     }
                 } else if (remoteDate > localDate) {
                     // Remote is newer
                     try {
-                        await this.pullConversation(convId, progress);
+                        await this.pullConversation(convId, progress, token);
                         result.pulled.push(convId);
                     } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
                         result.errors.push(`Failed to pull ${convId}: ${error.message}`);
                     }
                 } else {
@@ -1453,13 +1490,14 @@ export class SyncManager {
                         vscode.window.withProgress({
                             location: vscode.ProgressLocation.Notification,
                             title: vscode.l10n.t('Uploading conversation...'),
-                            cancellable: false
-                        }, async (progress) => {
+                            cancellable: true
+                        }, async (progress, token) => {
                             try {
-                                await this.pushConversation(message.id, progress);
+                                await this.pushConversation(message.id, progress, token);
                                 vscode.window.showInformationMessage(vscode.l10n.t('Conversation uploaded.'));
                                 this.refreshStatistics(panel);
                             } catch (e: any) {
+                                if (e instanceof vscode.CancellationError) return;
                                 vscode.window.showErrorMessage(vscode.l10n.t('Upload failed: {0}', e.message));
                             }
                         });
@@ -1469,13 +1507,14 @@ export class SyncManager {
                         vscode.window.withProgress({
                             location: vscode.ProgressLocation.Notification,
                             title: vscode.l10n.t('Downloading conversation...'),
-                            cancellable: false
-                        }, async (progress) => {
+                            cancellable: true
+                        }, async (progress, token) => {
                             try {
-                                await this.pullConversation(message.id, progress);
+                                await this.pullConversation(message.id, progress, token);
                                 vscode.window.showInformationMessage(vscode.l10n.t('Conversation downloaded.'));
                                 this.refreshStatistics(panel);
                             } catch (e: any) {
+                                if (e instanceof vscode.CancellationError) return;
                                 vscode.window.showErrorMessage(vscode.l10n.t('Download failed: {0}', e.message));
                             }
                         });
@@ -1811,7 +1850,7 @@ export class SyncManager {
             return `
             <tr>
                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
-                    <div style="cursor: pointer; color: var(--vscode-textLink-foreground);" onclick="vscode.postMessage({command: 'openConversation', id: '${id}'})"><strong>${remote?.title || local?.title || id}</strong></div>
+                    <div style="cursor: pointer; color: var(--vscode-textLink-foreground);" onclick="vscode.postMessage({command: 'openConversation', id: '${id}'})"><strong>${(local?.title && local.title !== id) ? local.title : (remote?.title || id)}</strong></div>
                     <div style="font-size: 0.8em; opacity: 0.7;">${id}</div>
                     <div style="margin-top: 4px; display: flex; gap: 4px;">
                         ${actionButtons}
@@ -1849,6 +1888,12 @@ export class SyncManager {
                 body { font-family: var(--vscode-font-family); padding: 20px; color: var(--vscode-editor-foreground); background-color: var(--vscode-editor-background); }
                 table { width: 100%; border-collapse: collapse; margin-top: 20px; }
                 th { text-align: left; padding: 8px; border-bottom: 2px solid var(--vscode-panel-border); }
+                th[onclick] { cursor: pointer; user-select: none; }
+                th[onclick]:hover { background-color: var(--vscode-list-hoverBackground); }
+                th[onclick]::after { content: ' ↕'; opacity: 0.3; font-size: 0.8em; margin-left: 5px; }
+                th[onclick]:hover::after { opacity: 0.7; }
+                th.asc::after { content: ' ▲' !important; opacity: 1 !important; color: var(--vscode-textLink-foreground); }
+                th.desc::after { content: ' ▼' !important; opacity: 1 !important; color: var(--vscode-textLink-foreground); }
                 .card { background-color: var(--vscode-editor-lineHighlightBackground); padding: 15px; border-radius: 5px; margin-bottom: 20px; }
                 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
                 .stat-value { font-size: 24px; font-weight: bold; }
@@ -1888,6 +1933,123 @@ export class SyncManager {
             </style>
             <script>
                 const vscode = acquireVsCodeApi();
+
+                let sortState = {};
+
+                function sortTable(n, tableId) {
+                    var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+                    table = document.getElementById(tableId);
+                    switching = true;
+                    // Set the sorting direction to ascending:
+                    dir = "asc"; 
+                    
+                    // Toggle direction if clicking same column
+                    if (sortState[tableId] && sortState[tableId].col === n && sortState[tableId].dir === "asc") {
+                        dir = "desc";
+                    }
+                    sortState[tableId] = { col: n, dir: dir };
+
+                    // Update arrows
+                    updateArrows(tableId, n, dir);
+
+                    while (switching) {
+                        switching = false;
+                        rows = table.rows;
+                        /* Loop through all table rows (except the first, which contains table headers): */
+                        for (i = 1; i < (rows.length - 1); i++) {
+                            shouldSwitch = false;
+                            /* Get the two elements you want to compare, one from current row and one from the next: */
+                            x = rows[i].getElementsByTagName("TD")[n];
+                            y = rows[i + 1].getElementsByTagName("TD")[n];
+                            
+                            /* Check if the two rows should switch place, based on the direction, asc or desc: */
+                            if (compareValues(x.innerText, y.innerText, dir, n, tableId)) {
+                                shouldSwitch = true;
+                                break;
+                            }
+                        }
+                        if (shouldSwitch) {
+                            /* If a switch has been marked, make the switch and mark that a switch has been done: */
+                            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                            switching = true;
+                            switchcount ++;      
+                        } else {
+                            /* If no switching has been done AND the direction is "asc", set the direction to "desc" and run the while loop again. */
+                            if (switchcount == 0 && dir == "asc") {
+                                // Already handled by logic above? No, w3schools logic uses this fallback.
+                                // My toggle logic handles it upfront.
+                            }
+                        }
+                    }
+                }
+
+                function compareValues(a, b, dir, n, tableId) {
+                    // Normalize
+                    a = a.trim();
+                    b = b.trim();
+
+                    // Detect types based on content or column index
+                    // Size columns (MB/KB)
+                    if (isDirectoryColumn(tableId, n) || a.endsWith(' MB') || a.endsWith(' KB')) {
+                         return compareNumbers(parseSize(a), parseSize(b), dir);
+                    }
+                    
+                    // Date columns
+                    const dateA = new Date(a);
+                    const dateB = new Date(b);
+                    if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime()) && a.length > 5) { // Simple check
+                        return compareNumbers(dateA.getTime(), dateB.getTime(), dir);
+                    }
+                    
+                    // Uploads/Downloads (Count (Size MB))
+                    // Format: "10 (5.20 MB)"
+                    if (a.match(/^\\d+ \\(/)) {
+                         const countA = parseInt(a.split(' ')[0]);
+                         const countB = parseInt(b.split(' ')[0]);
+                         return compareNumbers(countA, countB, dir);
+                    }
+
+                    // Default string compare
+                    if (dir === "asc") {
+                        return a.toLowerCase().localeCompare(b.toLowerCase()) > 0;
+                    } else {
+                        return a.toLowerCase().localeCompare(b.toLowerCase()) < 0;
+                    }
+                }
+                
+                function isDirectoryColumn(tableId, n) {
+                    return false; // Implement specific logic if needed
+                }
+
+                function compareNumbers(a, b, dir) {
+                    if (dir === "asc") return a > b;
+                    return a < b;
+                }
+
+                function parseSize(s) {
+                    s = s.toUpperCase();
+                    if (s.endsWith(' KB')) return parseFloat(s) * 1024;
+                    if (s.endsWith(' MB')) return parseFloat(s) * 1024 * 1024;
+                    if (s.endsWith(' GB')) return parseFloat(s) * 1024 * 1024 * 1024;
+                    return parseFloat(s) || 0;
+                }
+
+                function updateArrows(tableId, n, dir) {
+                    const table = document.getElementById(tableId);
+                    const headers = table.querySelectorAll('th');
+                    headers.forEach((h, i) => {
+                         // Reset others
+                         // Better: remove previous arrow text from innerText first
+                         let text = h.innerText.replace(' ▲', '').replace(' ▼', '');
+                         
+                         // Strategy: Use classes.
+                         h.classList.remove('asc', 'desc');
+                         if (i === n) {
+                             h.classList.add(dir);
+                         }
+                         h.innerText = text; // Reset text provided by previous sort
+                    });
+                }
             </script>
         </head>
         <body>
@@ -1897,6 +2059,7 @@ export class SyncManager {
             </div>
             
             <div class="grid">
+                <!-- Cards Omitted for brevity, logic identical -->
                 <div class="card">
                     <div class="chart-container">
                         <div class="pie-chart" style="background: conic-gradient(var(--vscode-progressBar-background) 0% ${localPct}%, var(--vscode-widget-shadow) ${localPct}% 100%);"></div>
@@ -1939,14 +2102,14 @@ export class SyncManager {
             </div>
 
             <h3>Conversations</h3>
-            <table>
+            <table id="convTable">
                 <thead>
                     <tr>
-                        <th>Title / ID</th>
-                        <th>Size (Remote)</th>
-                        <th>Last Modified</th>
-                        <th>Origin</th>
-                        <th>Status</th>
+                        <th onclick="sortTable(0, 'convTable')" style="cursor: pointer;">Title / ID</th>
+                        <th onclick="sortTable(1, 'convTable')" style="cursor: pointer;">Size (Remote)</th>
+                        <th onclick="sortTable(2, 'convTable')" style="cursor: pointer;">Last Modified</th>
+                        <th onclick="sortTable(3, 'convTable')" style="cursor: pointer;">Origin</th>
+                        <th onclick="sortTable(4, 'convTable')" style="cursor: pointer;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1955,14 +2118,14 @@ export class SyncManager {
             </table>
 
             <h3>Connected Machines</h3>
-            <table>
+            <table id="machineTable">
                 <thead>
                     <tr>
-                        <th>Machine Name</th>
-                        <th>ID</th>
-                        <th>Last Sync State</th>
-                        <th>Uploads</th>
-                        <th>Downloads</th>
+                        <th onclick="sortTable(0, 'machineTable')" style="cursor: pointer;">Machine Name</th>
+                        <th onclick="sortTable(1, 'machineTable')" style="cursor: pointer;">ID</th>
+                        <th onclick="sortTable(2, 'machineTable')" style="cursor: pointer;">Last Sync State</th>
+                        <th onclick="sortTable(3, 'machineTable')" style="cursor: pointer;">Uploads</th>
+                        <th onclick="sortTable(4, 'machineTable')" style="cursor: pointer;">Downloads</th>
                     </tr>
                 </thead>
                 <tbody>
