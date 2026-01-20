@@ -23,17 +23,25 @@ export interface SyncManifest {
     conversations: SyncedConversation[];
 }
 
+export interface FileHashInfo {
+    hash: string;           // MD5 hash of file content
+    size: number;           // File size in bytes
+    lastModified: string;   // ISO timestamp
+}
+
 export interface SyncedConversation {
     id: string;
     title: string;
     lastModified: string;
-    hash: string;
-    modifiedBy: string; // machine ID
-    fileId?: string; // Google Drive file ID
-    size?: number; // Size in bytes
+    hash: string;                                    // Overall conversation hash (for quick comparison)
+    modifiedBy: string;                              // machine ID
+    fileHashes?: { [relativePath: string]: FileHashInfo }; // Per-file hashes (new format)
+    fileId?: string;                                 // Google Drive file ID (legacy)
+    size?: number;                                   // Size in bytes
     createdAt?: string;
-    createdBy?: string; // machine ID
-    createdByName?: string; // machine name
+    createdBy?: string;                              // machine ID
+    createdByName?: string;                          // machine name
+    version?: number;                                // Format version: 1 = zip, 2 = per-file
 }
 
 export interface MachineState {
@@ -325,6 +333,150 @@ export class GoogleDriveService {
             modifiedTime: f.modifiedTime!,
             size: f.size || undefined
         }));
+    }
+
+    // =====================================================
+    // Per-File Sync Methods (New Format)
+    // =====================================================
+
+    /**
+     * Get or create a folder for a conversation
+     */
+    async getOrCreateConversationFolder(conversationId: string): Promise<string> {
+        if (!this.conversationsFolderId) {
+            await this.ensureSyncFolders();
+        }
+        return this.findOrCreateFolder(conversationId, this.conversationsFolderId!);
+    }
+
+    /**
+     * Upload a single file to the conversation folder
+     */
+    async uploadConversationFile(
+        conversationId: string,
+        relativePath: string,
+        encryptedData: Buffer
+    ): Promise<string> {
+        const convFolderId = await this.getOrCreateConversationFolder(conversationId);
+
+        // Create subdirectories if needed (e.g., brain/subdir/file.md)
+        const parts = relativePath.split('/');
+        let parentId = convFolderId;
+
+        for (let i = 0; i < parts.length - 1; i++) {
+            parentId = await this.findOrCreateFolder(parts[i], parentId);
+        }
+
+        const fileName = parts[parts.length - 1] + '.enc';
+        return this.uploadOrUpdateFile(fileName, encryptedData, parentId, 'application/octet-stream');
+    }
+
+    /**
+     * Download a single file from the conversation folder
+     */
+    async downloadConversationFile(
+        conversationId: string,
+        relativePath: string
+    ): Promise<Buffer | null> {
+        const convFolderId = await this.getOrCreateConversationFolder(conversationId);
+
+        // Navigate to the correct subfolder
+        const parts = relativePath.split('/');
+        let parentId = convFolderId;
+
+        for (let i = 0; i < parts.length - 1; i++) {
+            const subFolderQuery = `name = '${parts[i]}' and mimeType = 'application/vnd.google-apps.folder' and '${parentId}' in parents and trashed = false`;
+            const subFolderRes = await this.drive.files.list({ q: subFolderQuery, fields: 'files(id)', spaces: 'drive' });
+            if (!subFolderRes.data.files || subFolderRes.data.files.length === 0) {
+                return null; // Folder doesn't exist
+            }
+            parentId = subFolderRes.data.files[0].id!;
+        }
+
+        const fileName = parts[parts.length - 1] + '.enc';
+        const query = `name = '${fileName}' and '${parentId}' in parents and trashed = false`;
+        const response = await this.drive.files.list({ q: query, fields: 'files(id)', spaces: 'drive' });
+
+        if (!response.data.files || response.data.files.length === 0) {
+            return null;
+        }
+
+        return this.downloadFile(response.data.files[0].id!);
+    }
+
+    /**
+     * Delete a single file from the conversation folder
+     */
+    async deleteConversationFile(
+        conversationId: string,
+        relativePath: string
+    ): Promise<void> {
+        const convFolderId = await this.getOrCreateConversationFolder(conversationId);
+
+        const parts = relativePath.split('/');
+        let parentId = convFolderId;
+
+        for (let i = 0; i < parts.length - 1; i++) {
+            const subFolderQuery = `name = '${parts[i]}' and mimeType = 'application/vnd.google-apps.folder' and '${parentId}' in parents and trashed = false`;
+            const subFolderRes = await this.drive.files.list({ q: subFolderQuery, fields: 'files(id)', spaces: 'drive' });
+            if (!subFolderRes.data.files || subFolderRes.data.files.length === 0) {
+                return; // Folder doesn't exist, nothing to delete
+            }
+            parentId = subFolderRes.data.files[0].id!;
+        }
+
+        const fileName = parts[parts.length - 1] + '.enc';
+        const query = `name = '${fileName}' and '${parentId}' in parents and trashed = false`;
+        const response = await this.drive.files.list({ q: query, fields: 'files(id)', spaces: 'drive' });
+
+        if (response.data.files && response.data.files.length > 0) {
+            await this.drive.files.delete({ fileId: response.data.files[0].id! });
+        }
+    }
+
+    /**
+     * List all files in a conversation folder (recursively)
+     */
+    async listConversationFiles(conversationId: string): Promise<string[]> {
+        if (!this.conversationsFolderId) {
+            await this.ensureSyncFolders();
+        }
+
+        // Check if conversation folder exists
+        const query = `name = '${conversationId}' and mimeType = 'application/vnd.google-apps.folder' and '${this.conversationsFolderId}' in parents and trashed = false`;
+        const response = await this.drive.files.list({ q: query, fields: 'files(id)', spaces: 'drive' });
+
+        if (!response.data.files || response.data.files.length === 0) {
+            return [];
+        }
+
+        const convFolderId = response.data.files[0].id!;
+        return this.listFilesRecursive(convFolderId, '');
+    }
+
+    private async listFilesRecursive(folderId: string, prefix: string): Promise<string[]> {
+        const files: string[] = [];
+        const query = `'${folderId}' in parents and trashed = false`;
+        const response = await this.drive.files.list({
+            q: query,
+            fields: 'files(id, name, mimeType)',
+            spaces: 'drive'
+        });
+
+        for (const file of response.data.files || []) {
+            const name = file.name!;
+            const path = prefix ? `${prefix}/${name}` : name;
+
+            if (file.mimeType === 'application/vnd.google-apps.folder') {
+                const subFiles = await this.listFilesRecursive(file.id!, path);
+                files.push(...subFiles);
+            } else {
+                // Remove .enc extension for the relative path
+                files.push(path.replace(/\.enc$/, ''));
+            }
+        }
+
+        return files;
     }
 
     /**

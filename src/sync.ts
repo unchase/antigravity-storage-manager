@@ -5,7 +5,7 @@ import * as os from 'os';
 import archiver from 'archiver';
 import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
-import { GoogleDriveService, SyncManifest, SyncedConversation, MachineState } from './googleDrive';
+import { GoogleDriveService, SyncManifest, SyncedConversation, MachineState, FileHashInfo } from './googleDrive';
 import * as crypto from './crypto';
 import { formatRelativeTime, getConversationsAsync } from './utils';
 
@@ -290,71 +290,173 @@ export class SyncManager {
     }
 
     /**
-     * Push a single conversation to Google Drive
+     * Push a single conversation to Google Drive (per-file sync)
      */
     async pushConversation(conversationId: string, progress?: vscode.Progress<{ message?: string; increment?: number }>): Promise<void> {
         if (!this.masterPassword) {
             throw new Error(vscode.l10n.t('Encryption password not set'));
         }
 
-        // Create a temporary zip
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-sync-'));
-        const zipPath = path.join(tempDir, `${conversationId}.zip`);
+        // Get local file hashes
+        this.reportProgress(progress, vscode.l10n.t('Analyzing {0}...', conversationId));
+        const localData = await this.computeConversationFileHashesAsync(conversationId);
 
-        try {
-            // Create zip archive
-            await new Promise<void>((resolve, reject) => {
-                this.reportProgress(progress, vscode.l10n.t('Compressing {0}...', conversationId));
-                const output = fs.createWriteStream(zipPath);
-                const archive = archiver('zip', { zlib: { level: 9 } });
+        // Get remote file hashes from manifest
+        const manifest = await this.getDecryptedManifest();
+        const remoteConv = manifest?.conversations.find(c => c.id === conversationId);
+        const remoteHashes = remoteConv?.fileHashes || {};
 
-                output.on('close', resolve);
-                archive.on('error', reject);
+        // Determine which files need to be uploaded
+        const filesToUpload: string[] = [];
+        const filesToDelete: string[] = [];
 
-                archive.pipe(output);
-
-                // Add brain directory
-                const brainDir = path.join(BRAIN_DIR, conversationId);
-                if (fs.existsSync(brainDir)) {
-                    archive.directory(brainDir, `brain/${conversationId}`);
-                }
-
-                // Add conversation file
-                const convFile = path.join(CONV_DIR, `${conversationId}.pb`);
-                if (fs.existsSync(convFile)) {
-                    archive.file(convFile, { name: `conversations/${conversationId}.pb` });
-                }
-
-                archive.finalize();
-            });
-
-            // Read and encrypt
-            this.reportProgress(progress, vscode.l10n.t('Encrypting {0}...', conversationId));
-            const zipData = fs.readFileSync(zipPath);
-            const encrypted = crypto.encrypt(zipData, this.masterPassword!);
-
-            // Upload to Drive
-            this.reportProgress(progress, vscode.l10n.t('Uploading {0}...', conversationId));
-            await this.driveService.uploadConversation(conversationId, encrypted);
-
-            // Update manifest
-            const contentHash = await this.computeConversationHashAsync(conversationId);
-            await this.updateManifestEntry(conversationId, contentHash, zipData.length);
-        } finally {
-            // Cleanup
-            fs.rmSync(tempDir, { recursive: true, force: true });
+        // Files that are new or changed locally
+        for (const [relativePath, localInfo] of Object.entries(localData.fileHashes)) {
+            const remoteInfo = remoteHashes[relativePath];
+            if (!remoteInfo || remoteInfo.hash !== localInfo.hash) {
+                filesToUpload.push(relativePath);
+            }
         }
+
+        // Files that exist remotely but not locally (deleted locally)
+        for (const remotePath of Object.keys(remoteHashes)) {
+            if (!localData.fileHashes[remotePath]) {
+                filesToDelete.push(remotePath);
+            }
+        }
+
+        // Upload changed files
+        let uploadedCount = 0;
+        for (const relativePath of filesToUpload) {
+            uploadedCount++;
+            this.reportProgress(progress, vscode.l10n.t('Uploading {0} ({1}/{2})...', relativePath.split('/').pop() || '', uploadedCount, filesToUpload.length));
+
+            // Read and encrypt file
+            const fullPath = this.getFullPathForRelative(conversationId, relativePath);
+            const content = await fs.promises.readFile(fullPath);
+            const encrypted = crypto.encrypt(content, this.masterPassword!);
+
+            await this.driveService.uploadConversationFile(conversationId, relativePath, encrypted);
+        }
+
+        // Delete removed files from remote
+        for (const relativePath of filesToDelete) {
+            await this.driveService.deleteConversationFile(conversationId, relativePath);
+        }
+
+        // Update manifest with new file hashes
+        await this.updateManifestEntryWithFileHashes(conversationId, localData.overallHash, localData.fileHashes);
     }
 
     /**
-     * Pull a single conversation from Google Drive
+     * Get full local path for a relative path
+     */
+    private getFullPathForRelative(conversationId: string, relativePath: string): string {
+        if (relativePath.startsWith('conversations/')) {
+            return path.join(CONV_DIR, relativePath.replace('conversations/', ''));
+        } else if (relativePath.startsWith(`brain/${conversationId}/`)) {
+            // brain/{convId}/subpath -> BRAIN_DIR/{convId}/subpath
+            return path.join(BRAIN_DIR, relativePath.replace('brain/', ''));
+        } else if (relativePath.startsWith('brain/')) {
+            // brain/{convId}/subpath (generic case)
+            return path.join(BRAIN_DIR, relativePath.replace('brain/', ''));
+        }
+        throw new Error(`Unknown path format: ${relativePath}`);
+    }
+
+    /**
+     * Pull a single conversation from Google Drive (per-file sync with legacy fallback)
      */
     async pullConversation(conversationId: string, progress?: vscode.Progress<{ message?: string; increment?: number }>): Promise<void> {
         if (!this.masterPassword) {
             throw new Error(vscode.l10n.t('Encryption password not set'));
         }
 
-        // Download encrypted data
+        // Get remote manifest to check format and file hashes
+        const manifest = await this.getDecryptedManifest();
+        const remoteConv = manifest?.conversations.find(c => c.id === conversationId);
+
+        if (!remoteConv) {
+            throw new Error(vscode.l10n.t('Conversation {0} not found in manifest', conversationId));
+        }
+
+        // Check if using new per-file format (version 2) or legacy ZIP
+        if (remoteConv.version === 2 && remoteConv.fileHashes) {
+            await this.pullConversationPerFile(conversationId, remoteConv.fileHashes, progress);
+        } else {
+            // Legacy format - download entire ZIP
+            await this.pullConversationLegacy(conversationId, progress);
+        }
+    }
+
+    /**
+     * Pull conversation using per-file sync (new format)
+     */
+    private async pullConversationPerFile(
+        conversationId: string,
+        remoteHashes: { [relativePath: string]: FileHashInfo },
+        progress?: vscode.Progress<{ message?: string; increment?: number }>
+    ): Promise<void> {
+        // Get local file hashes
+        this.reportProgress(progress, vscode.l10n.t('Analyzing {0}...', conversationId));
+        const localData = await this.computeConversationFileHashesAsync(conversationId);
+        const localHashes = localData.fileHashes;
+
+        // Determine which files need to be downloaded
+        const filesToDownload: string[] = [];
+        const filesToDelete: string[] = [];
+
+        // Files that are new or changed remotely
+        for (const [relativePath, remoteInfo] of Object.entries(remoteHashes)) {
+            const localInfo = localHashes[relativePath];
+            if (!localInfo || localInfo.hash !== remoteInfo.hash) {
+                filesToDownload.push(relativePath);
+            }
+        }
+
+        // Files that exist locally but not remotely (deleted remotely)
+        for (const localPath of Object.keys(localHashes)) {
+            if (!remoteHashes[localPath]) {
+                filesToDelete.push(localPath);
+            }
+        }
+
+        // Download changed files
+        let downloadedCount = 0;
+        for (const relativePath of filesToDownload) {
+            downloadedCount++;
+            this.reportProgress(progress, vscode.l10n.t('Downloading {0} ({1}/{2})...', relativePath.split('/').pop() || '', downloadedCount, filesToDownload.length));
+
+            const encrypted = await this.driveService.downloadConversationFile(conversationId, relativePath);
+            if (encrypted) {
+                const content = crypto.decrypt(encrypted, this.masterPassword!);
+                const fullPath = this.getFullPathForRelative(conversationId, relativePath);
+
+                // Ensure directory exists
+                await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+                await fs.promises.writeFile(fullPath, content);
+            }
+        }
+
+        // Delete locally files that were deleted remotely
+        for (const relativePath of filesToDelete) {
+            try {
+                const fullPath = this.getFullPathForRelative(conversationId, relativePath);
+                await fs.promises.unlink(fullPath);
+            } catch {
+                // Ignore if file doesn't exist
+            }
+        }
+    }
+
+    /**
+     * Pull conversation using legacy ZIP format
+     */
+    private async pullConversationLegacy(
+        conversationId: string,
+        progress?: vscode.Progress<{ message?: string; increment?: number }>
+    ): Promise<void> {
+        // Download encrypted ZIP
         this.reportProgress(progress, vscode.l10n.t('Downloading {0}...', conversationId));
         const encrypted = await this.driveService.downloadConversation(conversationId);
         if (!encrypted) {
@@ -517,6 +619,56 @@ export class SyncManager {
     }
 
     /**
+     * Update a single entry in the manifest with per-file hashes (new format)
+     */
+    private async updateManifestEntryWithFileHashes(
+        conversationId: string,
+        hash: string,
+        fileHashes: { [relativePath: string]: FileHashInfo }
+    ): Promise<void> {
+        const now = new Date().toISOString();
+        const localConversations = await this.getLocalConversationsAsync();
+        const local = localConversations.find(c => c.id === conversationId);
+
+        const manifest = await this.getDecryptedManifest();
+        if (!manifest) {
+            return;
+        }
+
+        const existingIdx = manifest.conversations.findIndex(c => c.id === conversationId);
+        const existing = existingIdx >= 0 ? manifest.conversations[existingIdx] : null;
+
+        // Calculate total size from file hashes
+        const totalSize = Object.values(fileHashes).reduce((sum, info) => sum + info.size, 0);
+
+        const entry: SyncedConversation = {
+            id: conversationId,
+            title: local?.title || conversationId,
+            lastModified: now,
+            hash: hash,
+            modifiedBy: this.config!.machineId,
+            fileHashes: fileHashes,
+            size: totalSize,
+            version: 2, // Mark as new per-file format
+            createdAt: existing?.createdAt || now,
+            createdBy: existing?.createdBy || this.config!.machineId,
+            createdByName: existing?.createdByName || this.config!.machineName
+        };
+
+        if (existingIdx >= 0) {
+            manifest.conversations[existingIdx] = entry;
+        } else {
+            manifest.conversations.push(entry);
+        }
+
+        manifest.lastModified = now;
+
+        const manifestJson = JSON.stringify(manifest, null, 2);
+        const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
+        await this.driveService.updateManifest(encrypted);
+    }
+
+    /**
      * Update machine state in Drive
      */
     private async updateMachineState(): Promise<void> {
@@ -647,15 +799,38 @@ export class SyncManager {
 
     /**
      * Compute a deterministic hash of the conversation content (Async)
+     * Returns both overall hash and per-file hash map
      */
     private async computeConversationHashAsync(conversationId: string): Promise<string> {
+        const result = await this.computeConversationFileHashesAsync(conversationId);
+        return result.overallHash;
+    }
+
+    /**
+     * Compute per-file hashes for a conversation
+     * Returns overall hash and a map of relative paths to file info
+     */
+    private async computeConversationFileHashesAsync(conversationId: string): Promise<{
+        overallHash: string;
+        fileHashes: { [relativePath: string]: FileHashInfo };
+    }> {
         const parts: string[] = [];
+        const fileHashes: { [relativePath: string]: FileHashInfo } = {};
 
         // 1. Conversation PB file
         const pbPath = path.join(CONV_DIR, `${conversationId}.pb`);
         if (fs.existsSync(pbPath)) {
             const hash = await this.getFileHashWithCacheAsync(pbPath);
-            if (hash) parts.push(`pb:${hash}`);
+            if (hash) {
+                const relativePath = `conversations/${conversationId}.pb`;
+                parts.push(`${relativePath}:${hash}`);
+                const stats = await fs.promises.stat(pbPath);
+                fileHashes[relativePath] = {
+                    hash,
+                    size: stats.size,
+                    lastModified: stats.mtime.toISOString()
+                };
+            }
         }
 
         // 2. Brain directory files
@@ -665,7 +840,7 @@ export class SyncManager {
 
             // Sort
             const relativeFiles: { path: string, fullPath: string }[] = files.map(f => ({
-                path: path.relative(brainDir, f).replace(/\\/g, '/'),
+                path: `brain/${conversationId}/` + path.relative(brainDir, f).replace(/\\/g, '/'),
                 fullPath: f
             }));
 
@@ -673,13 +848,21 @@ export class SyncManager {
 
             for (const file of relativeFiles) {
                 const hash = await this.getFileHashWithCacheAsync(file.fullPath);
-                if (hash) parts.push(`${file.path}:${hash}`);
+                if (hash) {
+                    parts.push(`${file.path}:${hash}`);
+                    const stats = await fs.promises.stat(file.fullPath);
+                    fileHashes[file.path] = {
+                        hash,
+                        size: stats.size,
+                        lastModified: stats.mtime.toISOString()
+                    };
+                }
             }
         }
 
-        if (parts.length === 0) return '';
+        const overallHash = parts.length === 0 ? '' : crypto.computeMd5Hash(Buffer.from(parts.join('|')));
 
-        return crypto.computeMd5Hash(Buffer.from(parts.join('|')));
+        return { overallHash, fileHashes };
     }
 
     /**

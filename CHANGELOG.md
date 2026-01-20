@@ -5,6 +5,12 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.14] - 2026-01-20
+- **Feature**: Per-file differential sync! Only changed files are uploaded/downloaded instead of entire conversation archives.
+    - Dramatically reduces bandwidth usage for small edits.
+    - Each file is encrypted individually and stored in Google Drive.
+    - Backward compatible with legacy ZIP format.
+
 ## [0.4.13] - 2026-01-20
 - **Performance**: Major sync optimization overhaul:
     - **Async I/O**: File operations now use asynchronous methods (`fs.promises`) to prevent blocking the editor.

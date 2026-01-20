@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Export and Import Antigravity/Cline conversation history with a single click. Backup your AI conversations to zip files and restore them anytime.",
-    "version": "0.4.13",
+    "version": "0.4.14",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -262,7 +262,7 @@
         }
     },
     "scripts": {
-        "compile": "node esbuild.js",
+        "compile": "C:\\PROGRA~1\\nodejs\\node.exe esbuild.js",
         "compile:production": "node esbuild.js --production",
         "package": "node esbuild.js --production && node node_modules/@vscode/vsce/vsce package --no-dependencies",
         "watch": "npx tsc -watch -p ./",

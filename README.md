@@ -41,7 +41,7 @@ If you find this extension useful, consider supporting the development:
 
 - ☁️ **Google Drive Sync** — Automatically sync conversations between devices
 - 🔒 **End-to-End Encryption** — All synced data is encrypted using AES-256-GCM
-- ⚡ **Optimized Sync** — Async I/O, hash caching, and parallel uploads for fast synchronization
+- ⚡ **Smart Per-File Sync** — Only changed files are synced, not entire archives. Hash caching and parallel uploads for maximum speed.
 - 📦 **Export Conversations** — Select one or multiple conversations and save them to a ZIP archive
 - 💾 **Local Backup** — One-click backup of ALL conversations to a single local archive
 - 📥 **Import Conversations** — Restore conversations from ZIP archives
