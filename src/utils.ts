@@ -68,7 +68,7 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                 return {
                     label: label,
                     description: id,
-                    detail: `Modified ${formatRelativeTime(stats.mtime)}`,
+                    detail: `${vscode.l10n.t('Created')}: ${stats.birthtime.toLocaleString()}`,
                     id: id,
                     lastModified: stats.mtime
                 } as ConversationItem;
