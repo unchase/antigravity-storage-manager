@@ -16,7 +16,7 @@ export class PlatformDetector {
         if (this.platform === 'win32') {
             this.strategy = new WindowsProcessDetector();
         } else {
-            this.strategy = new UnixProcessDetector();
+            this.strategy = new UnixProcessDetector(this.platform);
         }
     }
 

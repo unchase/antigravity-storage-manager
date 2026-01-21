@@ -7,7 +7,7 @@ import { versionInfo } from './versionInfo';
 import { LocalizationManager } from '../l10n/localizationManager';
 
 import { QuotaStatusBar } from './quotaStatusBar';
-import { drawProgressBar, formatResetTime, compareModels } from './utils';
+import { drawProgressBar, formatResetTime, compareModels, formatDuration } from './utils';
 import { QuotaUsageTracker } from './quotaUsageTracker';
 
 export class QuotaManager {
@@ -155,30 +155,26 @@ export class QuotaManager {
     }
 
     private async displayQuota(snapshot: QuotaSnapshot): Promise<void> {
+        const lm = LocalizationManager.getInstance();
         const picker = vscode.window.createQuickPick();
         picker.title = LocalizationManager.getInstance().t('Antigravity Quota Usage');
         picker.placeholder = LocalizationManager.getInstance().t('Click a model to pin/unpin it from status bar');
         picker.matchOnDetail = true;
 
+        const updateSortButton = () => {
+            const sortText = this.sortMethod === 'quota' ? lm.t('Sort by Reset Time') : lm.t('Sort by Quota Remaining');
+            picker.buttons = [{
+                iconPath: new vscode.ThemeIcon(this.sortMethod === 'quota' ? 'list-ordered' : 'clock'),
+                tooltip: `${lm.t('Sort')}: ${sortText}`
+            }];
+        };
+
         const updateItems = () => {
             const items: vscode.QuickPickItem[] = [];
 
-            const lm = LocalizationManager.getInstance();
             if (this.statusBar) {
                 this.statusBar.update(snapshot, undefined, this.usageTracker);
             }
-
-            // Sort Options
-            const sortIcon = this.sortMethod === 'quota' ? '$(list-ordered)' : '$(clock)';
-            const sortText = this.sortMethod === 'quota' ? lm.t('Sort by Reset Time') : lm.t('Sort by Quota Remaining');
-
-            // Action button to change sort
-            items.push({
-                label: `${sortIcon} ${sortText}`,
-                detail: lm.t('Click to change sort order'),
-                description: `${lm.t('Current')}: ${this.sortMethod === 'quota' ? lm.t('Quota') : lm.t('Reset Time')}`,
-                alwaysShow: true
-            });
 
             // Plan Info
             if (snapshot.planName) {
@@ -204,97 +200,69 @@ export class QuotaManager {
 
             // Models
             if (snapshot.models && snapshot.models.length > 0) {
-                // Group 1: Claude & GPT OSS
-                // Group 2: Gemini 3 Pro (High/Low)
-                // Group 3: Gemini 3 Flash
-
+                // ... rest of model rendering logic
                 const models = [...snapshot.models];
                 const pinned = this.statusBar.getPinnedModels();
 
-                const groupClaudeGpt: any[] = [];
-                const groupGeminiPro: any[] = [];
-                const groupGeminiFlash: any[] = [];
+                const groups = [
+                    { name: 'Claude & GPT-OSS', models: [] as any[] },
+                    { name: 'Gemini 3 Pro', models: [] as any[] },
+                    { name: 'Gemini 3 Flash', models: [] as any[] }
+                ];
 
                 for (const m of models) {
                     if (m.label.includes('Gemini 3 Pro')) {
-                        groupGeminiPro.push(m);
+                        groups[1].models.push(m);
                     } else if (m.label.includes('Gemini 3 Flash')) {
-                        groupGeminiFlash.push(m);
+                        groups[2].models.push(m);
                     } else {
-                        groupClaudeGpt.push(m);
+                        groups[0].models.push(m);
                     }
                 }
 
-                // Helper to add items for a group
                 const addGroup = (groupName: string, groupModels: any[]) => {
                     if (groupModels.length === 0) return;
-
-                    items.push({
-                        label: groupName,
-                        kind: vscode.QuickPickItemKind.Separator
-                    });
-
+                    items.push({ label: groupName, kind: vscode.QuickPickItemKind.Separator });
                     groupModels.sort((a, b) => compareModels(a, b, this.sortMethod));
-
                     for (const model of groupModels) {
                         const isPinned = pinned.includes(model.modelId) || pinned.includes(model.label);
                         const pinIcon = isPinned ? '$(pin)' : '$(circle-outline)';
                         const pct = model.remainingPercentage ?? 0;
                         let status = '$(check)';
-
-                        if (model.isExhausted || pct === 0) {
-                            status = '$(error)';
-                        } else if (pct < 30) {
-                            status = '$(flame)';
-                        } else if (pct < 50) {
-                            status = '$(warning)';
-                        }
-
+                        if (model.isExhausted || pct === 0) status = '$(error)';
+                        else if (pct < 30) status = '$(flame)';
+                        else if (pct < 50) status = '$(warning)';
                         const bar = drawProgressBar(pct);
-
                         let desc = `${bar} ${pct.toFixed(1)}%`;
                         if (model.timeUntilReset > 0) {
-                            desc += ` • ${lm.t('Resets')} ${formatResetTime(model.resetTime)}`;
+                            const timeUntil = formatDuration(model.timeUntilReset);
+                            desc += ` • ${lm.t('Resets')} ${formatResetTime(model.resetTime)} (${lm.t('in')} ${timeUntil})`;
                         }
-
-                        // Show detailed functionality usage if available, otherwise fallback to Model ID
                         let details = '';
-                        if (model.requestLimit && model.requestUsage !== undefined) {
-                            details += `${lm.t('Requests')}: ${model.requestUsage} / ${model.requestLimit}  `;
-                        }
-                        if (model.tokenLimit && model.tokenUsage !== undefined) {
-                            details += `${lm.t('Tokens')}: ${model.tokenUsage} / ${model.tokenLimit}`;
-                        }
-
-                        items.push({
-                            label: `${pinIcon} ${status} ${model.label}`,
-                            description: desc,
-                            detail: details
-                        });
+                        if (model.requestLimit && model.requestUsage !== undefined) details += `${lm.t('Requests')}: ${model.requestUsage} / ${model.requestLimit}  `;
+                        if (model.tokenLimit && model.tokenUsage !== undefined) details += `${lm.t('Tokens')}: ${model.tokenUsage} / ${model.tokenLimit}`;
+                        items.push({ label: `${pinIcon} ${status} ${model.label}`, description: desc, detail: details });
                     }
                 };
-
-                // Add groups in specific order
-                addGroup('Claude & GPT-OSS', groupClaudeGpt);
-                addGroup('Gemini 3 Pro', groupGeminiPro);
-                addGroup('Gemini 3 Flash', groupGeminiFlash);
+                const activeGroups = groups.filter(g => g.models.length > 0);
+                activeGroups.sort((a, b) => compareModels(a.models[0], b.models[0], this.sortMethod));
+                for (const group of activeGroups) addGroup(group.name, group.models);
             }
             picker.items = items;
+            updateSortButton();
         };
 
         updateItems();
 
+        // Handle Button Click (Sort)
+        picker.onDidTriggerButton(_button => {
+            this.sortMethod = this.sortMethod === 'quota' ? 'time' : 'quota';
+            updateItems();
+        });
+
         picker.onDidAccept(async () => {
             const selected = picker.selectedItems[0];
             if (!selected) return;
-
-            // Handle Sort
-            if (selected.detail === LocalizationManager.getInstance().t('Click to change sort order')) {
-                this.sortMethod = this.sortMethod === 'quota' ? 'time' : 'quota';
-                updateItems();
-                picker.selectedItems = []; // Clear selection to avoid confusion
-                return;
-            }
 
             // Handle Pinning
             // We need to find the model corresponding to this item.

@@ -1,8 +1,8 @@
 {
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
-    "description": "Securely sync Antigravity history with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.",
-    "version": "0.7.2",
+    "description": "Securely sync Antigravity Conversations with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.",
+    "version": "0.7.3",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -363,6 +363,11 @@
                     },
                     "default": [],
                     "markdownDescription": "%antigravity.config.authorizedRemoteDeleteMachineIds%"
+                },
+                "antigravity-storage-manager.sync.useMetadataCache": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%antigravity.config.useMetadataCache%"
                 }
             }
         },
@@ -392,7 +397,14 @@
         "pretest": "npm run compile && npm run lint",
         "lint": "eslint src",
         "test": "node ./out/test/runTest.js",
-        "test:unit": "C:\\PROGRA~1\\nodejs\\node.exe node_modules/jest/bin/jest.js"
+        "test:unit": "C:\\PROGRA~1\\nodejs\\node.exe node_modules/jest/bin/jest.js",
+        "test:l10n": "C:\\PROGRA~1\\nodejs\\node.exe node_modules/jest/bin/jest.js l10nBundles",
+        "test:nls": "C:\\PROGRA~1\\nodejs\\node.exe node_modules/jest/bin/jest.js nlsKeys",
+        "test:localization": "C:\\PROGRA~1\\nodejs\\node.exe node_modules/jest/bin/jest.js l10n/",
+        "sync:nls": "node check_nls_keys.js",
+        "sync:l10n": "node check_l10n_bundles.js",
+        "sync:localization": "npm run sync:nls && npm run sync:l10n",
+        "check": "npx tsc --noEmit && npm run lint && npm run test:unit"
     },
     "devDependencies": {
         "@eslint/js": "^9.39.2",

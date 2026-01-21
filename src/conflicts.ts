@@ -3,6 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { formatRelativeTime } from './utils';
+import { LocalizationManager } from './l10n/localizationManager';
+
+const lm = LocalizationManager.getInstance();
 
 /**
  * Handle manual conflict resolution
@@ -60,20 +63,23 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
     }
 
     if (conflicts.length === 0) {
-        vscode.window.showInformationMessage(vscode.l10n.t('No detected conflict copies found.'));
+        vscode.window.showInformationMessage(lm.t('No detected conflict copies found.'));
         return;
     }
+
+    // Sort by last modified date (newest first)
+    conflicts.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
 
     // 2. Show QuickPick to select a conflict pair to resolve
     const items = conflicts.map(c => ({
         label: `$(diff) ${c.title}`,
-        description: vscode.l10n.t("Conflict copy from {0}", formatRelativeTime(c.lastModified.toISOString())),
-        detail: vscode.l10n.t("Original ID: {0} | Conflict ID: {1}", c.originalId, c.conflictId),
+        description: lm.t("Conflict copy from {0}", formatRelativeTime(c.lastModified.toISOString())),
+        detail: lm.t("Original ID: {0} | Conflict ID: {1}", c.originalId, c.conflictId),
         conflict: c
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: vscode.l10n.t("Found {0} conflict copies. Select one to resolve.", conflicts.length)
+        placeHolder: lm.t("Found {0} conflict copies. Select one to resolve.", conflicts.length)
     });
 
     if (!selected) return;
@@ -81,13 +87,13 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
     const c = selected.conflict;
 
     // 3. Show Action Options
-    const keepOriginal = vscode.l10n.t('Keep Original (Delete Copy)');
-    const keepConflict = vscode.l10n.t('Keep Conflict (Overwrite Original)');
-    const cancel = vscode.l10n.t('Cancel');
+    const keepOriginal = lm.t('Keep Original (Delete Copy)');
+    const keepConflict = lm.t('Keep Conflict (Overwrite Original)');
+    const cancel = lm.t('Cancel');
 
     const action = await vscode.window.showWarningMessage(
-        vscode.l10n.t("Resolve conflict for \"{0}\"?", c.title),
-        { modal: true, detail: vscode.l10n.t("Conflict copy: {0}\nOriginal: {1}", c.conflictId, c.originalId) },
+        lm.t("Resolve conflict for \"{0}\"?", c.title),
+        { modal: true, detail: lm.t("Conflict copy: {0}\nOriginal: {1}", c.conflictId, c.originalId) },
         keepOriginal,
         keepConflict,
         cancel
@@ -101,9 +107,9 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
             const pbPath = path.join(convDir, `${c.conflictId}.pb`);
             if (fs.existsSync(pbPath)) fs.unlinkSync(pbPath);
 
-            vscode.window.showInformationMessage(vscode.l10n.t("Conflict resolved: Start version kept."));
+            vscode.window.showInformationMessage(lm.t("Conflict resolved: Start version kept."));
         } catch (e: any) {
-            vscode.window.showErrorMessage(vscode.l10n.t("Failed to delete conflict copy: {0}", e.message));
+            vscode.window.showErrorMessage(lm.t("Failed to delete conflict copy: {0}", e.message));
         }
     } else if (action === keepConflict) {
         try {
@@ -121,9 +127,9 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
             if (fs.existsSync(originalPb)) fs.unlinkSync(originalPb);
             if (fs.existsSync(conflictPb)) fs.renameSync(conflictPb, originalPb);
 
-            vscode.window.showInformationMessage(vscode.l10n.t("Conflict resolved: Conflict version kept."));
+            vscode.window.showInformationMessage(lm.t("Conflict resolved: Conflict version kept."));
         } catch (e: any) {
-            vscode.window.showErrorMessage(vscode.l10n.t("Failed to overwrite original: {0}", e.message));
+            vscode.window.showErrorMessage(lm.t("Failed to overwrite original: {0}", e.message));
         }
     }
 }

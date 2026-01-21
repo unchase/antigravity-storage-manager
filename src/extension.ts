@@ -6,7 +6,7 @@ import archiver from 'archiver';
 import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
 import { SyncManager } from './sync';
-import { getConversationsAsync } from './utils';
+import { getConversationsAsync, ConversationItem } from './utils';
 import { resolveConflictsCommand } from './conflicts';
 import { BackupManager } from './backup';
 import { QuotaManager } from './quota/quotaManager';
@@ -60,7 +60,15 @@ export async function activate(context: vscode.ExtensionContext) {
                 cancellable: false
             }, async () => {
                 const path = await backupManager.backupNow();
-                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Backup created at: {0}', path));
+                const lm = LocalizationManager.getInstance();
+                vscode.window.showInformationMessage(
+                    lm.t('Backup created at: {0}', path),
+                    lm.t('Show in Folder')
+                ).then(selection => {
+                    if (selection === lm.t('Show in Folder')) {
+                        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(path));
+                    }
+                });
             });
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.resolveConflicts`, () => resolveConflictsCommand(BRAIN_DIR, CONV_DIR))
@@ -89,13 +97,31 @@ export async function activate(context: vscode.ExtensionContext) {
                 return '';
             };
 
-            const items = [
+            const items: (vscode.QuickPickItem & { command?: string, args?: any[] })[] = [
                 { label: `$(sync) ${lm.t('Sync Now')}`, description: `${lm.t('Trigger immediate synchronization')} ${getKeybindingLabel(`${EXT_NAME}.syncNow`)}`, command: `${EXT_NAME}.syncNow` },
                 { label: `$(graph) ${lm.t('Show Statistics')}`, description: `${lm.t('View detailed sync status and history')} ${getKeybindingLabel(`${EXT_NAME}.showSyncStats`)}`, command: `${EXT_NAME}.showSyncStats` },
                 { label: `$(cloud-upload) ${lm.t('Setup Sync')}`, description: `${lm.t('Configure Google Drive synchronization')} ${getKeybindingLabel(`${EXT_NAME}.syncSetup`)}`, command: `${EXT_NAME}.syncSetup` },
+
+                { label: '', kind: vscode.QuickPickItemKind.Separator },
+
+                // Management
+                { label: `$(shield) ${lm.t('Manage Authorized Deletion Machines')}`, description: lm.t('Manage authorized devices for deletion'), command: `${EXT_NAME}.syncManageAuthorizedMachines` },
+                { label: `$(list-unordered) ${lm.t('Manage Synced Conversations')}`, description: lm.t('Manage which conversations are synced'), command: `${EXT_NAME}.syncManage` },
+                { label: `$(sign-out) ${lm.t('Disconnect Google Drive Sync')}`, description: lm.t('Disconnect from Google Drive'), command: `${EXT_NAME}.syncDisconnect` },
+
+                { label: '', kind: vscode.QuickPickItemKind.Separator },
+
                 { label: `$(archive) ${lm.t('Backup Now')}`, description: `${lm.t('Create a local zip backup')} ${getKeybindingLabel(`${EXT_NAME}.triggerBackup`)}`, command: `${EXT_NAME}.triggerBackup` },
                 { label: `$(arrow-down) ${lm.t('Import Conversations')}`, description: `${lm.t('Import from archive')} ${getKeybindingLabel(`${EXT_NAME}.import`)}`, command: `${EXT_NAME}.import` },
                 { label: `$(arrow-up) ${lm.t('Export Conversations')}`, description: `${lm.t('Export to archive')} ${getKeybindingLabel(`${EXT_NAME}.export`)}`, command: `${EXT_NAME}.export` },
+
+                { label: '', kind: vscode.QuickPickItemKind.Separator },
+
+                { label: `$(edit) ${lm.t('Rename Conversation')}`, description: `${lm.t('Rename selected conversation')} ${getKeybindingLabel(`${EXT_NAME}.rename`)}`, command: `${EXT_NAME}.rename` },
+                { label: `$(diff) ${lm.t('Resolve Conflict Copies')}`, description: `${lm.t('Resolve conflicts between local and remote versions')} ${getKeybindingLabel(`${EXT_NAME}.resolveConflicts`)}`, command: `${EXT_NAME}.resolveConflicts` },
+
+                { label: '', kind: vscode.QuickPickItemKind.Separator },
+
                 { label: `$(settings-gear) ${lm.t('Settings')}`, description: lm.t('Open extension settings'), command: 'workbench.action.openSettings', args: [`@ext:unchase.${EXT_NAME}`] }
             ];
 
@@ -108,7 +134,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 title: lm.t('Select an action')
             });
 
-            if (selected) {
+            if (selected && selected.command) {
                 if (selected.args) {
                     vscode.commands.executeCommand(selected.command, ...selected.args);
                 } else {
@@ -192,6 +218,9 @@ export async function activate(context: vscode.ExtensionContext) {
             }
             await syncManager.manageConversations();
         }),
+        vscode.commands.registerCommand(`${EXT_NAME}.syncManageAuthorizedMachines`, async () => {
+            await syncManager.manageAuthorizedMachines();
+        }),
         vscode.commands.registerCommand(`${EXT_NAME}.syncDisconnect`, async () => {
             const lm = LocalizationManager.getInstance();
             const confirm = await vscode.window.showWarningMessage(
@@ -274,19 +303,126 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 
+/**
+ * Enhanced QuickPick for conversations with sorting and status icons
+ */
+export async function showEnhancedConversationQuickPick(
+    context: {
+        title: string;
+        placeholder: string;
+        canSelectMany: boolean;
+        syncManager?: SyncManager;
+        statuses?: Map<string, { status: string, icon: string }>;
+    }
+): Promise<ConversationItem[] | undefined> {
+    const lm = LocalizationManager.getInstance();
+    const initialItems = await getConversationsAsync(BRAIN_DIR);
+
+    if (initialItems.length === 0) {
+        return [];
+    }
+
+    // Get sync statuses if sync is ready
+    let statuses = context.statuses;
+    if (!statuses && context.syncManager && context.syncManager.isReady()) {
+        statuses = await context.syncManager.getConversationStatuses();
+    }
+
+    let currentSort: 'modified' | 'created' | 'name' = 'modified';
+
+    const prepareItems = (items: ConversationItem[]) => {
+        const sorted = [...items].sort((a, b) => {
+            if (currentSort === 'name') {
+                return (a.label || a.id).localeCompare(b.label || b.id);
+            } else if (currentSort === 'created') {
+                return b.createdAt.getTime() - a.createdAt.getTime();
+            } else {
+                return b.lastModified.getTime() - a.lastModified.getTime();
+            }
+        });
+
+        return sorted.map(item => {
+            const status = statuses?.get(item.id);
+            const icon = status ? `${status.icon} ` : '';
+            return {
+                ...item,
+                label: `${icon}${item.label}`,
+                description: item.description,
+                detail: `${status ? status.status + '  |  ' : ''}${item.detail}`
+            };
+        });
+    };
+
+    const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem | ConversationItem>();
+    quickPick.title = context.title;
+    quickPick.canSelectMany = context.canSelectMany;
+    quickPick.placeholder = context.placeholder;
+
+    // Create Sort Button
+    const updateSortButton = () => {
+        let sortTooltip = lm.t('Sort by Modified Date and Time');
+        if (currentSort === 'created') sortTooltip = lm.t('Sort by Created Date and Time');
+        if (currentSort === 'name') sortTooltip = lm.t('Sort by Name');
+
+        quickPick.buttons = [{
+            iconPath: new vscode.ThemeIcon('list-ordered'),
+            tooltip: `${lm.t('Sort')}: ${sortTooltip}`
+        }];
+    };
+
+    const updateItems = (preserveSelection = false) => {
+        const previousSelectionIds = preserveSelection ? quickPick.selectedItems.map(i => (i as any).id) : [];
+        quickPick.items = prepareItems(initialItems);
+
+        if (preserveSelection && previousSelectionIds.length > 0) {
+            quickPick.selectedItems = quickPick.items.filter(i => (i as any).id && previousSelectionIds.includes((i as any).id));
+        }
+        updateSortButton();
+    };
+
+    updateItems();
+
+    // Handle Button Click (Sort)
+    quickPick.onDidTriggerButton(_button => {
+        // Toggle sort
+        if (currentSort === 'modified') currentSort = 'created';
+        else if (currentSort === 'created') currentSort = 'name';
+        else currentSort = 'modified';
+        updateItems(true); // Preserve selection
+    });
+
+    return new Promise<ConversationItem[] | undefined>((resolve) => {
+        quickPick.onDidAccept(() => {
+            const selected = quickPick.selectedItems as ConversationItem[];
+            if (selected.length === 0 && !context.canSelectMany) {
+                // Prevent empty accept in single select (unless strictly intended?)
+                // Actually standard behavior allows empty accept if user cleared it? 
+                // But typically QuickPick auto-selects active item.
+                // let's follow standard.
+            }
+            resolve(selected.length > 0 ? selected : undefined);
+            quickPick.hide();
+        });
+        quickPick.onDidHide(() => resolve(undefined));
+        quickPick.show();
+    });
+}
+
 // EXPORT: Multi-select
 async function exportConversations() {
     const lm = LocalizationManager.getInstance();
-    const items = await getConversationsAsync(BRAIN_DIR);
 
-    if (items.length === 0) {
-        vscode.window.showInformationMessage(lm.t('No conversations found to export.'));
-        return;
+    let statuses: Map<string, { status: string, icon: string }> | undefined;
+    if (syncManager && syncManager.isReady()) {
+        statuses = await syncManager.getConversationStatuses({ forceCache: true });
     }
 
-    const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: lm.t('Select conversations to export (use Space to select multiple)'),
-        canPickMany: true
+    const selected = await showEnhancedConversationQuickPick({
+        title: lm.t('Export Conversations'),
+        placeholder: lm.t('Select conversations to export (use Space to select multiple)'),
+        canSelectMany: true,
+        syncManager: syncManager,
+        statuses: statuses
     });
 
     if (!selected || selected.length === 0) return;
@@ -395,10 +531,10 @@ async function backupAll() {
 
             vscode.window.showInformationMessage(
                 lm.t('Backup complete! ({0} MB)', sizeMB),
-                lm.t('Open Folder')
+                lm.t('Show in Folder')
             ).then(selection => {
-                if (selection === lm.t('Open Folder')) {
-                    vscode.env.openExternal(vscode.Uri.file(path.dirname(filePath)));
+                if (selection === lm.t('Show in Folder')) {
+                    vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(filePath));
                 }
             });
         } catch (err: any) {
@@ -531,20 +667,23 @@ async function importConversations() {
 // RENAME: Change conversation title
 async function renameConversation() {
     const lm = LocalizationManager.getInstance();
-    const items = await getConversationsAsync(BRAIN_DIR);
 
-    if (items.length === 0) {
-        vscode.window.showInformationMessage(lm.t('No conversations found.'));
-        return;
-    }
-
-    const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: lm.t('Select conversation to rename')
+    const selectedList = await showEnhancedConversationQuickPick({
+        title: lm.t('Rename Conversation'),
+        placeholder: lm.t('Select conversation to rename'),
+        canSelectMany: false,
+        syncManager: syncManager
     });
 
-    if (!selected) return;
+    if (!selectedList || selectedList.length === 0) return;
+    const selected = selectedList[0];
 
-    const currentTitle = selected.label;
+    // Strip emojis for the input field
+    let currentTitle = selected.label;
+    if (currentTitle.match(/^[^\w\s].*?\s/)) {
+        currentTitle = currentTitle.replace(/^[^\w\s].*?\s/, '');
+    }
+
     const newTitle = await vscode.window.showInputBox({
         prompt: lm.t('Enter new title'),
         value: currentTitle,

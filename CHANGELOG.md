@@ -5,6 +5,80 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-01-21
+### Sync & Performance
+- **Sync Feedback**: 
+    - Added a "Fetching data from Google Drive..." notification when requesting remote data.
+    - Status bar tooltip now correctly reflects the "Fetching..." state during remote operations.
+- **Cache Optimization**: Opening the conversation list now respects the `sync.useMetadataCache` setting, effectively preventing unnecessary Google Drive requests when cached data is available.
+
+### Sorting & Selection
+- **Refined Sorting UI**: 
+    - Completely overhauled the "Setup Sync" conversation selection to use a rich QuickPick interface with sorting and detailed timestamps.
+    - Added **"Sort by Name"** option to all conversation lists (`Manage Conversations`, `Setup`, `Connect to Session`).
+    - Standardized sorting labels to explicitly state **"Sort by Date and Time"** for clarity.
+- **Advanced Sorting Logic**:
+    - Implemented stable sorting with tie-breakers: "Name" sort falls back to ID, and "Duration" sort falls back to Date.
+    - Fixed an issue where the sort button in the "Connect to Session" dialog would not trigger a visual update.
+- **UI Cleanup**: Removed the redundant "Sync All Conversations" item from the Manage Conversations list (superseded by the "Select All" checkbox).
+
+### Devices Dashboard
+- **Interactivity Fix**: Resolved an issue where dashboard buttons (Delete, Purge, Sync) were not responsive due to message passing errors.
+- **Status Indicators**: 
+    - Added "Online/Offline" status dots for each session based on recent activity.
+    - Added "Sync Count" display for each machine.
+- **Quota & Grouping**:
+    - Displaying quota usage (Credits/Limits) directly in the dashboard sessions.
+    - Improved session grouping logic (by Machine Name) and fixed potential duplicate entries.
+    - Added "UID" column for clearer session identification.
+
+### UI Enhancements
+- **Conversation Details**: Improved visual formatting in QuickPicks using distinct separators (` | ` and ` • `) for Status, Created, and Modified dates.
+- **Status Tooltips**: Added explicit text labels (e.g., "Synced", "Local Only") to conversation details to explain status icons.
+- **AG Sync Menu**: Redesigned the menu with visual separators and regrouped items for better accessibility. 
+- **Settings UX**: The `Authorized Remote Delete Machine Ids` setting now features a `markdownDescription` with a direct command link.
+
+### Localization
+- **100% Coverage**: Completed and verified full translation bundles for all 15 supported languages.
+- **Sync Results**: Fully localized the sync completion message (including `{0} pushed` and `{0} pulled` counts).
+- **Localization Refactoring**: Standardized all user-facing strings in `src/sync.ts` to use the `LocalizationManager`.
+- **Testing**: Added `npm run check` script that runs type checking, linting, and unit tests in one command.
+- **Validation**: Added `check_l10n_bundles.js` and `check_nls_keys.js` to ensure translation integrity.
+
+### Sync Statistics Dashboard
+- **Session Grouping**: Devices are now grouped in the "Connected Devices" table by name, with collapsible session lists.
+- **Session Sorting**: Sessions within each device are sorted by last activity (current session first).
+- **Activity Info**: Each session now displays "Last Active" timestamp and calculated "Duration".
+- **Status Indicators**: Added a "Syncs" column with green/red status dots to indicate online/offline sessions.
+- **Collapsible Groups**: Device groups can be expanded/collapsed by clicking on the header.
+
+### Testing
+- **Localization Tests**: Added automated tests for verifying `package.nls.*.json` and `l10n/bundle.l10n.*.json` files.
+    - `npm run test:l10n` — Run all localization bundle tests.
+    - `npm run test:nls` — Run package.nls key consistency tests.
+    - `npm run test:localization` — Run all localization tests.
+
+### Quota Display Improvements
+- **Time until Reset**: Models in the Quota Usage window now show the time remaining until quota reset (e.g., `in 15m`).
+- **Estimation Logic**: The "Estimated Remaining Time" is now hidden when the quota is fully exhausted (0%) to avoid clutter.
+- **Enhanced Cycle Bar**: Improved the "Cycle" visual scale `[▓▓▓░░░]` to include **Opus** and **Thinking** models, and more accurately reflects cycle reset windows for Pro/Ultra tiers.
+- **Visual Consistency**: Unified the progress bar style using the `▓` character across all tooltip scales.
+
+### UI Improvements
+- **Conversation List**: 
+    - Added "Modified" and "Created" dates to the Synchronization selection list for better context.
+    - Fixed a bug in the "Rename Conversation" dialog where sorting would unexpectedly close the window.
+- **Selection & Sorting**:
+    - "Select All" and individual selections are now persisted correctly when changing the sort order in multi-select lists (e.g., Export, Sync).
+    - Sorting by "Created Date" or "Modified Date" now correctly refreshes the list without resetting the selection state.
+
+### Performance
+- **Optimized Export**: The "Export Conversations" command now utilizes cached metadata for status badges, significantly reducing initial load time and eliminating unnecessary Google Drive requests.
+
+### Bug Fixes
+- **Dashboard Rename**: Fixed an issue where renaming a conversation via the Dashboard did not immediately reflect the new title.
+- **Dashboard Refresh**: Fixed the "Refresh Data" button in the Sync Statistics dashboard to properly reload data from Google Drive.
+
 ## [0.7.2] - 2026-01-21
 ### Remote Management
 - **Remote Deletion**: Authorized machines can now delete conversations created by other machines directly from the Sync Dashboard.

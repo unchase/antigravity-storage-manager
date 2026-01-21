@@ -6,6 +6,8 @@ import { LocalizationManager } from './l10n/localizationManager';
 export interface ConversationItem extends vscode.QuickPickItem {
     id: string;
     lastModified: Date;
+    createdAt: Date;
+    status?: 'synced' | 'imported' | 'local' | 'conflict';
 }
 
 /**
@@ -66,12 +68,14 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                     // Ignore task.md errors
                 }
 
+                const lm = LocalizationManager.getInstance();
                 return {
                     label: label,
                     description: id,
-                    detail: `${LocalizationManager.getInstance().t('Created')}: ${LocalizationManager.getInstance().formatDateTime(stats.birthtime)}`,
+                    detail: `${lm.t('Created')}: ${lm.formatDateTime(stats.birthtime)} | ${lm.t('Modified')}: ${lm.formatDateTime(stats.mtime)}`,
                     id: id,
-                    lastModified: stats.mtime
+                    lastModified: stats.mtime,
+                    createdAt: stats.birthtime
                 } as ConversationItem;
 
             } catch (e) {
@@ -119,4 +123,25 @@ export async function limitConcurrency<T>(
 
     // Start workers
     await Promise.all(Array(workerCount).fill(null).map(() => worker()));
+}
+
+/**
+ * Format duration in ms to a readable string (e.g. "2d 5h 30m")
+ */
+export function formatDuration(ms: number): string {
+    const d = Math.floor(ms / (1000 * 60 * 60 * 24));
+    const h = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const m = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+
+    const lm = LocalizationManager.getInstance();
+    const dText = lm.t('d');
+    const hText = lm.t('h');
+    const mText = lm.t('m');
+
+    const parts: string[] = [];
+    if (d > 0) parts.push(`${d}${dText}`);
+    if (h > 0) parts.push(`${h}${hText}`);
+    if (m > 0 || parts.length === 0) parts.push(`${m}${mText}`);
+
+    return parts.join(' ');
 }

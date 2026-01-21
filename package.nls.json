@@ -29,5 +29,6 @@
     "antigravity.command.showSyncStats": "Show Sync Statistics",
     "antigravity.command.showQuota": "Show Antigravity Quota",
     "antigravity.command.syncManageAuthorizedMachines": "Manage Authorized Deletion Machines",
-    "antigravity.config.authorizedRemoteDeleteMachineIds": "List of machine IDs authorized to delete conversations from other devices. Use the [Manage Authorized Machines](command:antigravity-storage-manager.syncManageAuthorizedMachines) command to select from your Google Drive history."
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "Authorized machine IDs for remote deletion (links to [Sync Menu](command:antigravity-storage-manager.syncManageAuthorizedMachines))",
+    "antigravity.config.useMetadataCache": "Use cached metadata for conversation status badges (faster, reduces Google Drive requests)"
 }

@@ -29,5 +29,6 @@
     "antigravity.command.showSyncStats": "Pokaż statystyki synchronizacji",
     "antigravity.command.showQuota": "Pokaż limit Antigravity",
     "antigravity.command.syncManageAuthorizedMachines": "Zarządzaj autoryzowanymi urządzeniami do usuwania",
-    "antigravity.config.authorizedRemoteDeleteMachineIds": "Lista identyfikatorów maszyn upoważnionych do usuwania rozmów z innych urządzeń. Użyj polecenia [Zarządzaj autoryzowanymi urządzeniami](command:antigravity-storage-manager.syncManageAuthorizedMachines), aby wybrać z historii Google Drive."
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "Lista identyfikatorów maszyn upoważnionych do usuwania rozmów z innych urządzeń. Użyj polecenia [Zarządzaj autoryzowanymi urządzeniami](command:antigravity-storage-manager.syncManageAuthorizedMachines), aby wybrać z historii Google Drive.",
+    "antigravity.config.useMetadataCache": "Użyj zapisanych w pamięci podręcznej metadanych dla odznak statusu rozmowy (szybciej, zmniejsza liczbę żądań do Google Drive)"
 }

@@ -28,6 +28,7 @@ export interface Machine {
     id: string;
     name: string;
     lastSync: string;
+    createdAt?: string;
 }
 
 export interface FileHashInfo {
@@ -55,6 +56,11 @@ export interface MachineState {
     machineId: string;
     machineName: string;
     lastSync: string;
+    syncCount?: number;
+    quota?: {
+        used: number;
+        limit: number;
+    };
     conversationStates: {
         id: string;
         localHash: string;

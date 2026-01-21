@@ -29,5 +29,6 @@
     "antigravity.command.showSyncStats": "同期統計を表示",
     "antigravity.command.showQuota": "Antigravityクォータを表示",
     "antigravity.command.syncManageAuthorizedMachines": "認可された削除マシンの管理",
-    "antigravity.config.authorizedRemoteDeleteMachineIds": "他のデバイスから会話を削除する権限を持つマシンIDのリスト。Google Driveの履歴から選択するには、[許可されたマシンの管理](command:antigravity-storage-manager.syncManageAuthorizedMachines)コマンドを使用してください。"
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "他のデバイスから会話を削除する権限を持つマシンIDのリスト。Google Driveの履歴から選択するには、[許可されたマシンの管理](command:antigravity-storage-manager.syncManageAuthorizedMachines)コマンドを使用してください。",
+    "antigravity.config.useMetadataCache": "会話ステータスバッジにキャッシュされたメタデータを使用する（高速化、Google Driveへのリクエスト削減）"
 }

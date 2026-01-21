@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { QuotaSnapshot } from './types';
-import { getModelAbbreviation, formatResetTime, drawProgressBar } from './utils';
+import { getModelAbbreviation, formatResetTime, drawProgressBar, formatDuration as formatDurationCommon } from './utils';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaUsageTracker } from './quotaUsageTracker';
 
@@ -42,7 +42,18 @@ export class QuotaStatusBar {
                 }
 
                 const abbrev = getModelAbbreviation(m.label);
-                parts.push(`${statusIcon} ${abbrev}: ${pct.toFixed(0)}%`);
+                let text = `${statusIcon} ${abbrev}: ${pct.toFixed(0)}%`;
+
+                if ((m.isExhausted || pct === 0) && m.resetTime) {
+                    const now = new Date();
+                    const reset = new Date(m.resetTime);
+                    const msUntilReset = reset.getTime() - now.getTime();
+                    if (msUntilReset > 0) {
+                        text += ` (${this.formatDuration(msUntilReset)})`;
+                    }
+                }
+
+                parts.push(text);
             }
             this.item.text = parts.join('  ');
 
@@ -74,10 +85,7 @@ export class QuotaStatusBar {
                 // Add Speed / Estimation
                 if (this.lastTracker) {
                     const est = this.lastTracker.getEstimation(m.modelId);
-                    if (m.isExhausted || pct === 0) {
-                        // Quota exhausted - show 0 remaining time
-                        md.appendMarkdown(`- ${lm.t('Estimated Remaining Time')}: 0\n`);
-                    } else if (est && est.speedPerHour > 0.1) {
+                    if (!(m.isExhausted || pct === 0) && est && est.speedPerHour > 0.1) {
                         md.appendMarkdown(`- ${lm.t('Speed')}: ~${est.speedPerHour.toFixed(1)}%${lm.t('/h')}\n`);
                         if (est.estimatedTimeRemainingMs) {
                             md.appendMarkdown(`- ${lm.t('Estimated Remaining Time')}: ~${this.formatDuration(est.estimatedTimeRemainingMs)}\n`);
@@ -102,15 +110,19 @@ export class QuotaStatusBar {
                             md.appendMarkdown(`- ${lm.t('Resets')}: ${formatResetTime(m.resetTime)}\n`);
                         }
 
-                        // Visual Scale for Pro and Ultra
-                        if (m.label.includes('Pro') || m.label.includes('Ultra')) {
-                            // Assume 24h cycle for Pro, 4h for Ultra (adjust if detailed specs confirm otherwise)
-                            const cycleDuration = m.label.includes('Ultra') ? 4 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+                        // Visual Scale for Pro and Ultra models
+                        const isHighTier = m.label.includes('Pro') || m.label.includes('Ultra') || m.label.includes('Thinking') || m.label.includes('Opus');
+                        if (isHighTier) {
+                            // Heuristic for cycle duration
+                            let cycleDuration = 24 * 60 * 60 * 1000; // Default 24h
+                            if (m.label.includes('Ultra') || m.label.includes('Opus') || m.label.includes('Thinking')) {
+                                cycleDuration = 6 * 60 * 60 * 1000; // 6h cycle
+                            } else if (m.label.includes('Pro')) {
+                                cycleDuration = 8 * 60 * 60 * 1000; // 8h cycle
+                            }
+
                             const progress = Math.max(0, Math.min(1, 1 - (msUntilReset / cycleDuration)));
-                            const bars = 10;
-                            const filled = Math.round(progress * bars);
-                            const empty = bars - filled;
-                            const progressBar = '█'.repeat(filled) + '░'.repeat(empty);
+                            const progressBar = drawProgressBar(progress * 100);
 
                             const cycleText = lm.t('Cycle');
                             const leftText = lm.t('left');
@@ -208,16 +220,7 @@ export class QuotaStatusBar {
     }
 
     private formatDuration(ms: number): string {
-        const h = Math.floor(ms / (1000 * 60 * 60));
-        const m = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-
-        const hText = LocalizationManager.getInstance().t('h');
-        const mText = LocalizationManager.getInstance().t('m');
-
-        if (h > 0) {
-            return `${h}${hText} ${m}${mText}`;
-        }
-        return `${m}${mText}`;
+        return formatDurationCommon(ms);
     }
 
     public dispose(): void {

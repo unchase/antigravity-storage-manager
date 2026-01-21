@@ -1,4 +1,7 @@
 import { LocalizationManager } from "../l10n/localizationManager";
+import { formatDuration } from "../utils";
+
+export { formatDuration };
 
 /**
  * Generates an ASCII progress bar.

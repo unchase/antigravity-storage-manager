@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Securely sync Antigravity history with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.</strong><br>
+  <strong>Securely sync Antigravity Conversations with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.</strong><br>
 </p>
 
 <p align="center">
@@ -46,7 +46,7 @@ If you find this extension useful, consider supporting the development:
 - ☁️ **Google Drive Sync** — Automatically sync conversations between devices with end-to-end encryption.
 - ⚡ **Parallel Per-File Sync** — Fast differential sync with parallel processing and hash caching.
 - 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
-- 📊 **Interactive Statistics** — Dashboard with sortable tables, visual analytics, and machine management.
+- 📊 **Devices Dashboard** — Interactive dashboard with session grouping, online status indicators, and machine management.
 - 🌍 **Global Localization** — Native support for **16 languages** (English, Russian, Chinese, Japanese, Korean, German, and more).
 - 📉 **Advanced Quota Dashboard** — Real-time tracking with consumption speed, remaining time estimates, and visual progress bars.
 - 🚦 **Smart Status Indicators** — Colored icons (🟢/🟡/🟠/🔴) and visual scales `[██░░]` to track quota and sync health at a glance.
@@ -85,14 +85,16 @@ Keep your conversations synchronized across multiple machines using your Google 
 ### Manage Sync
 - Click the **AG Sync** button in the status bar to open the menu.
 - **Status Bar Tooltip**: Hover over "AG Sync" to see your Last Sync time and session Sync Count.
-- **Sync Statistics**: Run `Antigravity Storage: Show Statistics` (or `Ctrl+Alt+I`) to view the interactive dashboard:
+- **Devices Dashboard**: Run `Antigravity Storage: Show Statistics` (or `Ctrl+Alt+I`) to view the interactive dashboard:
+    - **Connected Devices**: Visualize sessions grouped by machine (e.g., "Home PC").
+    - **Status Indicators**: See which sessions are **Online** (Green) or **Offline** (Red) based on recent activity.
+    - **Quota Tracking**: Monitor quota usage (Credits/Limits) for each active session.
     - **Manage Conversations**: Rename or Delete conversations directly from the list.
     - **Selective Sync**: Manually **Upload** (Local Only) or **Download** (Remote Only) individual conversations.
-    - **View Details**: Click on file sizes to see individual file breakdowns (scrollable). Hover over badges to see sync details.
     - **Visual Analytics**: Interactive pie charts showing sync coverage (Local vs Synced, Remote vs Synced).
-    - **Machine Stats**: View "Uploads" and "Downloads" per machine, including total **data volume** (MB).
-      - **Manage Machines**: Remove stale machines from the list using the **Delete (🗑️)** button.
-      - **Force Sync**: Proactively push a sync signal to other machines with the **Push (🔄)** button (requires target machine to process signals).
+    - **Machine Management**:
+      - **Delete (🗑️)**: Remove stale machines and their sessions.
+      - **Force Push (🔄)**: Send a sync signal to other devices.
     - **Real-time Data**: Use the **Refresh Data (🔄)** button to reload statistics immediately.
 - **Status Bar**: The **AG Sync** icon updates dynamically (☁️ Cloud, 🔄 Spinning, ⚠️ Error, ✅ Check) to reflect the current state.
 - **Shortcuts**: Default hotkeys are provided for common actions (e.g., `Ctrl+Alt+S` for Sync Now) and are displayed in the menu.
@@ -205,6 +207,28 @@ You can customize these shortcuts to fit your workflow:
 2. Type `antigravity` in the search bar.
 3. Right-click on any command (e.g., `Antigravity Storage: Import Conversations`) and select **Change Keybinding**.
 
+
+## Development
+
+### Testing
+
+Run all unit tests:
+```bash
+npm run test:unit
+```
+
+Run localization tests (validates all `package.nls.*.json` and `l10n/bundle.l10n.*.json` files):
+```bash
+npm run test:localization
+```
+
+Or run specific tests:
+```bash
+npm run test:nls    # Test package.nls.*.json files only
+npm run test:l10n   # Test l10n/bundle.l10n.*.json files only
+```
+
+---
 
 ## Contributing
 
