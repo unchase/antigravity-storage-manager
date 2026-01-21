@@ -176,5 +176,12 @@
     "Use Space to select/deselect, Enter to confirm": "スペースで選択/解除、Enter で確定",
     "by": "",
     "Synced on {0}": "{0} 台のデバイスで同期済み",
-    "Created on another machine": "別のマシンで作成"
+    "Created on another machine": "別のマシンで作成",
+    "Language changed.": "言語が変更されました。",
+    "Don't ask again": "今後表示しない",
+    "Connect to existing session?": "既存のセッションに接続しますか？",
+    "Create New Session": "新しいセッションを作成",
+    "Select a previously connected device to resume sync:": "同期を再開するには、以前に接続されたデバイスを選択してください：",
+    "Resume: {0}": "再開: {0}",
+    "Last active: {0}": "最終アクティブ: {0}"
 }

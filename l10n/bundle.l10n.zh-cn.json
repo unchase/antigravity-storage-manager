@@ -176,5 +176,12 @@
     "Use Space to select/deselect, Enter to confirm": "按空格选择/取消，Enter 确认",
     "by": "",
     "Synced on {0}": "已在 {0} 台设备上同步",
-    "Created on another machine": "在其他设备上创建"
+    "Created on another machine": "在其他设备上创建",
+    "Language changed.": "语言已更改。",
+    "Don't ask again": "不再询问",
+    "Connect to existing session?": "连接到现有会话？",
+    "Create New Session": "创建新会话",
+    "Select a previously connected device to resume sync:": "选择以前连接的设备以恢复同步：",
+    "Resume: {0}": "恢复：{0}",
+    "Last active: {0}": "上次活动：{0}"
 }

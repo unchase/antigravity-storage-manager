@@ -176,5 +176,12 @@
     "Use Space to select/deselect, Enter to confirm": "مسافة للتحديد، Enter للتأكيد",
     "by": "بواسطة",
     "Synced on {0}": "مزامن على {0} أجهزة",
-    "Created on another machine": "أنشئ على جهاز آخر"
+    "Created on another machine": "أنشئ على جهاز آخر",
+    "Language changed.": "تم تغيير اللغة.",
+    "Don't ask again": "لا تسأل مرة أخرى",
+    "Connect to existing session?": "الاتصال بجلسة موجودة؟",
+    "Create New Session": "إنشاء جلسة جديدة",
+    "Select a previously connected device to resume sync:": "حدد جهازًا متصلاً مسبقًا لاستئناف المزامنة:",
+    "Resume: {0}": "استئناف: {0}",
+    "Last active: {0}": "آخر نشاط: {0}"
 }

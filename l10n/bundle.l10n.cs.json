@@ -176,5 +176,12 @@
     "Use Space to select/deselect, Enter to confirm": "Mezerník pro výběr, Enter pro potvrzení",
     "by": "",
     "Synced on {0}": "Synchronizováno na {0} zařízeních",
-    "Created on another machine": "Vytvořeno na jiném stroji"
+    "Created on another machine": "Vytvořeno na jiném stroji",
+    "Language changed.": "Jazyk změněn.",
+    "Don't ask again": "Už se neptat",
+    "Connect to existing session?": "Připojit k existující relaci?",
+    "Create New Session": "Vytvořit novou relaci",
+    "Select a dříve připojené zařízení pro obnovení synchronizace:": "Vyberte dříve připojené zařízení pro obnovení synchronizace:",
+    "Resume: {0}": "Obnovit: {0}",
+    "Last active: {0}": "Poslední aktivita: {0}"
 }

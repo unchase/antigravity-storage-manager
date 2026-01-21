@@ -176,5 +176,12 @@
     "Use Space to select/deselect, Enter to confirm": "스페이스로 선택/해제, Enter로 확인",
     "by": "",
     "Synced on {0}": "{0}대의 기기에서 동기됨",
-    "Created on another machine": "다른 기기에서 생성됨"
+    "Created on another machine": "다른 기기에서 생성됨",
+    "Language changed.": "언어가 변경되었습니다.",
+    "Don't ask again": "다시 묻지 않음",
+    "Connect to existing session?": "기존 세션에 연결하시겠습니까?",
+    "Create New Session": "새 세션 만들기",
+    "Select a previously connected device to resume sync:": "동기화를 재개할 이전에 연결된 기기를 선택하세요:",
+    "Resume: {0}": "재개: {0}",
+    "Last active: {0}": "마지막 활동: {0}"
 }

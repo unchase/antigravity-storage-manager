@@ -176,5 +176,12 @@
     "Use Space to select/deselect, Enter to confirm": "Espacio para seleccionar, Enter para confirmar",
     "by": "por",
     "Synced on {0}": "Sincronizado en {0} dispositivos",
-    "Created on another machine": "Creado en otra máquina"
+    "Created on another machine": "Creado en otra máquina",
+    "Language changed.": "Idioma cambiado.",
+    "Don't ask again": "No volver a preguntar",
+    "Connect to existing session?": "¿Conectar a sesión existente?",
+    "Create New Session": "Crear nueva sesión",
+    "Select a previously connected device to resume sync:": "Seleccione un dispositivo conectado previamente para reanudar la sincronización:",
+    "Resume: {0}": "Reanudar: {0}",
+    "Last active: {0}": "Última actividad: {0}"
 }

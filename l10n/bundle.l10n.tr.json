@@ -176,5 +176,12 @@
     "Use Space to select/deselect, Enter to confirm": "Boşluk ile seçin, Enter ile onayla",
     "by": "",
     "Synced on {0}": "{0} cihazda senkronize edildi",
-    "Created on another machine": "Başka bir makinede oluşturuldu"
+    "Created on another machine": "Başka bir makinede oluşturuldu",
+    "Language changed.": "Dil değiştirildi.",
+    "Don't ask again": "Tekrar sorma",
+    "Connect to existing session?": "Mevcut oturuma bağlan?",
+    "Create New Session": "Yeni Oturum Oluştur",
+    "Select a previously connected device to resume sync:": "Senkronizasyona devam etmek için daha önce bağlanmış bir cihaz seçin:",
+    "Resume: {0}": "Devam Et: {0}",
+    "Last active: {0}": "Son etkinlik: {0}"
 }

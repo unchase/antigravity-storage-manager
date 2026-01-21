@@ -176,5 +176,12 @@
     "Use Space to select/deselect, Enter to confirm": "Nhấn Space để chọn/bỏ chọn, Enter để xác nhận",
     "by": "bởi",
     "Synced on {0}": "Đã đồng bộ trên {0} thiết bị",
-    "Created on another machine": "Tạo trên máy khác"
+    "Created on another machine": "Tạo trên máy khác",
+    "Language changed.": "Ngôn ngữ đã đổi.",
+    "Don't ask again": "Không hỏi lại",
+    "Connect to existing session?": "Kết nối với phiên hiện có?",
+    "Create New Session": "Tạo phiên mới",
+    "Select a previously connected device to resume sync:": "Chọn thiết bị đã kết nối trước đó để tiếp tục đồng bộ:",
+    "Resume: {0}": "Tiếp tục: {0}",
+    "Last active: {0}": "Hoạt động lần cuối: {0}"
 }

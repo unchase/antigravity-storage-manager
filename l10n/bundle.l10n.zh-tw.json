@@ -176,5 +176,12 @@
     "Use Space to select/deselect, Enter to confirm": "按空格選擇/取消，Enter 確認",
     "by": "",
     "Synced on {0}": "已在 {0} 台設備上同步",
-    "Created on another machine": "在其他設備上創建"
+    "Created on another machine": "在其他設備上創建",
+    "Language changed.": "語言已變更。",
+    "Don't ask again": "不再詢問",
+    "Connect to existing session?": "連線到現有工作階段？",
+    "Create New Session": "建立新工作階段",
+    "Select a previously connected device to resume sync:": "選取先前連線的裝置以繼續同步：",
+    "Resume: {0}": "繼續：{0}",
+    "Last active: {0}": "上次活動：{0}"
 }
