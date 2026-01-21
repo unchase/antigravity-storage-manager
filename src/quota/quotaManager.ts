@@ -204,57 +204,80 @@ export class QuotaManager {
 
             // Models
             if (snapshot.models && snapshot.models.length > 0) {
-                items.push({
-                    label: lm.t('Models (Click to Pin/Unpin)'),
-                    kind: vscode.QuickPickItemKind.Separator
-                });
+                // Group 1: Claude & GPT OSS
+                // Group 2: Gemini 3 Pro (High/Low)
+                // Group 3: Gemini 3 Flash
 
+                const models = [...snapshot.models];
                 const pinned = this.statusBar.getPinnedModels();
 
-                // Sort models
-                const models = [...snapshot.models];
-                models.sort((a, b) => compareModels(a, b, this.sortMethod));
+                const groupClaudeGpt: any[] = [];
+                const groupGeminiPro: any[] = [];
+                const groupGeminiFlash: any[] = [];
 
-                for (const model of models) {
-                    const isPinned = pinned.includes(model.modelId) || pinned.includes(model.label);
-                    const pinIcon = isPinned ? '$(pin)' : '$(circle-outline)';
-                    const pct = model.remainingPercentage ?? 0;
-                    let status = '$(check)';
-
-                    if (model.isExhausted || pct === 0) {
-                        status = '$(error)';
-                    } else if (pct < 30) {
-                        status = '$(flame)';
-                    } else if (pct < 50) {
-                        status = '$(warning)';
+                for (const m of models) {
+                    if (m.label.includes('Gemini 3 Pro')) {
+                        groupGeminiPro.push(m);
+                    } else if (m.label.includes('Gemini 3 Flash')) {
+                        groupGeminiFlash.push(m);
+                    } else {
+                        groupClaudeGpt.push(m);
                     }
+                }
 
-                    const bar = drawProgressBar(pct);
-
-                    let desc = `${bar} ${pct.toFixed(1)}%`;
-                    if (model.timeUntilReset > 0) {
-                        desc += ` • ${lm.t('Resets')} ${formatResetTime(model.resetTime)}`;
-                    }
-
-                    // Show detailed functionality usage if available, otherwise fallback to Model ID
-                    let details = '';
-                    if (model.requestLimit && model.requestUsage !== undefined) {
-                        details += `${lm.t('Requests')}: ${model.requestUsage} / ${model.requestLimit}  `;
-                    }
-                    if (model.tokenLimit && model.tokenUsage !== undefined) {
-                        details += `${lm.t('Tokens')}: ${model.tokenUsage} / ${model.tokenLimit}`;
-                    }
-
-                    if (!details.trim()) {
-                        // details = ""; // Leave empty if no stats
-                    }
+                // Helper to add items for a group
+                const addGroup = (groupName: string, groupModels: any[]) => {
+                    if (groupModels.length === 0) return;
 
                     items.push({
-                        label: `${pinIcon} ${status} ${model.label}`,
-                        description: desc,
-                        detail: details // Used to act as ID in selection logic BUT we need to handle that carefully
+                        label: groupName,
+                        kind: vscode.QuickPickItemKind.Separator
                     });
-                }
+
+                    groupModels.sort((a, b) => compareModels(a, b, this.sortMethod));
+
+                    for (const model of groupModels) {
+                        const isPinned = pinned.includes(model.modelId) || pinned.includes(model.label);
+                        const pinIcon = isPinned ? '$(pin)' : '$(circle-outline)';
+                        const pct = model.remainingPercentage ?? 0;
+                        let status = '$(check)';
+
+                        if (model.isExhausted || pct === 0) {
+                            status = '$(error)';
+                        } else if (pct < 30) {
+                            status = '$(flame)';
+                        } else if (pct < 50) {
+                            status = '$(warning)';
+                        }
+
+                        const bar = drawProgressBar(pct);
+
+                        let desc = `${bar} ${pct.toFixed(1)}%`;
+                        if (model.timeUntilReset > 0) {
+                            desc += ` • ${lm.t('Resets')} ${formatResetTime(model.resetTime)}`;
+                        }
+
+                        // Show detailed functionality usage if available, otherwise fallback to Model ID
+                        let details = '';
+                        if (model.requestLimit && model.requestUsage !== undefined) {
+                            details += `${lm.t('Requests')}: ${model.requestUsage} / ${model.requestLimit}  `;
+                        }
+                        if (model.tokenLimit && model.tokenUsage !== undefined) {
+                            details += `${lm.t('Tokens')}: ${model.tokenUsage} / ${model.tokenLimit}`;
+                        }
+
+                        items.push({
+                            label: `${pinIcon} ${status} ${model.label}`,
+                            description: desc,
+                            detail: details
+                        });
+                    }
+                };
+
+                // Add groups in specific order
+                addGroup('Claude & GPT-OSS', groupClaudeGpt);
+                addGroup('Gemini 3 Pro', groupGeminiPro);
+                addGroup('Gemini 3 Flash', groupGeminiFlash);
             }
             picker.items = items;
         };
