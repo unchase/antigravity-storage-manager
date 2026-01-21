@@ -1463,7 +1463,7 @@ export class SyncManager {
             id: c.id,
             label: c.label,
             description: c.description,
-            detail: c.detail || `Modified ${formatRelativeTime(c.lastModified)}`,
+            detail: c.detail || `${vscode.l10n.t('Modified')} ${formatRelativeTime(c.lastModified)}`,
             picked: currentSelection === 'all' ||
                 (Array.isArray(currentSelection) && currentSelection.includes(c.id))
         }));
