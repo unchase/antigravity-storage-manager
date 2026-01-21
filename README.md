@@ -64,9 +64,12 @@ Keep your conversations synchronized across multiple machines using your Google 
 
 ### Setup Sync
 1. Run command `Antigravity Storage: Setup Google Drive Sync`
-2. **Create a Master Password**: This password is used to encrypt your data. You must use the same password on all machines.
-3. **Authenticate**: Log in with your Google account.
-4. **Done!** Conversations will automatically sync in the background.
+2. **Authentication**: Log in with your Google account.
+3. **Session Setup**:
+    - **New Session**: Create a new device entry (e.g., "Work Laptop").
+    - **Resume Session**: Reconnect to an existing device ID from the list to avoid duplicates.
+4. **Master Password**: Create or confirm your master password to encrypt your data.
+5. **Done!** Conversations will automatically sync in the background.
 
 👉 **[Detailed Setup Guide](SYNC_SETUP.md)**: Includes step-by-step instructions for configuring Google Cloud Console, adding test users, and troubleshooting.
 

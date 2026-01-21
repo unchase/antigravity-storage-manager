@@ -183,5 +183,6 @@
     "Create New Session": "إنشاء جلسة جديدة",
     "Select a previously connected device to resume sync:": "حدد جهازًا متصلاً مسبقًا لاستئناف المزامنة:",
     "Resume: {0}": "استئناف: {0}",
-    "Last active: {0}": "آخر نشاط: {0}"
+    "Last active: {0}": "آخر نشاط: {0}",
+    "Last updated: {0}": "آخر تحديث: {0}"
 }

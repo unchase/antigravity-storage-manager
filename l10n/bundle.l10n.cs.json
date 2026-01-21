@@ -183,5 +183,6 @@
     "Create New Session": "Vytvořit novou relaci",
     "Select a dříve připojené zařízení pro obnovení synchronizace:": "Vyberte dříve připojené zařízení pro obnovení synchronizace:",
     "Resume: {0}": "Obnovit: {0}",
-    "Last active: {0}": "Poslední aktivita: {0}"
+    "Last active: {0}": "Poslední aktivita: {0}",
+    "Last updated: {0}": "Poslední aktualizace: {0}"
 }

@@ -183,5 +183,6 @@
     "Create New Session": "创建新会话",
     "Select a previously connected device to resume sync:": "选择以前连接的设备以恢复同步：",
     "Resume: {0}": "恢复：{0}",
-    "Last active: {0}": "上次活动：{0}"
+    "Last active: {0}": "上次活动：{0}",
+    "Last updated: {0}": "上次更新：{0}"
 }

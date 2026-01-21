@@ -183,5 +183,6 @@
     "Create New Session": "建立新工作階段",
     "Select a previously connected device to resume sync:": "選取先前連線的裝置以繼續同步：",
     "Resume: {0}": "繼續：{0}",
-    "Last active: {0}": "上次活動：{0}"
+    "Last active: {0}": "上次活動：{0}",
+    "Last updated: {0}": "上次更新：{0}"
 }

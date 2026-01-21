@@ -183,5 +183,6 @@
     "Create New Session": "새 세션 만들기",
     "Select a previously connected device to resume sync:": "동기화를 재개할 이전에 연결된 기기를 선택하세요:",
     "Resume: {0}": "재개: {0}",
-    "Last active: {0}": "마지막 활동: {0}"
+    "Last active: {0}": "마지막 활동: {0}",
+    "Last updated: {0}": "마지막 업데이트: {0}"
 }

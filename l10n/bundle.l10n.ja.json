@@ -183,5 +183,6 @@
     "Create New Session": "新しいセッションを作成",
     "Select a previously connected device to resume sync:": "同期を再開するには、以前に接続されたデバイスを選択してください：",
     "Resume: {0}": "再開: {0}",
-    "Last active: {0}": "最終アクティブ: {0}"
+    "Last active: {0}": "最終アクティブ: {0}",
+    "Last updated: {0}": "最終更新: {0}"
 }

@@ -183,5 +183,6 @@
     "Create New Session": "Tạo phiên mới",
     "Select a previously connected device to resume sync:": "Chọn thiết bị đã kết nối trước đó để tiếp tục đồng bộ:",
     "Resume: {0}": "Tiếp tục: {0}",
-    "Last active: {0}": "Hoạt động lần cuối: {0}"
+    "Last active: {0}": "Hoạt động lần cuối: {0}",
+    "Last updated: {0}": "Cập nhật lần cuối: {0}"
 }

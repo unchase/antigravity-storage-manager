@@ -183,5 +183,6 @@
     "Create New Session": "Crea nuova sessione",
     "Select a previously connected device to resume sync:": "Seleziona un dispositivo precedentemente connesso per riprendere la sincronizzazione:",
     "Resume: {0}": "Riprendi: {0}",
-    "Last active: {0}": "Ultima attività: {0}"
+    "Last active: {0}": "Ultima attività: {0}",
+    "Last updated: {0}": "Ultimo aggiornamento: {0}"
 }

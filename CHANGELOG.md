@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Smart Setup Prompt**: Warning style prompt with "Setup Sync" and "Cancel" buttons if sync is unconfigured.
 - **Enhanced List View**: Conversation list now displays the full creation time (date + time) instead of just relative time.
 - **Configuration Prompt**: Reload window prompt when language setting is changed to apply changes immediately.
+- **Localization**: Updated all language files (ar, cs, de, es, fr, it, ja, ko, pl, pt-br, tr, vi, zh-cn, zh-tw) with missing translations for new features.
 
 ## [0.7.0] - 2026-01-21
 ### Localization & Internationalization

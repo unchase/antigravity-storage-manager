@@ -215,5 +215,6 @@
     "Create New Session": "Create New Session",
     "Select a previously connected device to resume sync:": "Select a previously connected device to resume sync:",
     "Resume: {0}": "Resume: {0}",
-    "Last active: {0}": "Last active: {0}"
+    "Last active: {0}": "Last active: {0}",
+    "Last updated: {0}": "Last updated: {0}"
 }

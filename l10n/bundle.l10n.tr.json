@@ -183,5 +183,6 @@
     "Create New Session": "Yeni Oturum Oluştur",
     "Select a previously connected device to resume sync:": "Senkronizasyona devam etmek için daha önce bağlanmış bir cihaz seçin:",
     "Resume: {0}": "Devam Et: {0}",
-    "Last active: {0}": "Son etkinlik: {0}"
+    "Last active: {0}": "Son etkinlik: {0}",
+    "Last updated: {0}": "Son güncelleme: {0}"
 }

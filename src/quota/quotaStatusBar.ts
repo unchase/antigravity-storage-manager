@@ -144,6 +144,12 @@ export class QuotaStatusBar {
                 }
             }
 
+            // Last Update Time
+            if (snapshot.timestamp) {
+                const dateStr = formatResetTime(new Date(snapshot.timestamp));
+                md.appendMarkdown(`\n---\n${lm.t('Last updated: {0}', dateStr)}\n`);
+            }
+
             md.appendMarkdown(`\n🚀 [${lm.t('Show Dashboard')}](command:antigravity-storage-manager.showQuota)`);
 
             this.item.tooltip = md;

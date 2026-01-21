@@ -183,5 +183,6 @@
     "Create New Session": "Neue Sitzung erstellen",
     "Select a previously connected device to resume sync:": "Wählen Sie ein zuvor verbundenes Gerät, um die Synchronisierung fortzusetzen:",
     "Resume: {0}": "Fortsetzen: {0}",
-    "Last active: {0}": "Zuletzt aktiv: {0}"
+    "Last active: {0}": "Zuletzt aktiv: {0}",
+    "Last updated: {0}": "Zuletzt aktualisiert: {0}"
 }
