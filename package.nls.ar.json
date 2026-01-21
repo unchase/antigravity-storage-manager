@@ -29,5 +29,5 @@
     "antigravity.command.showSyncStats": "عرض إحصائيات المزامنة",
     "antigravity.command.showQuota": "عرض حصة Antigravity",
     "antigravity.command.syncManageAuthorizedMachines": "إدارة أجهزة الحذف المعتمدة",
-    "antigravity.config.authorizedRemoteDeleteMachineIds": "قائمة معرفات الأجهزة المصرح لها بحذف المحادثات من الأجهزة الأخرى."
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "قائمة معرفات الأجهزة المصرح لها بحذف المحادثات من الأجهزة الأخرى. استخدم أمر [إدارة الأجهزة المعتمدة](command:antigravity-storage-manager.syncManageAuthorizedMachines) للاختيار من سجل Google Drive."
 }

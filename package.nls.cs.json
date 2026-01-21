@@ -29,5 +29,5 @@
     "antigravity.command.showSyncStats": "Zobrazit statistiky synchronizace",
     "antigravity.command.showQuota": "Zobrazit kvótu Antigravity",
     "antigravity.command.syncManageAuthorizedMachines": "Spravovat autorizovaná zařízení pro mazání",
-    "antigravity.config.authorizedRemoteDeleteMachineIds": "Seznam ID zařízení oprávněných mazat konverzace z jiných zařízení."
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "Seznam ID zařízení oprávněných mazat konverzace z jiných zařízení. Použijte příkaz [Spravovat autorizovaná zařízení](command:antigravity-storage-manager.syncManageAuthorizedMachines) pro výběr z historie Google Drive."
 }

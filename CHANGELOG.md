@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Remote Deletion**: Authorized machines can now delete conversations created by other machines directly from the Sync Dashboard.
 - **Authorization**: New "Manage Authorized Deletion Machines" command to control which devices have delete permissions.
 - **UI**: Added "Purge" button (🧹) to the Sync Dashboard for authorized machines.
+- **Easier Configuration**: Added clickable command link in the `Authorized Remote Delete Machine Ids` setting description to quickly open the management picker.
 
 ### Localization Improvements
 - **Persistent Sync Sessions**: When setting up sync, users can now choose to reconnect to a previously used device ID (resume session) or create a new one. This prevents duplicate device entries in the dashboard.
@@ -17,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced List View**: Conversation list now displays the full creation time (date + time) instead of just relative time.
 - **Configuration Prompt**: Reload window prompt when language setting is changed to apply changes immediately.
 - **Quota Grouping**: Organized quota usage menu into logical groups (Claude/GPT, Gemini Pro, Gemini Flash) for better readability.
-- **Localization**: Fully translated extension into 14 languages (Arabic, Czech, German, Spanish, French, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Turkish, Vietnamese, Chinese Simplified, Chinese Traditional). All UI elements, commands, and configuration descriptions are now native.
+- **Export Dialog**: Fixed "Created" label localization and ensured dates are formatted according to the selected extension language (not system locale).
+- **Localization**: Fully translated extension into 16 languages (Arabic, Czech, German, Spanish, French, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Turkish, Vietnamese, Chinese Simplified, Chinese Traditional, English, Russian). All UI elements, commands, and configuration descriptions are now native.
 
 ## [0.7.0] - 2026-01-21
 ### Localization & Internationalization

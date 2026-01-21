@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { LocalizationManager } from './l10n/localizationManager';
 
 export interface ConversationItem extends vscode.QuickPickItem {
     id: string;
@@ -68,7 +69,7 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                 return {
                     label: label,
                     description: id,
-                    detail: `${vscode.l10n.t('Created')}: ${stats.birthtime.toLocaleString()}`,
+                    detail: `${LocalizationManager.getInstance().t('Created')}: ${LocalizationManager.getInstance().formatDateTime(stats.birthtime)}`,
                     id: id,
                     lastModified: stats.mtime
                 } as ConversationItem;

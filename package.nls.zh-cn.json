@@ -29,5 +29,5 @@
     "antigravity.command.showSyncStats": "显示同步统计",
     "antigravity.command.showQuota": "显示 Antigravity 配额",
     "antigravity.command.syncManageAuthorizedMachines": "管理授权删除设备",
-    "antigravity.config.authorizedRemoteDeleteMachineIds": "授权从其他设备删除对话的机器 ID 列表。"
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "授权从其他设备删除对话的机器 ID 列表。使用 [管理授权设备](command:antigravity-storage-manager.syncManageAuthorizedMachines) 命令从 Google Drive 历史记录中选择。"
 }

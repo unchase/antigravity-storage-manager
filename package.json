@@ -362,7 +362,7 @@
                         "type": "string"
                     },
                     "default": [],
-                    "description": "%antigravity.config.authorizedRemoteDeleteMachineIds%"
+                    "markdownDescription": "%antigravity.config.authorizedRemoteDeleteMachineIds%"
                 }
             }
         },

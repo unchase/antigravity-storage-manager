@@ -29,5 +29,5 @@
     "antigravity.command.showSyncStats": "Hiển thị thống kê đồng bộ hóa",
     "antigravity.command.showQuota": "Hiển thị hạn ngạch Antigravity",
     "antigravity.command.syncManageAuthorizedMachines": "Quản lý các máy được ủy quyền xóa",
-    "antigravity.config.authorizedRemoteDeleteMachineIds": "Danh sách ID máy được ủy quyền xóa cuộc trò chuyện từ các thiết bị khác."
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "Danh sách ID máy được ủy quyền xóa cuộc trò chuyện từ các thiết bị khác. Sử dụng lệnh [Quản lý các máy được ủy quyền](command:antigravity-storage-manager.syncManageAuthorizedMachines) để chọn từ lịch sử Google Drive của bạn."
 }

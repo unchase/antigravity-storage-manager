@@ -29,5 +29,5 @@
     "antigravity.command.showSyncStats": "Senkronizasyon İstatistiklerini Göster",
     "antigravity.command.showQuota": "Antigravity Kotasını Göster",
     "antigravity.command.syncManageAuthorizedMachines": "Yetkili Silme Makinelerini Yönet",
-    "antigravity.config.authorizedRemoteDeleteMachineIds": "Diğer cihazlardan görüşmeleri silmeye yetkili makine kimlikleri listesi."
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "Diğer cihazlardan görüşmeleri silmeye yetkili makine kimlikleri listesi. Google Drive geçmişinizden seçim yapmak için [Yetkili Makineleri Yönet](command:antigravity-storage-manager.syncManageAuthorizedMachines) komutunu kullanın."
 }

@@ -29,5 +29,5 @@
     "antigravity.command.showSyncStats": "Показать статистику синхронизации",
     "antigravity.command.showQuota": "Показать квоты Antigravity",
     "antigravity.command.syncManageAuthorizedMachines": "Управление устройствами, имеющими право удаления",
-    "antigravity.config.authorizedRemoteDeleteMachineIds": "Список ID устройств, которым разрешено удалять диалоги с других машин."
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "Список идентификаторов машин, уполномоченных удалять диалоги с других устройств. Используйте команду [Управление авторизованными устройствами](command:antigravity-storage-manager.syncManageAuthorizedMachines) для выбора из истории Google Drive."
 }
