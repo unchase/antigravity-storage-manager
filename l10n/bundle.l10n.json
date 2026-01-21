@@ -210,5 +210,10 @@
     "Synced on {0}": "Synced on {0} machines",
     "Created on another machine": "Created on another machine",
     "Language changed.": "Language changed.",
-    "Don't ask again": "Don't ask again"
+    "Don't ask again": "Don't ask again",
+    "Connect to existing session?": "Connect to existing session?",
+    "Create New Session": "Create New Session",
+    "Select a previously connected device to resume sync:": "Select a previously connected device to resume sync:",
+    "Resume: {0}": "Resume: {0}",
+    "Last active: {0}": "Last active: {0}"
 }

@@ -210,5 +210,10 @@
     "Synced on {0}": "Синхронизировано на {0} машинах",
     "Created on another machine": "Создано на другой машине",
     "Language changed.": "Язык изменён.",
-    "Don't ask again": "Больше не спрашивать"
+    "Don't ask again": "Больше не спрашивать",
+    "Connect to existing session?": "Подключиться к существующей сессии?",
+    "Create New Session": "Создать новую сессию",
+    "Select a previously connected device to resume sync:": "Выберите ранее подключенное устройство для возобновления синхронизации:",
+    "Resume: {0}": "Возобновить: {0}",
+    "Last active: {0}": "Активно: {0}"
 }

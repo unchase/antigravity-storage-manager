@@ -5,7 +5,7 @@ import * as os from 'os';
 
 import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
-import { GoogleDriveService, SyncManifest, SyncedConversation, MachineState, FileHashInfo } from './googleDrive';
+import { GoogleDriveService, SyncManifest, SyncedConversation, Machine, MachineState, FileHashInfo } from './googleDrive';
 import * as crypto from './crypto';
 import { LocalizationManager } from './l10n/localizationManager';
 import { formatRelativeTime, getConversationsAsync, limitConcurrency } from './utils';
@@ -25,8 +25,9 @@ export interface SyncConfig {
     lastSync: string | null;
     showStatusBar: boolean;
     silent: boolean;
-    masterPasswordHash: string; // Add this
 }
+
+
 
 export interface SyncResult {
     success: boolean;
@@ -739,6 +740,21 @@ export class SyncManager {
             manifest.conversations.push(entry);
         }
 
+        // Update machine info in manifest
+        if (!manifest.machines) manifest.machines = [];
+        const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
+        const machineInfo: Machine = {
+            id: this.config!.machineId,
+            name: this.config!.machineName,
+            lastSync: now
+        };
+
+        if (machineIdx >= 0) {
+            manifest.machines[machineIdx] = machineInfo;
+        } else {
+            manifest.machines.push(machineInfo);
+        }
+
         manifest.lastModified = now;
 
         const manifestJson = JSON.stringify(manifest, null, 2);
@@ -787,6 +803,21 @@ export class SyncManager {
             manifest.conversations[existingIdx] = entry;
         } else {
             manifest.conversations.push(entry);
+        }
+
+        // Update machine info in manifest
+        if (!manifest.machines) manifest.machines = [];
+        const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
+        const machineInfo: Machine = {
+            id: this.config!.machineId,
+            name: this.config!.machineName,
+            lastSync: now
+        };
+
+        if (machineIdx >= 0) {
+            manifest.machines[machineIdx] = machineInfo;
+        } else {
+            manifest.machines.push(machineInfo);
         }
 
         manifest.lastModified = now;
@@ -1204,7 +1235,6 @@ export class SyncManager {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             machineId: require('crypto').randomUUID(),
             machineName: machineName,
-            masterPasswordHash: 'temp', // We don't store hash yet, we verify against remote or create new
             lastSync: new Date().toISOString(),
             autoSync: true,
             syncInterval: 300000,
@@ -1224,13 +1254,104 @@ export class SyncManager {
             }, async (progress, token) => {
                 if (token.isCancellationRequested) throw new vscode.CancellationError();
 
+                // Match existing logic but inject session selection
                 this.reportProgress(progress, lm.t('Checking Google Drive folders...'));
                 await this.driveService.ensureSyncFolders();
 
-                // Try to get existing manifest
+                // Get encrypted manifest EARLY to check for existing sessions
                 this.reportProgress(progress, lm.t('Checking for existing backup...'));
-                if (token.isCancellationRequested) throw new vscode.CancellationError();
-                const manifest = await this.getDecryptedManifest();
+                let manifest = await this.getDecryptedManifest();
+
+                let machineId = require('crypto').randomUUID();
+                let machineName = os.hostname();
+
+                // Check for existing machines to resume session
+                if (manifest && manifest.machines && manifest.machines.length > 0) {
+                    const choices = [
+                        {
+                            label: `$(add) ${lm.t('Create New Session')}`,
+                            id: 'new',
+                            description: lm.t('Start fresh with a new device ID')
+                        }
+                    ];
+
+                    // Sort machines by last active (if available) or name
+                    const sortedMachines = [...manifest.machines].sort((a, b) => {
+                        const dateA = a.lastSync ? new Date(a.lastSync).getTime() : 0;
+                        const dateB = b.lastSync ? new Date(b.lastSync).getTime() : 0;
+                        return dateB - dateA;
+                    });
+
+                    choices.push({ label: '', id: 'sep', description: '' }); // Separator logic if needed, or just append
+
+                    for (const m of sortedMachines) {
+                        if (m.id && m.name) {
+                            choices.push({
+                                label: `$(device-desktop) ${lm.t('Resume: {0}', m.name)}`,
+                                id: m.id,
+                                description: m.lastSync ? lm.t('Last active: {0}', lm.formatDate(m.lastSync)) : m.id
+                            });
+                        }
+                    }
+
+                    // Remove separator if clean list
+                    const finalChoices = choices.filter(c => c.id !== 'sep');
+
+                    const selection = await vscode.window.showQuickPick(finalChoices, {
+                        title: lm.t('Connect to existing session?'),
+                        placeHolder: lm.t('Select a previously connected device to resume sync:'),
+                        ignoreFocusOut: true
+                    });
+
+                    if (selection && selection.id !== 'new') {
+                        machineId = selection.id; // Reuse ID
+                        // Find original name
+                        const original = manifest.machines.find(m => m.id === machineId);
+                        if (original) {
+                            machineName = original.name;
+                        }
+
+                        // Optional: Allow renaming even when resuming
+                        const newName = await vscode.window.showInputBox({
+                            prompt: lm.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
+                            value: machineName,
+                            validateInput: (value) => value ? null : lm.t("Machine name cannot be empty")
+                        });
+                        if (newName) machineName = newName;
+
+                    } else {
+                        // NEW SESSION logic
+                        const inputName = await vscode.window.showInputBox({
+                            prompt: lm.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
+                            value: machineName,
+                            validateInput: (value) => value ? null : lm.t("Machine name cannot be empty")
+                        });
+                        if (inputName) machineName = inputName;
+                    }
+                } else {
+                    // No manifest or no machines -> Default New Session flow
+                    const inputName = await vscode.window.showInputBox({
+                        prompt: lm.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
+                        value: machineName,
+                        validateInput: (value) => value ? null : lm.t("Machine name cannot be empty")
+                    });
+                    if (inputName) machineName = inputName;
+                }
+
+                // Initialize config with determined ID and Name
+                this.config = {
+                    enabled: true,
+                    machineId: machineId,
+                    machineName: machineName,
+                    lastSync: new Date().toISOString(),
+                    autoSync: true,
+                    syncInterval: 300000,
+                    showStatusBar: true,
+                    selectedConversations: 'all',
+                    silent: false
+                };
+
+                await this.saveConfig();
 
                 if (manifest) {
                     vscode.window.showInformationMessage(lm.t("Found existing sync data! Joined as '{0}'.", this.config!.machineName));

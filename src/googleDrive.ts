@@ -21,6 +21,13 @@ export interface SyncManifest {
     passwordVerificationSalt: string; // Base64 encoded salt for password verification
     passwordVerificationHash: string; // Hash to verify correct password
     conversations: SyncedConversation[];
+    machines?: Machine[];
+}
+
+export interface Machine {
+    id: string;
+    name: string;
+    lastSync: string;
 }
 
 export interface FileHashInfo {

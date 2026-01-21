@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.2] - 2026-01-21
 ### Localization Improvements
+- **Persistent Sync Sessions**: When setting up sync, users can now choose to reconnect to a previously used device ID (resume session) or create a new one. This prevents duplicate device entries in the dashboard.
 - **Smart Setup Prompt**: Warning style prompt with "Setup Sync" and "Cancel" buttons if sync is unconfigured.
 - **Enhanced List View**: Conversation list now displays the full creation time (date + time) instead of just relative time.
 - **Configuration Prompt**: Reload window prompt when language setting is changed to apply changes immediately.
