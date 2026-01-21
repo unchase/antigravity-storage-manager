@@ -1260,9 +1260,9 @@ export class SyncManager {
 
                 // Get encrypted manifest EARLY to check for existing sessions
                 this.reportProgress(progress, lm.t('Checking for existing backup...'));
-                let manifest = await this.getDecryptedManifest();
+                const manifest = await this.getDecryptedManifest();
 
-                let machineId = require('crypto').randomUUID();
+                let machineId = crypto.generateMachineId();
                 let machineName = os.hostname();
 
                 // Check for existing machines to resume session
@@ -1660,6 +1660,11 @@ export class SyncManager {
                         }
                         break;
                     }
+                    case 'deleteMachineConversations':
+                        if (message.id && message.name) {
+                            this.deleteRemoteConversationsForMachine(message.id, message.name);
+                        }
+                        return;
                     case 'deleteConversation': {
                         const confirm = await vscode.window.showWarningMessage(
                             LocalizationManager.getInstance().t('Are you sure you want to delete conversation "{0}"?', message.title || message.id),
@@ -1992,6 +1997,14 @@ export class SyncManager {
                 machineActions += `<button class="small-btn danger" style="margin-left: 5px;" onclick="vscode.postMessage({command: 'deleteMachine', id: '${m.fileId}', name: '${m.name}'})">🗑️</button>`;
                 // Add Force Sync button
                 machineActions += `<button class="small-btn primary" style="margin-left: 5px;" title="${lm.t('Trigger immediate synchronization')}" onclick="vscode.postMessage({command: 'forceRemoteSync', id: '${m.id}', name: '${m.name}'})">🔄 ${lm.t('Push')}</button>`;
+
+                // Add Purge Conversations Button if authorized
+                const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
+                const authorizedIds = config.get<string[]>('sync.authorizedRemoteDeleteMachineIds') || [];
+
+                if (authorizedIds.includes(data.currentMachineId)) {
+                    machineActions += `<button class="small-btn danger" style="margin-left: 5px;" title="${lm.t('Delete all conversations from this machine')}" onclick="vscode.postMessage({command: 'deleteMachineConversations', id: '${m.id}', name: '${m.name}'})">🧹</button>`;
+                }
             }
 
             return `
@@ -2356,6 +2369,155 @@ export class SyncManager {
         const s = (ms / 1000).toFixed(2);
         return `${s}${lm.t('s')}`;
     }
+
+    public async deleteRemoteConversationsForMachine(machineId: string, machineName: string): Promise<void> {
+        const confirm = await vscode.window.showWarningMessage(
+            LocalizationManager.getInstance().t('Delete all conversations created by {0} from Google Drive? This cannot be undone.', machineName),
+            { modal: true },
+            LocalizationManager.getInstance().t('Delete')
+        );
+
+        if (confirm !== LocalizationManager.getInstance().t('Delete')) return;
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: LocalizationManager.getInstance().t('Deleting conversations...'),
+            cancellable: false
+        }, async (_progress) => {
+            try {
+                if (!this.driveService) throw new Error('Drive service not initialized');
+
+                const encryptedManifest = await this.driveService.getManifest();
+                if (!encryptedManifest) throw new Error('Failed to load manifest');
+
+                if (!this.masterPassword) throw new Error('Master password not loaded');
+                const manifest = JSON.parse(crypto.decrypt(encryptedManifest, this.masterPassword).toString()) as SyncManifest;
+
+                const toDelete = manifest.conversations.filter(c => c.createdBy === machineId);
+
+                if (toDelete.length === 0) {
+                    vscode.window.showInformationMessage(LocalizationManager.getInstance().t('No conversations found for this machine.'));
+                    return;
+                }
+
+                // Delete files
+                const fileIds = toDelete.map(c => (c as any).fileId).filter((id: string) => !!id);
+
+                // Delete via fileId
+                for (const fid of fileIds) {
+                    try {
+                        await this.driveService.deleteFile(fid);
+                    } catch (e) { console.error('Failed to delete file', fid, e); }
+                }
+
+                // Fallback delete via conversation ID (zip)
+                const missingFileId = toDelete.filter(c => !c.fileId);
+                for (const c of missingFileId) {
+                    try {
+                        await this.driveService.deleteConversation(c.id);
+                    } catch (e) { console.error('Failed to delete conversation zip', c.id, e); }
+                }
+
+                // Update Manifest by removing these conversations
+                manifest.conversations = manifest.conversations.filter(c => c.createdBy !== machineId);
+                manifest.lastModified = new Date().toISOString();
+
+                // Encrypt and save
+                const encryptedNew = crypto.encrypt(Buffer.from(JSON.stringify(manifest), 'utf8'), this.masterPassword);
+                await this.driveService.updateManifest(encryptedNew);
+
+                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversations deleted.'));
+
+                // Refresh stats
+                this.showStatistics();
+
+            } catch (error: any) {
+                vscode.window.showErrorMessage(`${LocalizationManager.getInstance().t('Error')}: ${error.message}`);
+                // Also refresh stats in case of partial failure or to reset UI
+                this.showStatistics();
+            }
+        });
+    }
+
+    public async manageAuthorizedMachines(): Promise<void> {
+        if (!this.config?.machineId) {
+            vscode.window.showWarningMessage(LocalizationManager.getInstance().t('Sync is not configured. Run setup first.'));
+            return;
+        }
+
+        try {
+            if (!this.driveService) {
+                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Drive service not initialized'));
+                return;
+            }
+
+            const encryptedManifest = await this.driveService.getManifest();
+            let manifest: SyncManifest | null = null;
+            if (encryptedManifest && this.masterPassword) {
+                try {
+                    manifest = JSON.parse(crypto.decrypt(encryptedManifest, this.masterPassword).toString('utf8')) as SyncManifest;
+                } catch {
+                    vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to decrypt manifest.'));
+                    return;
+                }
+            }
+
+            if (!manifest) {
+                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to fetch manifest.'));
+                return;
+            }
+
+            const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
+            const currentAuthorized = config.get<string[]>('sync.authorizedRemoteDeleteMachineIds') || [];
+
+            // Collect all known machines
+            const machinesMap = new Map<string, string>();
+            // Add current machine
+            machinesMap.set(this.config.machineId, this.config.machineName || 'Current Machine');
+
+            // Add from manifest machines
+            if (manifest.machines) {
+                for (const m of manifest.machines) {
+                    machinesMap.set(m.id, m.name);
+                }
+            }
+            // Add from conversations override
+            for (const c of manifest.conversations) {
+                if (c.createdBy && !machinesMap.has(c.createdBy)) {
+                    machinesMap.set(c.createdBy, c.createdByName || 'Unknown Machine');
+                }
+            }
+
+            const items: vscode.QuickPickItem[] = [];
+            for (const [id, name] of machinesMap.entries()) {
+                const isAuth = currentAuthorized.includes(id);
+                // Mark current machine special?
+                const isCurrent = id === this.config.machineId;
+
+                items.push({
+                    label: name + (isCurrent ? ` (${LocalizationManager.getInstance().t('This Machine')})` : ''),
+                    description: id,
+                    picked: isAuth
+                });
+            }
+
+            // Show QuickPick
+            const selected = await vscode.window.showQuickPick(items, {
+                canPickMany: true,
+                placeHolder: LocalizationManager.getInstance().t('Select machines authorized to delete conversations from others'),
+                title: LocalizationManager.getInstance().t('Manage Authorized Deletion Machines')
+            });
+
+            if (selected) {
+                const newAuthorized = selected.map(i => i.description!);
+                await config.update('sync.authorizedRemoteDeleteMachineIds', newAuthorized, vscode.ConfigurationTarget.Global);
+                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Authorized machines updated.'));
+            }
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`${LocalizationManager.getInstance().t('Error')}: ${error.message}`);
+        }
+    }
+
 }
 
 

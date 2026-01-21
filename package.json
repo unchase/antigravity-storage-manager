@@ -103,6 +103,11 @@
                 "category": "%antigravity.submenu.label%"
             },
             {
+                "command": "antigravity-storage-manager.syncManageAuthorizedMachines",
+                "title": "%antigravity.command.syncManageAuthorizedMachines%",
+                "category": "%antigravity.submenu.label%"
+            },
+            {
                 "command": "antigravity-storage-manager.syncDisconnect",
                 "title": "%antigravity.command.syncDisconnect%",
                 "icon": "$(sign-out)",
@@ -148,6 +153,9 @@
                     "command": "antigravity-storage-manager.syncManage"
                 },
                 {
+                    "command": "antigravity-storage-manager.syncManageAuthorizedMachines"
+                },
+                {
                     "command": "antigravity-storage-manager.syncDisconnect"
                 },
                 {
@@ -180,6 +188,10 @@
                 },
                 {
                     "command": "antigravity-storage-manager.syncManage",
+                    "group": "3_sync@3"
+                },
+                {
+                    "command": "antigravity-storage-manager.syncManageAuthorizedMachines",
                     "group": "3_sync@3"
                 },
                 {
@@ -343,6 +355,14 @@
                     },
                     "default": [],
                     "description": "%antigravity.config.pinnedModels%"
+                },
+                "antigravity-storage-manager.sync.authorizedRemoteDeleteMachineIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "%antigravity.config.authorizedRemoteDeleteMachineIds%"
                 }
             }
         },

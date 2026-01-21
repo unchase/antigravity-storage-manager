@@ -6,11 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.7.2] - 2026-01-21
+### Remote Management
+- **Remote Deletion**: Authorized machines can now delete conversations created by other machines directly from the Sync Dashboard.
+- **Authorization**: New "Manage Authorized Deletion Machines" command to control which devices have delete permissions.
+- **UI**: Added "Purge" button (🧹) to the Sync Dashboard for authorized machines.
+
 ### Localization Improvements
 - **Persistent Sync Sessions**: When setting up sync, users can now choose to reconnect to a previously used device ID (resume session) or create a new one. This prevents duplicate device entries in the dashboard.
 - **Smart Setup Prompt**: Warning style prompt with "Setup Sync" and "Cancel" buttons if sync is unconfigured.
 - **Enhanced List View**: Conversation list now displays the full creation time (date + time) instead of just relative time.
 - **Configuration Prompt**: Reload window prompt when language setting is changed to apply changes immediately.
+- **Quota Grouping**: Organized quota usage menu into logical groups (Claude/GPT, Gemini Pro, Gemini Flash) for better readability.
 - **Localization**: Updated all language files (ar, cs, de, es, fr, it, ja, ko, pl, pt-br, tr, vi, zh-cn, zh-tw) with missing translations for new features.
 
 ## [0.7.0] - 2026-01-21
