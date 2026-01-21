@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced List View**: Conversation list now displays the full creation time (date + time) instead of just relative time.
 - **Configuration Prompt**: Reload window prompt when language setting is changed to apply changes immediately.
 - **Quota Grouping**: Organized quota usage menu into logical groups (Claude/GPT, Gemini Pro, Gemini Flash) for better readability.
-- **Localization**: Updated all language files (ar, cs, de, es, fr, it, ja, ko, pl, pt-br, tr, vi, zh-cn, zh-tw) with missing translations for new features.
+- **Localization**: Fully translated extension into 14 languages (Arabic, Czech, German, Spanish, French, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Turkish, Vietnamese, Chinese Simplified, Chinese Traditional). All UI elements, commands, and configuration descriptions are now native.
 
 ## [0.7.0] - 2026-01-21
 ### Localization & Internationalization

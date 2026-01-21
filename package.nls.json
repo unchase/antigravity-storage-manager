@@ -27,5 +27,7 @@
     "antigravity.config.enableQuota": "Enable or disable fetching and displaying Antigravity quota usage.",
     "antigravity.config.pinnedModels": "List of model IDs to always show in the status bar.",
     "antigravity.command.showSyncStats": "Show Sync Statistics",
-    "antigravity.command.showQuota": "Show Antigravity Quota"
+    "antigravity.command.showQuota": "Show Antigravity Quota",
+    "antigravity.command.syncManageAuthorizedMachines": "Manage Authorized Deletion Machines",
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "List of machine IDs authorized to delete conversations from other devices."
 }

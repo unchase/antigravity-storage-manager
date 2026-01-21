@@ -27,5 +27,7 @@
     "antigravity.config.enableQuota": "Включить/отключить получение и отображение квот Antigravity.",
     "antigravity.config.pinnedModels": "Список моделей для отображения в статус-баре.",
     "antigravity.command.showSyncStats": "Показать статистику синхронизации",
-    "antigravity.command.showQuota": "Показать квоты Antigravity"
+    "antigravity.command.showQuota": "Показать квоты Antigravity",
+    "antigravity.command.syncManageAuthorizedMachines": "Управление устройствами, имеющими право удаления",
+    "antigravity.config.authorizedRemoteDeleteMachineIds": "Список ID устройств, которым разрешено удалять диалоги с других машин."
 }
