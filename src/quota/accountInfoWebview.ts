@@ -40,7 +40,7 @@ export class AccountInfoWebview {
         panel.webview.onDidReceiveMessage(
             message => {
                 switch (message.command) {
-                    case 'viewRawJson':
+                    case 'viewRawJson': {
                         const dataToView = AccountInfoWebview.latestSnapshot?.rawUserStatus || AccountInfoWebview.latestSnapshot || snapshot;
                         vscode.workspace.openTextDocument({
                             content: JSON.stringify(dataToView, null, 2),
@@ -49,6 +49,7 @@ export class AccountInfoWebview {
                             vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.Beside });
                         });
                         return;
+                    }
                     case 'openPlan':
                         vscode.env.openExternal(vscode.Uri.parse('https://one.google.com/ai'));
                         return;

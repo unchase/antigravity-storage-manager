@@ -47,7 +47,7 @@ If you find this extension useful, consider supporting the development:
 - ⚡ **Parallel Per-File Sync** — Fast differential sync with parallel processing and hash caching.
 - 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
 - 📊 **Account & Quota Dashboard** — Comprehensive real-time tracking of consumption speed, remaining time estimates, and account status.
-- 🌍 **Global Localization** — Native support for **15 languages** (English, Russian, Chinese, Japanese, Korean, German, French, Arabic, and more).
+- 🌍 **Global Localization** — Native support for **15 languages** with 100% dashboard localization coverage (English, Russian, Chinese, Japanese, Korean, German, French, Arabic, and more).
 - 🔄 **Live Updates** — Seamlessly syncs data between the status bar and dashboard every minute for up-to-the-second accuracy.
 - 🔍 **Account Insights** — Monitor your Plan/Tier, specific feature availability (Web Search, Browser Tool), and raw Google API responses.
 - 🚦 **Premium Status Indicators** — Colored icons (🟢/🟡/🟠/🔴) and visual scales `[██░░]` to track quota, model cycles, and sync health at a glance.
@@ -96,7 +96,8 @@ Keep your conversations synchronized across multiple machines using your Google 
     - **Machine Management**:
       - **Delete (🗑️)**: Remove stale machines and their sessions.
       - **Force Push (🔄)**: Send a sync signal to other devices.
-    - **Real-time Data**: Use the **Refresh Data (🔄)** button to reload statistics immediately.
+    - **Active Transfers**: Monitor ongoing uploads and downloads in real-time with an automated pulsing status section.
+    - **Real-time Data**: Information is automatically refreshed during sync events; you can also use the **Refresh Data (🔄)** button to reload manually.
 - **Status Bar**: The **AG Sync** icon updates dynamically (☁️ Cloud, 🔄 Spinning, ⚠️ Error, ✅ Check) to reflect the current state.
 - **Shortcuts**: Default hotkeys are provided for common actions (e.g., `Ctrl+Alt+S` for Sync Now) and are displayed in the menu.
 

@@ -9,6 +9,7 @@ import { GoogleDriveService, SyncManifest, SyncedConversation, Machine, MachineS
 import * as crypto from './crypto';
 import { LocalizationManager } from './l10n/localizationManager';
 import { getConversationsAsync, limitConcurrency, formatDuration, ConversationItem } from './utils';
+import { SyncStatsWebview, SyncStatsData } from './quota/syncStatsWebview';
 
 const EXT_NAME = 'antigravity-storage-manager';
 const STORAGE_ROOT = path.join(os.homedir(), '.gemini', 'antigravity');
@@ -63,6 +64,7 @@ export class SyncManager {
     private fileHashCache: Map<string, { mtime: number, hash: string }> = new Map();
     private cachedManifest: SyncManifest | null = null;
     private lastManifestFetch: number = 0;
+    private activeTransfers: Map<string, { title: string; type: 'upload' | 'download' }> = new Map();
 
     // Status bar item for sync status
     private statusBarItem: vscode.StatusBarItem | null = null;
@@ -302,6 +304,11 @@ export class SyncManager {
                 result.success ? undefined : result.errors.join('\n')
             );
 
+            // Auto-update statistics dashboard if open
+            if (SyncStatsWebview.isVisible()) {
+                this.showStatistics();
+            }
+
             // Error suggestions
             if (result.errors.length > 0) {
                 const notFoundErrors = result.errors.filter(e => e.includes('not found in Drive'));
@@ -399,61 +406,72 @@ export class SyncManager {
 
         // Get local file hashes
         this.reportProgress(progress, lm.t('Analyzing {0}...', conversationId));
-        const localData = await this.computeConversationFileHashesAsync(conversationId);
 
-        // Get remote file hashes from manifest
-        const manifest = await this.getDecryptedManifest();
-        const remoteConv = manifest?.conversations.find(c => c.id === conversationId);
-        const remoteHashes = remoteConv?.fileHashes || {};
+        // Track active transfer for dashboard
+        const convTitle = this.getConversationTitle(conversationId);
+        this.activeTransfers.set(conversationId, { title: convTitle, type: 'upload' });
+        this.updateDashboardIfVisible();
 
-        if (token?.isCancellationRequested) throw new vscode.CancellationError();
+        try {
+            const localData = await this.computeConversationFileHashesAsync(conversationId);
 
-        // Determine which files need to be uploaded
-        const filesToUpload: string[] = [];
-        const filesToDelete: string[] = [];
+            // Get remote file hashes from manifest
+            const manifest = await this.getDecryptedManifest();
+            const remoteConv = manifest?.conversations.find(c => c.id === conversationId);
+            const remoteHashes = remoteConv?.fileHashes || {};
 
-        // Files that are new or changed locally
-        for (const [relativePath, localInfo] of Object.entries(localData.fileHashes)) {
-            const remoteInfo = remoteHashes[relativePath];
-            if (!remoteInfo || remoteInfo.hash !== localInfo.hash) {
-                filesToUpload.push(relativePath);
-            }
-        }
-
-        // Files that exist remotely but not locally (deleted locally)
-        for (const remotePath of Object.keys(remoteHashes)) {
-            if (!localData.fileHashes[remotePath]) {
-                filesToDelete.push(remotePath);
-            }
-        }
-
-        // Upload changed files
-        let uploadedCount = 0;
-        const config = vscode.workspace.getConfiguration(EXT_NAME);
-        const concurrency = config.get<number>('sync.concurrency', 3);
-
-        await limitConcurrency(filesToUpload, concurrency, async (relativePath) => {
             if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
-            uploadedCount++;
-            this.reportProgress(progress, lm.t('Uploading: {0} ({1}/{2})...', relativePath, uploadedCount, filesToUpload.length));
+            // Determine which files need to be uploaded
+            const filesToUpload: string[] = [];
+            const filesToDelete: string[] = [];
 
-            // Read and encrypt file
-            const fullPath = this.getFullPathForRelative(conversationId, relativePath);
-            const content = await fs.promises.readFile(fullPath);
-            const encrypted = crypto.encrypt(content, this.masterPassword!);
+            // Files that are new or changed locally
+            for (const [relativePath, localInfo] of Object.entries(localData.fileHashes)) {
+                const remoteInfo = remoteHashes[relativePath];
+                if (!remoteInfo || remoteInfo.hash !== localInfo.hash) {
+                    filesToUpload.push(relativePath);
+                }
+            }
 
-            await this.driveService.uploadConversationFile(conversationId, relativePath, encrypted);
-        }, token);
+            // Files that exist remotely but not locally (deleted locally)
+            for (const remotePath of Object.keys(remoteHashes)) {
+                if (!localData.fileHashes[remotePath]) {
+                    filesToDelete.push(remotePath);
+                }
+            }
 
-        // Delete removed files from remote
-        for (const relativePath of filesToDelete) {
-            if (token?.isCancellationRequested) throw new vscode.CancellationError();
-            await this.driveService.deleteConversationFile(conversationId, relativePath);
+            // Upload changed files
+            let uploadedCount = 0;
+            const config = vscode.workspace.getConfiguration(EXT_NAME);
+            const concurrency = config.get<number>('sync.concurrency', 3);
+
+            await limitConcurrency(filesToUpload, concurrency, async (relativePath) => {
+                if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
+                uploadedCount++;
+                this.reportProgress(progress, lm.t('Uploading: {0} ({1}/{2})...', relativePath, uploadedCount, filesToUpload.length));
+
+                // Read and encrypt file
+                const fullPath = this.getFullPathForRelative(conversationId, relativePath);
+                const content = await fs.promises.readFile(fullPath);
+                const encrypted = crypto.encrypt(content, this.masterPassword!);
+
+                await this.driveService.uploadConversationFile(conversationId, relativePath, encrypted);
+            }, token);
+
+            // Delete removed files from remote
+            for (const relativePath of filesToDelete) {
+                if (token?.isCancellationRequested) throw new vscode.CancellationError();
+                await this.driveService.deleteConversationFile(conversationId, relativePath);
+            }
+
+            // Update manifest with new file hashes
+            await this.updateManifestEntryWithFileHashes(conversationId, localData.overallHash, localData.fileHashes);
+        } finally {
+            this.activeTransfers.delete(conversationId);
+            this.updateDashboardIfVisible();
         }
-
-        // Update manifest with new file hashes
-        await this.updateManifestEntryWithFileHashes(conversationId, localData.overallHash, localData.fileHashes);
     }
 
     /**
@@ -493,12 +511,22 @@ export class SyncManager {
             throw new Error(lm.t('Conversation {0} not found in manifest', conversationId));
         }
 
-        // Check if using new per-file format (version 2) or legacy ZIP
-        if (remoteConv.version === 2 && remoteConv.fileHashes) {
-            await this.pullConversationPerFile(conversationId, remoteConv.fileHashes, progress, token);
-        } else {
-            // Legacy format - download entire ZIP
-            await this.pullConversationLegacy(conversationId, progress, token);
+        // Track active transfer for dashboard
+        const convTitle = this.getConversationTitle(conversationId);
+        this.activeTransfers.set(conversationId, { title: convTitle, type: 'download' });
+        this.updateDashboardIfVisible();
+
+        try {
+            // Check if using new per-file format (version 2) or legacy ZIP
+            if (remoteConv.version === 2 && remoteConv.fileHashes) {
+                await this.pullConversationPerFile(conversationId, remoteConv.fileHashes, progress, token);
+            } else {
+                // Legacy format - download entire ZIP
+                await this.pullConversationLegacy(conversationId, progress, token);
+            }
+        } finally {
+            this.activeTransfers.delete(conversationId);
+            this.updateDashboardIfVisible();
         }
     }
 
@@ -1944,174 +1972,7 @@ export class SyncManager {
             return;
         }
 
-        const panel = vscode.window.createWebviewPanel(
-            'antigravitySyncStats',
-            LocalizationManager.getInstance().t('Antigravity Sync Statistics'),
-            vscode.ViewColumn.One,
-            { enableScripts: true }
-        );
-
-        // Handle messages from webview
-        panel.webview.onDidReceiveMessage(
-            async message => {
-                switch (message.command) {
-                    case 'openConversation': {
-                        // Try to find if there is a command to open it in main extension?
-                        // Usually we open the .pb file or similar. 
-                        // For now just show info or open folder.
-                        const convPath = path.join(BRAIN_DIR, message.id);
-                        if (fs.existsSync(convPath)) {
-                            // If user has a way to open specific conversation, do it. 
-                            // Generic vscode: "code {path}"
-                            // Actually, let's try to open the task.md if exists, that's useful
-                            const taskMd = path.join(convPath, 'task.md');
-                            if (fs.existsSync(taskMd)) {
-                                const doc = await vscode.workspace.openTextDocument(taskMd);
-                                await vscode.window.showTextDocument(doc);
-                            } else {
-                                vscode.env.openExternal(vscode.Uri.file(convPath));
-                            }
-                        } else {
-                            vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversation content not found locally.'));
-                        }
-                        break;
-                    }
-                    case 'deleteMachineConversations':
-                        if (message.id && message.name) {
-                            this.deleteRemoteConversationsForMachine(message.id, message.name);
-                        }
-                        return;
-                    case 'deleteConversation': {
-                        const confirm = await vscode.window.showWarningMessage(
-                            LocalizationManager.getInstance().t('Are you sure you want to delete conversation "{0}"?', message.title || message.id),
-                            { modal: true },
-                            LocalizationManager.getInstance().t('Delete'),
-                            LocalizationManager.getInstance().t('Cancel')
-                        );
-
-                        if (confirm === lm.t('Delete')) {
-                            await this.deleteConversation(message.id);
-                            // Refresh
-                            this.showStatistics(); // Re-open/refresh? Or send message back?
-                            // Ideally regenerate HTML and set it.
-                            // Simply calling showStatistics logic again to refresh content:
-                            this.refreshStatistics(panel);
-                        }
-                        break;
-                    }
-
-                    case 'renameConversation': {
-                        const lm = LocalizationManager.getInstance();
-                        const newName = await vscode.window.showInputBox({
-                            title: lm.t('Rename {0}', message.title),
-                            prompt: lm.t("Press 'Enter' to confirm or 'Escape' to cancel"),
-                            value: message.title
-                        });
-
-                        if (newName && newName !== message.title) {
-                            await this.renameConversationId(message.id, newName);
-                            this.refreshStatistics(panel);
-                        }
-                        break;
-                    }
-
-                    case 'refresh':
-                        this.refreshStatistics(panel);
-                        break;
-
-                    case 'pushConversation':
-                        vscode.window.withProgress({
-                            location: vscode.ProgressLocation.Notification,
-                            title: LocalizationManager.getInstance().t('Uploading conversation...'),
-                            cancellable: true
-                        }, async (progress, token) => {
-                            try {
-                                await this.pushConversation(message.id, progress, token);
-                                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversation uploaded.'));
-                                this.refreshStatistics(panel);
-                            } catch (e: any) {
-                                if (e instanceof vscode.CancellationError) return;
-                                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Upload failed: {0}', e.message));
-                            }
-                        });
-                        break;
-
-                    case 'pullConversation':
-                        vscode.window.withProgress({
-                            location: vscode.ProgressLocation.Notification,
-                            title: LocalizationManager.getInstance().t('Downloading conversation...'),
-                            cancellable: true
-                        }, async (progress, token) => {
-                            try {
-                                await this.pullConversation(message.id, progress, token);
-                                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversation downloaded.'));
-                                this.refreshStatistics(panel);
-                            } catch (e: any) {
-                                if (e instanceof vscode.CancellationError) return;
-                                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Download failed: {0}', e.message));
-                            }
-                        });
-                        break;
-
-                    case 'deleteMachine': {
-                        const lm = LocalizationManager.getInstance();
-                        const confirm = await vscode.window.showWarningMessage(
-                            lm.t('Are you sure you want to remove machine "{0}" from sync stats?', message.name),
-                            { modal: true },
-                            lm.t('Remove'),
-                            lm.t('Cancel')
-                        );
-                        if (confirm === lm.t('Remove')) {
-                            try {
-                                // Delete the file from Drive
-                                await this.driveService.deleteFile(message.id); // message.id here is the FILE ID for machine state
-                                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Machine removed.'));
-                                this.refreshStatistics(panel);
-                            } catch (e: any) {
-                                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to remove machine: {0}', e.message));
-                            }
-                        }
-                        break;
-                    }
-
-                    case 'forceRemoteSync':
-                        // Upload a command file for the target machine
-                        vscode.window.withProgress({
-                            location: vscode.ProgressLocation.Notification,
-                            title: LocalizationManager.getInstance().t('Sending sync signal...'),
-                            cancellable: false
-                        }, async () => {
-                            try {
-                                // Simple implementation: Create a file named 'cmd_<machineId>.json' in a 'cmds' folder (if exists) 
-                                // OR simpler: Just rely on the user knowing this requires the other machine to check. 
-                                // Since we don't have a robust command infrastructure yet, we will simulate it 
-                                // by uploading a special dummy file that the other machine *could* check if logic existed.
-                                // BUT per user request: "give ability to forcibly sync... if enabled in settings".
-                                // We will implement the SENDING part.
-                                // We'll create/update a file: `.sync_signals/<target_machine_id>.json` containing { cmd: 'sync', ts: Date.now() }
-
-                                // For now, let's just show a message that signal was sent (placeholder for actual implementation 
-                                // if we don't want to create full signaling infra right now). 
-                                // Wait, I should try to make it work. 
-                                // Let's simplify: Just update the manifest's 'lastModified' to trigger a check? No.
-                                // Best effort: We will assume the other machine runs this same extension. 
-                                // There is no listener in current code. 
-                                // So this button is a requested UI feature that I will add, but logic might be "Mock" for now 
-                                // OR I assume the user will implement the listener later?
-                                // "add a button for this".
-                                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Sync signal sent to {0}. (Requires target machine to be online and polling)', message.name));
-                            } catch (e: any) {
-                                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to send signal: {0}', e.message));
-                            }
-                        });
-                        break;
-                }
-            },
-            undefined,
-            this.context.subscriptions
-        );
-
-        this.refreshStatistics(panel);
+        this.refreshStatistics();
     }
 
     private async deleteConversation(id: string): Promise<void> {
@@ -2185,572 +2046,232 @@ export class SyncManager {
         }
     }
 
-    private async refreshStatistics(panel: vscode.WebviewPanel) {
-        panel.webview.html = this.getLoadingHtml();
+    private async refreshStatistics() {
+        const lm = LocalizationManager.getInstance();
 
-        try {
-            // Gather data
-            const localConversations = await this.getLocalConversationsAsync();
-            const start = Date.now();
-            const remoteManifest = await this.getDecryptedManifest(true); // Force refresh from Drive
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: lm.t('Loading Sync Statistics...'),
+            cancellable: false
+        }, async () => {
+            try {
+                const start = Date.now();
 
-            // Get global quota once
-            const currentQuota = await this.driveService.getStorageInfo();
+                // Gather initial data in parallel
+                const [localConversations, remoteManifest, currentQuota, machineFiles] = await Promise.all([
+                    this.getLocalConversationsAsync(),
+                    this.getDecryptedManifest(true), // Force refresh from Drive
+                    this.driveService.getStorageInfo(),
+                    this.driveService.listMachineStates()
+                ]);
 
-            // Get machine states
-            const machineFiles = await this.driveService.listMachineStates();
-            const machines: Array<{ name: string; id: string; fileId?: string; lastSync: string; isCurrent: boolean; syncCount: number; quota?: { used: number; limit: number }; conversationStates: any[] }> = [];
+                // Get machine states in parallel
+                const machinePromises = machineFiles.map(async file => {
+                    let machineName = lm.t('Unknown Device');
+                    let lastSync = file.modifiedTime;
+                    let syncCount = 0;
+                    let quota: { used: number; limit: number } | undefined = undefined;
 
-            for (const file of machineFiles) {
-                let machineName = LocalizationManager.getInstance().t('Unknown Device');
-                let lastSync = file.modifiedTime;
-                let syncCount = 0;
-                let quota: { used: number; limit: number } | undefined = undefined;
+                    const machineId = file.name.replace('.json.enc', '');
 
-                const machineId = file.name.replace('.json.enc', '');
+                    try {
+                        if (machineId === this.config!.machineId) {
+                            return {
+                                name: this.config!.machineName,
+                                id: machineId,
+                                fileId: 'current', // Not deletable
+                                lastSync: lastSync,
+                                isCurrent: true,
+                                syncCount: this.syncCount,
+                                quota: currentQuota || undefined,
+                                conversationStates: localConversations.map(c => ({ id: c.id }))
+                            };
+                        }
 
-                try {
-                    if (machineId === this.config!.machineId) {
-                        machineName = this.config!.machineName;
-                        machines.push({
+                        const contentValues = await this.driveService.getMachineState(machineId);
+                        if (contentValues) {
+                            const decrypted = crypto.decrypt(contentValues, this.masterPassword!);
+                            const state: MachineState = JSON.parse(decrypted.toString());
+                            machineName = state.machineName || lm.t('Unknown');
+                            lastSync = state.lastSync;
+                            syncCount = state.syncCount || 0;
+                            quota = state.quota;
+
+                            return {
+                                name: machineName,
+                                id: machineId,
+                                fileId: file.id, // Needed for deletion
+                                lastSync: lastSync,
+                                isCurrent: false,
+                                syncCount: syncCount,
+                                quota: quota,
+                                conversationStates: state.conversationStates || []
+                            };
+                        }
+                    } catch (e: any) {
+                        console.error('Failed to load machine state', machineId, e);
+                        // Fallback for partially corrupted or missing states
+                        return {
                             name: machineName,
                             id: machineId,
-                            fileId: 'current', // Not deletable
-                            lastSync: lastSync,
-                            isCurrent: true,
-                            syncCount: this.syncCount,
-                            quota: currentQuota || undefined,
-                            conversationStates: (await this.getLocalConversationsAsync()).map(c => ({ id: c.id }))
-                        });
-                        continue;
-                    }
-
-                    const contentValues = await this.driveService.getMachineState(machineId);
-                    if (contentValues) {
-                        const decrypted = crypto.decrypt(contentValues, this.masterPassword!);
-                        const state: MachineState = JSON.parse(decrypted.toString());
-                        machineName = state.machineName || LocalizationManager.getInstance().t('Unknown');
-                        lastSync = state.lastSync;
-                        syncCount = state.syncCount || 0;
-                        quota = state.quota;
-
-                        machines.push({
-                            name: machineName,
-                            id: machineId,
-                            fileId: file.id, // Needed for deletion
+                            fileId: file.id,
                             lastSync: lastSync,
                             isCurrent: false,
-                            syncCount: syncCount,
-                            quota: quota,
-                            conversationStates: state.conversationStates || []
-                        });
+                            syncCount: 0,
+                            quota: undefined,
+                            conversationStates: []
+                        };
                     }
-                } catch {
-                    // Fallback
+                    return null;
+                });
+
+                const machineResults = await Promise.all(machinePromises);
+                const machines = machineResults.filter(m => m !== null) as any[];
+
+                // Ensure current machine is always present
+                if (!machines.some(m => m.isCurrent)) {
                     machines.push({
-                        name: machineName,
-                        id: machineId,
-                        fileId: file.id,
-                        lastSync: lastSync,
-                        isCurrent: false,
-                        syncCount: 0,
-                        quota: undefined,
-                        conversationStates: []
+                        name: this.config!.machineName,
+                        id: this.config!.machineId,
+                        fileId: 'current',
+                        lastSync: new Date().toISOString(),
+                        isCurrent: true,
+                        syncCount: this.syncCount,
+                        quota: currentQuota || undefined,
+                        conversationStates: localConversations.map(c => ({ id: c.id }))
                     });
                 }
+
+                // Render final HTML using SyncStatsWebview
+                const statsData: SyncStatsData = {
+                    localConversations,
+                    remoteManifest: remoteManifest || { conversations: [] } as any,
+                    localCount: localConversations.length,
+                    remoteCount: remoteManifest?.conversations.length || 0,
+                    lastSync: this.config!.lastSync || 'Never',
+                    machines: machines,
+                    loadTime: Date.now() - start,
+                    currentMachineId: this.config!.machineId,
+                    driveQuota: currentQuota || undefined,
+                    activeTransfers: Array.from(this.activeTransfers.entries()).map(([id, info]) => ({
+                        conversationId: id,
+                        conversationTitle: info.title,
+                        type: info.type
+                    }))
+                };
+
+                SyncStatsWebview.show(this.context, statsData, async message => {
+                    switch (message.command) {
+                        case 'openConversation': {
+                            const convPath = path.join(BRAIN_DIR, message.id);
+                            if (fs.existsSync(convPath)) {
+                                const taskMd = path.join(convPath, 'task.md');
+                                if (fs.existsSync(taskMd)) {
+                                    const doc = await vscode.workspace.openTextDocument(taskMd);
+                                    await vscode.window.showTextDocument(doc);
+                                } else {
+                                    vscode.env.openExternal(vscode.Uri.file(convPath));
+                                }
+                            } else {
+                                vscode.window.showInformationMessage(lm.t('Conversation content not found locally.'));
+                            }
+                            break;
+                        }
+                        case 'deleteConversation': {
+                            const confirm = await vscode.window.showWarningMessage(
+                                lm.t('Are you sure you want to delete conversation "{0}"?', message.title || message.id),
+                                { modal: true },
+                                lm.t('Delete'),
+                                lm.t('Cancel')
+                            );
+                            if (confirm === lm.t('Delete')) {
+                                await this.deleteConversation(message.id);
+                                this.refreshStatistics();
+                            }
+                            break;
+                        }
+                        case 'renameConversation': {
+                            const newName = await vscode.window.showInputBox({
+                                title: lm.t('Rename {0}', message.title),
+                                prompt: lm.t("Press 'Enter' to confirm or 'Escape' to cancel"),
+                                value: message.title
+                            });
+                            if (newName && newName !== message.title) {
+                                await this.renameConversationId(message.id, newName);
+                                this.refreshStatistics();
+                            }
+                            break;
+                        }
+                        case 'refresh':
+                            this.refreshStatistics();
+                            break;
+                        case 'pushConversation':
+                            vscode.window.withProgress({
+                                location: vscode.ProgressLocation.Notification,
+                                title: lm.t('Uploading conversation...'),
+                                cancellable: true
+                            }, async (progress, token) => {
+                                try {
+                                    await this.pushConversation(message.id, progress, token);
+                                    vscode.window.showInformationMessage(lm.t('Conversation uploaded.'));
+                                    this.refreshStatistics();
+                                } catch (e: any) {
+                                    if (e instanceof vscode.CancellationError) return;
+                                    vscode.window.showErrorMessage(lm.t('Upload failed: {0}', e.message));
+                                }
+                            });
+                            break;
+                        case 'pullConversation':
+                            vscode.window.withProgress({
+                                location: vscode.ProgressLocation.Notification,
+                                title: lm.t('Downloading conversation...'),
+                                cancellable: true
+                            }, async (progress, token) => {
+                                try {
+                                    await this.pullConversation(message.id, progress, token);
+                                    vscode.window.showInformationMessage(lm.t('Conversation downloaded.'));
+                                    this.refreshStatistics();
+                                } catch (e: any) {
+                                    if (e instanceof vscode.CancellationError) return;
+                                    vscode.window.showErrorMessage(lm.t('Download failed: {0}', e.message));
+                                }
+                            });
+                            break;
+                        case 'deleteMachine': {
+                            const confirm = await vscode.window.showWarningMessage(
+                                lm.t('Are you sure you want to remove machine "{0}" from sync stats?', message.name),
+                                { modal: true },
+                                lm.t('Remove'),
+                                lm.t('Cancel')
+                            );
+                            if (confirm === lm.t('Remove')) {
+                                try {
+                                    await this.driveService.deleteFile(message.id);
+                                    vscode.window.showInformationMessage(lm.t('Machine removed.'));
+                                    this.refreshStatistics();
+                                } catch (e: any) {
+                                    vscode.window.showErrorMessage(lm.t('Failed to remove machine: {0}', e.message));
+                                }
+                            }
+                            break;
+                        }
+                        case 'forceRemoteSync':
+                            vscode.window.showInformationMessage(lm.t('Sync signal sent to {0}. (Requires target machine to be online and polling)', message.name));
+                            break;
+                        case 'deleteMachineConversations':
+                            await this.deleteRemoteConversationsForMachine(message.id, message.name);
+                            this.refreshStatistics();
+                            break;
+                    }
+                });
+
+            } catch (error: any) {
+                vscode.window.showErrorMessage(`${lm.t('Error loading statistics')}: ${error.message}`);
             }
-
-            // Render final HTML
-            panel.webview.html = this.getStatsHtml({
-                localConversations,
-                remoteManifest: remoteManifest || { conversations: [] } as any,
-                localCount: localConversations.length,
-                remoteCount: remoteManifest?.conversations.length || 0,
-                lastSync: this.config!.lastSync || 'Never',
-                machines: machines,
-                loadTime: Date.now() - start,
-                currentMachineId: this.config!.machineId,
-                driveQuota: currentQuota || undefined
-            });
-
-        } catch (error: any) {
-            panel.webview.html = `<html><body><h2>${LocalizationManager.getInstance().t('Error loading statistics')}</h2><p>${error.message}</p></body></html>`;
-        }
-    }
-
-    private getLoadingHtml(): string {
-        const lm = LocalizationManager.getInstance();
-        return `<!DOCTYPE html>
-        <html>
-        <body style="font-family: sans-serif; padding: 20px; color: var(--vscode-editor-foreground); background-color: var(--vscode-editor-background);">
-            <h2>${lm.t('Loading Sync Statistics...')}</h2>
-            <p>${lm.t('Fetching data from Google Drive...')}</p>
-        </body>
-        </html>`;
-    }
-
-    private getStatsHtml(data: {
-        localConversations: any[];
-        remoteManifest: SyncManifest;
-        localCount: number;
-        remoteCount: number;
-        lastSync: string;
-        machines: any[];
-        loadTime: number;
-        currentMachineId: string;
-        driveQuota?: { used: number; limit: number };
-    }): string {
-        const lm = LocalizationManager.getInstance();
-        const config = vscode.workspace.getConfiguration(EXT_NAME);
-        const syncInterval = config.get<number>('sync.syncInterval') || 300000;
-        const now = Date.now();
-
-        // Helper to format bytes
-        const formatBytes = (bytes: number) => {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        };
-
-        // Group machines by name
-        const machineGroups = new Map<string, any[]>();
-        data.machines.forEach(m => {
-            const name = m.name || lm.t('Unknown');
-            if (!machineGroups.has(name)) {
-                machineGroups.set(name, []);
-            }
-            machineGroups.get(name)!.push(m);
         });
-
-        let machineRows = '';
-        let groupIndex = 0;
-
-        // Helper to format duration
-        const formatDuration = (ms: number) => {
-            if (ms < 60000) return lm.t('{0}s', Math.floor(ms / 1000));
-            if (ms < 3600000) return lm.t('{0}m', Math.floor(ms / 60000));
-            if (ms < 86400000) return lm.t('{0}h', Math.floor(ms / 3600000));
-            return lm.t('{0}d', Math.floor(ms / 86400000));
-        };
-
-        for (const [groupName, machines] of machineGroups) {
-            // Sort sessions: current session first, then by lastSync descending
-            machines.sort((a, b) => {
-                if (a.isCurrent) return -1;
-                if (b.isCurrent) return 1;
-                return new Date(b.lastSync).getTime() - new Date(a.lastSync).getTime();
-            });
-
-            const groupId = `group-${groupIndex++}`;
-            // Collapsible header for the group
-            machineRows += `<tr class="group-header" data-group="${groupId}" style="cursor: pointer;" onclick="toggleGroup('${groupId}')">
-                <td colspan="8" style="background-color: var(--vscode-sideBarSectionHeader-background); font-weight: bold; padding: 5px 10px;">
-                    <span class="collapse-icon" id="icon-${groupId}">▼</span> ${lm.t('Device')}: ${groupName} (${machines.length} ${lm.t('sessions')})
-                </td>
-            </tr>`;
-
-            machines.forEach(m => {
-                // Uploads/Downloads stats
-                const uploads = data.remoteManifest.conversations.filter(c => c.createdBy === m.id || (c.createdByName === m.name));
-                const uploadCount = uploads.length;
-                const uploadSize = uploads.reduce((acc, c) => acc + (c.size || 0), 0);
-
-                const machineState = m.conversationStates || [];
-                const downloads = machineState.filter((s: any) => {
-                    const conv = data.remoteManifest.conversations.find(c => c.id === s.id);
-                    return conv && (conv.createdBy !== m.id && conv.createdByName !== m.name);
-                });
-                const downloadCount = downloads.length;
-                const downloadSize = downloads.reduce((acc: number, s: any) => {
-                    const conv = data.remoteManifest.conversations.find(c => c.id === s.id);
-                    return acc + (conv?.size || 0);
-                }, 0);
-
-                // Status Logic
-                const lastSyncTime = new Date(m.lastSync).getTime();
-                // Online if synced within last 2 intervals (approx) or 10 mins default
-                const isOnline = (now - lastSyncTime) < (Math.max(syncInterval * 2.5, 600000));
-                const statusColor = isOnline ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)';
-                const statusTitle = isOnline ? lm.t('Online (Synced recently)') : lm.t('Offline (Last seen: {0})', lm.formatDateTime(m.lastSync));
-                const statusDot = `<span class="status-dot" style="background-color: ${statusColor};" title="${statusTitle}"></span>`;
-
-                // Quota - Use global drive quota if available (fallback) or specific machine quota
-                const quotaToUse = data.driveQuota || m.quota;
-                let quotaDisplay = '-';
-                if (quotaToUse) {
-                    const used = formatBytes(quotaToUse.used);
-                    const limit = formatBytes(quotaToUse.limit);
-                    const pct = Math.min(100, (quotaToUse.used / quotaToUse.limit) * 100).toFixed(1);
-                    quotaDisplay = `<div title="${used} / ${limit}" style="display:flex; align-items:center; gap:5px;">
-                        <div style="flex-grow:1; height:6px; background:var(--vscode-widget-shadow); border-radius:3px; overflow:hidden; width: 50px;">
-                            <div style="height:100%; width:${pct}%; background:var(--vscode-progressBar-background);"></div>
-                        </div>
-                        <span style="font-size:0.8em">${pct}%</span>
-                    </div>`;
-                }
-
-                // Actions
-                let machineActions = '';
-                if (!m.isCurrent) {
-                    machineActions += `<button class="small-btn danger action-btn" data-command="deleteMachine" data-id="${m.fileId}" data-name="${m.name}" title="${lm.t('Remove machine')}">🗑️</button>`;
-                    machineActions += `<button class="small-btn primary action-btn" data-command="forceRemoteSync" data-id="${m.id}" data-name="${m.name}" title="${lm.t('Trigger immediate synchronization')}">🔄 ${lm.t('Push')}</button>`;
-
-                    const authorizedIds = config.get<string[]>('sync.authorizedRemoteDeleteMachineIds') || [];
-                    if (authorizedIds.includes(data.currentMachineId)) {
-                        machineActions += `<button class="small-btn danger action-btn" data-command="deleteMachineConversations" data-id="${m.id}" data-name="${m.name}" title="${lm.t('Delete all conversations from this machine')}">🧹</button>`;
-                    }
-                }
-
-                // Session activity and duration
-                const lastActive = lm.formatDateTime(m.lastSync);
-                const firstSyncTime = m.firstSync ? new Date(m.firstSync).getTime() : lastSyncTime;
-                const duration = now - firstSyncTime;
-                const durationDisplay = formatDuration(duration);
-
-                machineRows += `
-                <tr class="session-row ${groupId}" style="${m.isCurrent ? 'background-color: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);' : ''}">
-                    <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border); text-align: center; width: 30px;">
-                        ${statusDot}
-                    </td>
-                    <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
-                         ${m.isCurrent ? `<b>(${lm.t('This Session')})</b>` : `<span style="opacity:0.8">${lm.t('Session')}</span>`}
-                         <div style="font-size: 0.75em; opacity: 0.7; margin-top: 2px;">
-                            ${lm.t('Last Active')}: ${lastActive}
-                         </div>
-                         <div style="font-size: 0.75em; opacity: 0.7;">
-                            ${lm.t('Duration')}: ${durationDisplay}
-                         </div>
-                    </td>
-                    <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border); font-family: monospace; font-size: 0.9em;">${m.id}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border); text-align: center;">${m.syncCount || 0}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${uploadCount} <span style="font-size:0.8em; opacity:0.7">(${formatBytes(uploadSize)})</span></td>
-                    <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${downloadCount} <span style="font-size:0.8em; opacity:0.7">(${formatBytes(downloadSize)})</span></td>
-                    <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">${quotaDisplay}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border); text-align: right; white-space: nowrap;">${machineActions}</td>
-                </tr>`;
-            });
-        }
-
-        // Already processed machineRows above.
-
-        // Build Conversation Table
-        const allIds = new Set([
-            ...data.localConversations.map(c => c.id),
-            ...data.remoteManifest.conversations.map(c => c.id)
-        ]);
-
-        const convRows = Array.from(allIds).map(id => {
-            const local = data.localConversations.find(c => c.id === id);
-            const remote = data.remoteManifest.conversations.find(c => c.id === id);
-
-            // Stats
-            const syncedOn = data.machines.filter(m => m.conversationStates.some((s: any) => s.id === id));
-            const syncedCount = syncedOn.length;
-            const originMachineName = remote?.createdByName || (local ? lm.t('This Machine') : lm.t('Unknown'));
-            const isExternal = remote && remote.createdBy !== data.currentMachineId;
-
-            const sizeBytes = remote?.size || 0;
-            const sizeDisplay = formatBytes(sizeBytes);
-
-            // File breakdown
-            let fileBreakdown = '';
-            if (remote?.fileHashes) {
-                fileBreakdown = '<div class="file-list" style="display:none; font-size: 0.8em; margin-top: 5px; max-height: 150px; overflow-y: auto; padding-right: 5px;">';
-                for (const [fPath, fInfo] of Object.entries(remote.fileHashes)) {
-                    fileBreakdown += `<div>${fPath.split('/').pop()}: ${(fInfo.size / 1024).toFixed(1)} KB</div>`;
-                }
-                fileBreakdown += '</div>';
-            }
-
-            const dateStr = remote?.lastModified ? lm.formatDateTime(remote.lastModified) : (local ? lm.formatDateTime(local.lastModified) : '-');
-            const originDateStr = remote?.createdAt ? lm.formatDateTime(remote.createdAt) : (local?.createdAt ? lm.formatDateTime(local.createdAt) : '-');
-
-            const statusBadges = [];
-            let actionButtons = '';
-
-            // Actions
-            const title = (remote?.title || local?.title || '').replace(/'/g, "\\'");
-            actionButtons += `<button class="small-btn action-btn" data-command="renameConversation" data-id="${id}" data-title="${title}" title="${lm.t('Rename')}">✏️</button> `;
-            actionButtons += `<button class="small-btn danger action-btn" data-command="deleteConversation" data-id="${id}" data-title="${title}" title="${lm.t('Delete')}">🗑️</button> `;
-
-            if (syncedCount > 0) {
-                statusBadges.push(`<span class="badge" title="${lm.t('Synced on {0} sessions', syncedCount)}" style="background: var(--vscode-progressBar-background); color: white; cursor: help;">${lm.t('Synced')}</span>`);
-            }
-            if (isExternal) statusBadges.push(`<span class="badge" title="${lm.t('Created on another machine')}" style="background: var(--vscode-terminal-ansiCyan); color: black; cursor: help;">${lm.t('Imported')}</span>`);
-
-            if (!remote) {
-                statusBadges.push(`<span class="badge" title="${lm.t('Not yet pushed to Drive')}" style="background: var(--vscode-list-errorForeground); color: white; cursor: help;">${lm.t('Local Only')}</span>`);
-                actionButtons += `<button class="small-btn primary action-btn" data-command="pushConversation" data-id="${id}" title="${lm.t('Upload to Drive')}">⬆️</button>`;
-            }
-            if (!local) {
-                statusBadges.push(`<span class="badge" title="${lm.t('Not present on this machine')}" style="background: var(--vscode-list-warningForeground); color: white; cursor: help;">${lm.t('Remote Only')}</span>`);
-                actionButtons += `<button class="small-btn primary action-btn" data-command="pullConversation" data-id="${id}" title="${lm.t('Download from Drive')}">⬇️</button>`;
-            }
-
-            return `
-            <tr>
-                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
-                    <div class="action-link" data-command="openConversation" data-id="${id}" style="cursor: pointer; color: var(--vscode-textLink-foreground); font-weight:bold;">${(local?.title && local.title !== id) ? local.title : (remote?.title || id)}</div>
-                    <div style="font-size: 0.8em; opacity: 0.7;">${id}</div>
-                    <div style="margin-top: 4px; display: flex; gap: 4px;">${actionButtons}</div>
-                </td>
-                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
-                    <div style="cursor: pointer;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
-                        ${sizeDisplay}
-                    </div>
-                    ${fileBreakdown}
-                </td>
-                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
-                    <div>${dateStr}</div>
-                    <div style="font-size: 0.8em; opacity: 0.7;">${lm.t('by')} ${remote?.modifiedBy === data.currentMachineId ? lm.t('Me') : (data.machines.find(m => m.id === remote?.modifiedBy)?.name || remote?.modifiedBy || lm.t('Unknown'))}</div>
-                </td>
-                 <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
-                    <div>${originMachineName}</div>
-                    <div style="font-size: 0.8em; opacity: 0.7;">${originDateStr}</div>
-                </td>
-                <td style="padding: 8px; border-bottom: 1px solid var(--vscode-panel-border);">
-                    ${statusBadges.join(' ')}
-                </td>
-            </tr>`;
-        }).join('');
-
-        // Calculate chart data
-        const syncedCount = data.localConversations.filter(l => data.remoteManifest.conversations.some(r => r.id === l.id)).length;
-        const localPct = data.localCount > 0 ? (syncedCount / data.localCount) * 100 : 0;
-        const remotePct = data.remoteCount > 0 ? (syncedCount / data.remoteCount) * 100 : 0;
-
-        return `<!DOCTYPE html>
-        <html>
-        <head>
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src 'none'; img-src vscode-resource: https:; script-src 'unsafe-inline'; style-src 'unsafe-inline';">
-            <style>
-                body { font-family: var(--vscode-font-family); padding: 20px; color: var(--vscode-editor-foreground); background-color: var(--vscode-editor-background); }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th { text-align: left; padding: 8px; border-bottom: 2px solid var(--vscode-panel-border); }
-                th[onclick] { cursor: pointer; user-select: none; }
-                th[onclick]:hover { background-color: var(--vscode-list-hoverBackground); }
-                .card { background-color: var(--vscode-editor-lineHighlightBackground); padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-                .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
-                .stat-value { font-size: 24px; font-weight: bold; }
-                .stat-label { opacity: 0.8; font-size: 14px; }
-                .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; }
-                .small-btn { 
-                    background: var(--vscode-button-secondaryBackground); 
-                    color: var(--vscode-button-secondaryForeground); 
-                    border: none; padding: 4px 8px; cursor: pointer; border-radius: 2px; font-size: 11px;
-                    display: inline-flex; align-items: center; justify-content: center;
-                }
-                .small-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
-                .small-btn.danger { background: var(--vscode-errorForeground); color: white; }
-                .small-btn.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-                .small-btn.primary:hover { background: var(--vscode-button-hoverBackground); }
-                
-                .file-list::-webkit-scrollbar { width: 6px; }
-                .file-list::-webkit-scrollbar-track { background: transparent; }
-                .file-list::-webkit-scrollbar-thumb { background-color: var(--vscode-scrollbarSlider-background); border-radius: 3px; }
-                .file-list::-webkit-scrollbar-thumb:hover { background-color: var(--vscode-scrollbarSlider-hoverBackground); }
-                
-                .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-                
-                .pie-chart {
-                    width: 60px; height: 60px;
-                    border-radius: 50%;
-                    display: inline-block;
-                    margin-right: 15px;
-                    flex-shrink: 0;
-                }
-                .chart-container { display: flex; align-items: center; }
-                .chart-details { display: flex; flex-direction: column; justify-content: center; }
-                .legend-item { display: flex; align-items: center; font-size: 11px; margin-bottom: 2px; }
-                .legend-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
-
-                .status-dot {
-                    display: inline-block;
-                    width: 10px; height: 10px;
-                    border-radius: 50%;
-                }
-            </style>
-            <script>
-                const vscode = acquireVsCodeApi();
-
-                // Interactivity Handler
-                document.addEventListener('click', event => {
-                    const target = event.target.closest('.action-btn, .action-link');
-                    if (!target) return;
-
-                    const command = target.dataset.command;
-                    if (!command) return;
-
-                    const id = target.dataset.id;
-                    const name = target.dataset.name;
-                    const title = target.dataset.title;
-
-                    vscode.postMessage({
-                        command: command,
-                        id: id,
-                        name: name,
-                        title: title
-                    });
-                });
-
-                // ... Sort Logic (Simplified for brevity, or kept if needed) ...
-                let sortState = {};
-                function sortTable(n, tableId) {
-                    var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
-                    table = document.getElementById(tableId);
-                    switching = true;
-                    dir = "asc"; 
-                    if (sortState[tableId] && sortState[tableId].col === n && sortState[tableId].dir === "asc") {
-                        dir = "desc";
-                    }
-                    sortState[tableId] = { col: n, dir: dir };
-
-                    while (switching) {
-                        switching = false;
-                        rows = table.rows;
-                        // Skip header rows? The logic handles 1 header row.
-                        // For grouped table, we have multiple header rows ("Device: X").
-                        // Sorting grouped tables is complex. We should probably only sort WITHIN groups or sort GROUPS.
-                        // For now, let's disable sorting on the machine table or make it only sort top-level.
-                        // Or Keep it simple: standard sorting might break grouping headers.
-                        // Let's just disable sorting for Machine Table for now, as grouping is more important.
-                        if (tableId === 'machineTable') return; 
-
-                        for (i = 1; i < (rows.length - 1); i++) {
-                            shouldSwitch = false;
-                            x = rows[i].getElementsByTagName("TD")[n];
-                            y = rows[i + 1].getElementsByTagName("TD")[n];
-                            if (compareValues(x.innerText, y.innerText, dir, n, tableId)) {
-                                shouldSwitch = true;
-                                break;
-                            }
-                        }
-                        if (shouldSwitch) {
-                            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-                            switching = true;
-                            switchcount ++;      
-                        } else {
-                            if (switchcount == 0 && dir == "asc") {
-                                //
-                            }
-                        }
-                    }
-                }
-
-                 function compareValues(a, b, dir, n, tableId) {
-                    a = a.trim(); b = b.trim();
-                    if (dir === "asc") return a.localeCompare(b) > 0;
-                    return a.localeCompare(b) < 0;
-                }
-
-                // Toggle group visibility
-                function toggleGroup(groupId) {
-                    const rows = document.querySelectorAll('.session-row.' + groupId);
-                    const icon = document.getElementById('icon-' + groupId);
-                    const isHidden = rows.length > 0 && rows[0].style.display === 'none';
-                    rows.forEach(row => {
-                        row.style.display = isHidden ? '' : 'none';
-                    });
-                    if (icon) {
-                        icon.textContent = isHidden ? '▼' : '▶';
-                    }
-                }
-            </script>
-        </head>
-        <body>
-            <div class="header-row">
-                <h1>${lm.t('Sync Statistics')}</h1>
-                <button class="small-btn primary action-btn" style="font-size: 13px; padding: 6px 12px;" data-command="refresh">🔄 ${lm.t('Refresh Data')}</button>
-            </div>
-            
-            <div class="grid">
-                <div class="card">
-                    <div class="chart-container">
-                        <div class="pie-chart" style="background: conic-gradient(var(--vscode-progressBar-background) 0% ${localPct}%, var(--vscode-widget-shadow) ${localPct}% 100%);"></div>
-                        <div class="chart-details">
-                            <div class="stat-value">${data.localCount}</div>
-                            <div class="stat-label">${lm.t('Local Conversations')}</div>
-                            <div style="margin-top: 5px; font-size: 11px; opacity: 0.8;">
-                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-progressBar-background)"></span>${syncedCount} ${lm.t('Synced')}</div>
-                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-widget-shadow)"></span>${data.localCount - syncedCount} ${lm.t('Local Only')}</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="chart-container">
-                         <div class="pie-chart" style="background: conic-gradient(var(--vscode-progressBar-background) 0% ${remotePct}%, var(--vscode-widget-shadow) ${remotePct}% 100%);"></div>
-                        <div class="chart-details">
-                            <div class="stat-value">${data.remoteCount}</div>
-                            <div class="stat-label">${lm.t('Remote Conversations')}</div>
-                             <div style="margin-top: 5px; font-size: 11px; opacity: 0.8;">
-                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-progressBar-background)"></span>${syncedCount} ${lm.t('Synced')}</div>
-                                <div class="legend-item"><span class="legend-dot" style="background: var(--vscode-widget-shadow)"></span>${data.remoteCount - syncedCount} ${lm.t('Remote Only')}</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="stat-value">${syncedCount}</div>
-                    <div class="stat-label">${lm.t('Synced Conversations')}</div>
-                </div>
-                <div class="card">
-                    <div class="stat-value">${data.machines.length}</div>
-                    <div class="stat-label">${lm.t('Connected Sessions')}</div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div><strong>${LocalizationManager.getInstance().t('Last Sync')}:</strong> ${LocalizationManager.getInstance().formatDateTime(data.lastSync)}</div>
-                <div style="font-size: 12px; opacity: 0.6; margin-top: 5px;">${LocalizationManager.getInstance().t('Data loaded in')} ${this.formatLoadTime(data.loadTime)}</div>
-            </div>
-
-            <h3>${lm.t('Conversations')}</h3>
-            <table id="convTable">
-                <thead>
-                    <tr>
-                        <th onclick="sortTable(0, 'convTable')" style="cursor: pointer;">${lm.t('Title / ID')}</th>
-                        <th onclick="sortTable(1, 'convTable')" style="cursor: pointer;">${lm.t('Size (Remote)')}</th>
-                        <th onclick="sortTable(2, 'convTable')" style="cursor: pointer;">${lm.t('Last Modified')}</th>
-                        <th onclick="sortTable(3, 'convTable')" style="cursor: pointer;">${lm.t('Origin / Created')}</th>
-                        <th onclick="sortTable(4, 'convTable')" style="cursor: pointer;">${lm.t('Status')}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${convRows}
-                </tbody>
-            </table>
-
-            <h3>${lm.t('Connected Devices')}</h3>
-            <table id="machineTable">
-                <thead>
-                    <tr>
-                        <th style="width: 30px;">#</th>
-                        <th>${lm.t('Session Type')}</th>
-                        <th>${lm.t('UID')}</th>
-                        <th style="text-align: center;">${lm.t('Syncs')}</th>
-                        <th>${lm.t('Uploads')}</th>
-                        <th>${lm.t('Downloads')}</th>
-                        <th>${lm.t('Quota')}</th>
-                        <th>${lm.t('Actions')}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${machineRows}
-                </tbody>
-            </table>
-        </body>
-        </html>`;
     }
 
-    private formatLoadTime(ms: number): string {
-        const lm = LocalizationManager.getInstance();
-        if (ms < 1000) return `${ms}${lm.t('ms')}`;
-        const s = (ms / 1000).toFixed(2);
-        return `${s}${lm.t('s')}`;
-    }
+
 
     public async deleteRemoteConversationsForMachine(machineId: string, machineName: string): Promise<void> {
         const confirm = await vscode.window.showWarningMessage(
@@ -2941,6 +2462,31 @@ export class SyncManager {
         }
     }
 
+    /**
+     * Get title of a conversation from its task.md
+     */
+    private getConversationTitle(conversationId: string): string {
+        try {
+            const taskPath = path.join(BRAIN_DIR, conversationId, 'task.md');
+            if (fs.existsSync(taskPath)) {
+                const content = fs.readFileSync(taskPath, 'utf8');
+                const match = content.match(/^#\s+(.*)/);
+                if (match) return match[1].trim();
+            }
+        } catch (e) {
+            console.error(LocalizationManager.getInstance().t('Failed to get conversation title'), e);
+        }
+        return conversationId;
+    }
+
+    /**
+     * Update dashboard if it is currently visible
+     */
+    private updateDashboardIfVisible(): void {
+        if (SyncStatsWebview.isVisible()) {
+            this.refreshStatistics();
+        }
+    }
 }
 
 

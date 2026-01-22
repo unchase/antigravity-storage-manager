@@ -5,6 +5,38 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.5] - 2026-01-22
+### Sync Statistics Dashboard (Major Upgrade)
+- **Premium Design**: Completely overhauled the dashboard with a modern glassmorphism aesthetic, featuring vibrant gradients, interactive cards, and subtle animations.
+- **Improved Visualization**:
+    - Replaced basic data metrics with a sleek "Sync Network" overview.
+    - Integrated a professional storage visualization for Google Drive with a dynamic progress bar.
+    - Added pulsing status indicators to clearly differentiate online and offline device sessions.
+- **Session Grouping**: Devices are now intelligently grouped by name, making it significantly easier to manage multiple sessions across different machines.
+- **Interactive Actions**:
+    - Added **"Clear Files"** (🧹) functionality to delete remote conversations specifically associated with a device session.
+    - Enhanced confirmation dialogs for destructive actions to ensure data safety.
+- **Technical Refinement**: 
+    - Decoupled UI logic into a dedicated `SyncStatsWebview` class for better performance and maintainability.
+    - Fixed several critical TypeScript and linting issues identified in the dashboard logic.
+- **Active Transfers**: Added a dedicated real-time "Active Transfers" section to the Sync Statistics Dashboard, showing ongoing uploads and downloads with pulsing status indicators.
+- **Dynamic Refresh**: The dashboard now automatically refreshes whenever a sync operation starts or finishes, providing immediate visual feedback.
+
+### Localization & Internationalization
+- **Full Dashboard Localization**: Completed localization of all remaining dashboard components (headers, table columns, action labels, time formats) for all 15 supported languages.
+- **Improved Russian Translation**: Proofread and corrected several translation keys to ensure professional terminology.
+- **Error Localization**: Localized internal processing errors (e.g., "Failed to get conversation title") to improve transparency for non-English users.
+
+### UI & UX
+- **Performance Updates**: The dashboard now supports real-time data refreshing synchronized with background sync events.
+- **Consistency**: Unified the visual language with the recently updated Account Dashboard for a seamless premium experience.
+- **Rendering Fix**: Replaced progress bar characters with high-compatibility Unicode symbols to ensure consistent rendering across different operating systems and fonts.
+- **Refined Styles**: Improved the "Active Transfers" card aesthetics with vibrant icons and pulsing animations.
+
+### Bug Fixes
+- **Type Safety**: Restored missing methods (`isVisible`) and fixed lexical declarations in webview message handlers.
+- **Cleanup**: Removed unused imports and optimized dashboard loading latency.
+
 ## [0.7.4] - 2026-01-22
 ### User Interface
 - **Smart Menus**: The "AG Sync" menu now intelligently disables items requiring Google Drive connection when disconnected, showing a "Requires Sync Setup" indicator.

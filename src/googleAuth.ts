@@ -220,11 +220,55 @@ export class GoogleAuthProvider {
                         if (error) {
                             res.writeHead(400, { 'Content-Type': 'text/html' });
                             res.end(`
+                                <!DOCTYPE html>
                                 <html>
-                                <body style="font-family: sans-serif; text-align: center; padding: 50px;">
-                                    <h1>❌ Authentication Failed</h1>
-                                    <p>Error: ${error}</p>
-                                    <p>You can close this window.</p>
+                                <head>
+                                    <meta charset="UTF-8">
+                                    <title>Authentication Failed</title>
+                                    <style>
+                                        :root {
+                                            --bg: #0d1117;
+                                            --fg: #c9d1d9;
+                                            --danger: #f85149;
+                                            --card-bg: #161b22;
+                                            --border: #30363d;
+                                        }
+                                        body {
+                                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+                                            background-color: var(--bg);
+                                            color: var(--fg);
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                            height: 100vh;
+                                            margin: 0;
+                                        }
+                                        .card {
+                                            background: var(--card-bg);
+                                            border: 1px solid var(--border);
+                                            border-radius: 12px;
+                                            padding: 40px;
+                                            max-width: 400px;
+                                            width: 90%;
+                                            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+                                            text-align: center;
+                                            animation: fadeIn 0.5s ease-out;
+                                        }
+                                        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+                                        h1 { color: var(--danger); margin-top: 0; font-size: 24px; }
+                                        p { line-height: 1.6; opacity: 0.9; }
+                                        .error-code { font-family: monospace; background: rgba(248,81,73,0.1); padding: 4px 8px; border-radius: 4px; color: var(--danger); }
+                                        .icon { font-size: 48px; margin-bottom: 20px; }
+                                    </style>
+                                </head>
+                                <body>
+                                    <div class="card">
+                                        <div class="icon">❌</div>
+                                        <h1>Authentication Failed</h1>
+                                        <p>Something went wrong during the sign-in process.</p>
+                                        <p><span class="error-code">${error}</span></p>
+                                        <p style="font-size: 0.9em; opacity: 0.6; margin-top: 30px;">You can close this window and try again from VS Code.</p>
+                                    </div>
                                 </body>
                                 </html>
                             `);
@@ -247,11 +291,65 @@ export class GoogleAuthProvider {
 
                             res.writeHead(200, { 'Content-Type': 'text/html' });
                             res.end(`
+                                <!DOCTYPE html>
                                 <html>
-                                <body style="font-family: sans-serif; text-align: center; padding: 50px;">
-                                    <h1>Authentication Successful</h1>
-                                    <p>You can close this window and return to VS Code.</p>
-                                    <script>setTimeout(() => window.close(), 2000);</script>
+                                <head>
+                                    <meta charset="UTF-8">
+                                    <title>Authentication Successful</title>
+                                    <style>
+                                        :root {
+                                            --bg: #0d1117;
+                                            --fg: #c9d1d9;
+                                            --success: #3fb950;
+                                            --card-bg: #161b22;
+                                            --border: #30363d;
+                                        }
+                                        body {
+                                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+                                            background-color: var(--bg);
+                                            color: var(--fg);
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                            height: 100vh;
+                                            margin: 0;
+                                        }
+                                        .card {
+                                            background: var(--card-bg);
+                                            border: 1px solid var(--border);
+                                            border-radius: 12px;
+                                            padding: 40px;
+                                            max-width: 400px;
+                                            width: 90%;
+                                            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+                                            text-align: center;
+                                            animation: fadeIn 0.5s ease-out;
+                                        }
+                                        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+                                        h1 { color: var(--success); margin-top: 0; font-size: 24px; }
+                                        p { line-height: 1.6; opacity: 0.9; }
+                                        .icon { font-size: 48px; margin-bottom: 20px; }
+                                        .status { 
+                                            display: inline-block; 
+                                            margin-top: 20px; 
+                                            padding: 8px 16px; 
+                                            background: rgba(63,185,80,0.1); 
+                                            color: var(--success); 
+                                            border-radius: 20px; 
+                                            font-size: 0.9em; 
+                                            font-weight: 600;
+                                        }
+                                    </style>
+                                </head>
+                                <body>
+                                    <div class="card">
+                                        <div class="icon">✅</div>
+                                        <h1>Authentication Successful</h1>
+                                        <p>Your Google account has been successfully linked with Antigravity Storage Manager.</p>
+                                        <div class="status">You can close this window now</div>
+                                        <p style="font-size: 0.8em; opacity: 0.5; margin-top: 30px;">Redirecting back to VS Code...</p>
+                                    </div>
+                                    <script>setTimeout(() => window.close(), 3000);</script>
                                 </body>
                                 </html>
                             `);

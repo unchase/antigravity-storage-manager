@@ -10,7 +10,7 @@ export { formatDuration };
 export function drawProgressBar(percentage: number, length: number = 10): string {
     const filledLength = Math.round((percentage / 100) * length);
     const emptyLength = length - filledLength;
-    return '█'.repeat(filledLength) + '░'.repeat(emptyLength);
+    return '■'.repeat(filledLength) + '□'.repeat(emptyLength);
 }
 
 /**
