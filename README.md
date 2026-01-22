@@ -46,9 +46,10 @@ If you find this extension useful, consider supporting the development:
 - ☁️ **Google Drive Sync** — Automatically sync conversations between devices with end-to-end encryption.
 - ⚡ **Parallel Per-File Sync** — Fast differential sync with parallel processing and hash caching.
 - 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
-- 📊 **Devices Dashboard** — Interactive dashboard with session grouping, online status indicators, and machine management.
+- 📊 **Account & Quota Dashboard** — Comprehensive real-time tracking of consumption speed, remaining time estimates, and account status.
 - 🌍 **Global Localization** — Native support for **15 languages** (English, Russian, Chinese, Japanese, Korean, German, French, Arabic, and more).
-- 📉 **Advanced Quota Dashboard** — Real-time tracking with consumption speed, remaining time estimates, and visual progress bars.
+- 🔄 **Live Updates** — Seamlessly syncs data between the status bar and dashboard every minute for up-to-the-second accuracy.
+- 🔍 **Account Insights** — Monitor your Plan/Tier, specific feature availability (Web Search, Browser Tool), and raw Google API responses.
 - 🚦 **Premium Status Indicators** — Colored icons (🟢/🟡/🟠/🔴) and visual scales `[██░░]` to track quota, model cycles, and sync health at a glance.
 - 🛑 **Cancellation Support** — Abort long-running operations (Sync, Export, Backup) safely at any time.
 - 🛠️ **Smart Configuration** — Auto-detects missing sync setup and prompts for configuration on startup. Hot-reloads on language changes.
@@ -101,7 +102,7 @@ Keep your conversations synchronized across multiple machines using your Google 
 
 ---
 
-## Antigravity Quota Dashboard (New!)
+## Account & Quota Dashboard (New!)
 
 ![Quota Dashboard](images/quota-dashboard.png)
 
@@ -110,12 +111,13 @@ Keep your conversations synchronized across multiple machines using your Google 
 Monitor your AI usage limits and remaining credits directly within VS Code.
 
 ### Features
-- **Real-time Quota**: View your plan (Free/Pro/Ultra) status and remaining prompt credits.
+- **Real-time Synchronization**: The dashboard automatically refreshes data every minute, staying perfectly in sync with the status bar.
+- **Plan & Tier Analysis**: View your exact plan name and tier description directly from authenticated Google API data.
 - **Model Monitoring**: Pin specific models (e.g., Gemini 3 Pro, Claude Sonnet 4.5) to the status bar for quick access.
-- **Visual Indicators**: ASCII progress bars show exactly how much quota is remaining.
-- **Sorting**: Sort models by "Quota Remaining" or "Reset Time" to prioritize what's important.
-- **Visual Scale**: Pro/Ultra models show a visual time scale `[████░░]` indicating time within the quota cycle.
-- **Architecture Aware**: Works seamlessly on Windows, macOS (Intel/M1/M2), and Linux.
+- **Feature Availability**: Check which tools (Web Search, MCP, Browser) are enabled for your current subscription level.
+- **Visual Indicators**: Color-coded status dots (🟢/🟡/🟠/🔴) and high-resolution progress bars show usage at a glance.
+- **Cycle Tracking**: High-tier models show a visual time scale `[████░░]` indicating positions within their specific quota cycles.
+- **Detailed Statistics**: Precise counters for request usage and token limits for every model.
 
 ### Usage
 1. Click the **AG Quota** (`AGQ`) indicator in the status bar (or run `Antigravity Quota: Show Quota`).
@@ -134,6 +136,21 @@ Monitor your AI usage limits and remaining credits directly within VS Code.
 ![Quota Settings](images/quota-settings.png)
 
 *(Fig. 3: Settings UI)*
+
+---
+
+## Google Account Data (Advanced)
+
+![Google Account Data](screenshots/google_account_data.png)
+
+*(Fig. 4: Raw Account Data view)*
+
+For power users and troubleshooting, you can view the raw JSON data received from the Google API. This includes detailed information about your account status, tier details, and all raw model quota limits.
+
+### How to access:
+1. Open the **AG Sync** menu from the status bar.
+2. Select **Google Account Data**.
+3. Or click the **View Raw JSON** button directly from the **Account Information** dashboard.
 
 ---
 

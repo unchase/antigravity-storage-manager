@@ -1,0 +1,338 @@
+{
+    "name": "Nomis Labs",
+    "email": "nomistools1@gmail.com",
+    "planStatus": {
+        "planInfo": {
+            "teamsTier": "TEAMS_TIER_PRO",
+            "planName": "Pro",
+            "hasAutocompleteFastMode": true,
+            "allowStickyPremiumModels": true,
+            "allowPremiumCommandModels": true,
+            "hasTabToJump": true,
+            "maxNumPremiumChatMessages": "-1",
+            "maxNumChatInputTokens": "16384",
+            "maxCustomChatInstructionCharacters": "600",
+            "maxNumPinnedContextItems": "-1",
+            "maxLocalIndexSize": "-1",
+            "monthlyPromptCredits": 50000,
+            "monthlyFlowCredits": 150000,
+            "monthlyFlexCreditPurchaseAmount": 25000,
+            "canBuyMoreCredits": true,
+            "cascadeWebSearchEnabled": true,
+            "canCustomizeAppIcon": true,
+            "cascadeCanAutoRunCommands": true,
+            "canGenerateCommitMessages": true,
+            "knowledgeBaseEnabled": true,
+            "defaultTeamConfig": {
+                "allowMcpServers": true,
+                "allowAutoRunCommands": true,
+                "allowBrowserExperimentalFeatures": true
+            },
+            "canAllowCascadeInBackground": true,
+            "browserEnabled": true
+        },
+        "availablePromptCredits": 500,
+        "availableFlowCredits": 100
+    },
+    "cascadeModelConfigData": {
+        "clientModelConfigs": [
+            {
+                "label": "Gemini 3 Pro (High)",
+                "modelOrAlias": {
+                    "model": "MODEL_PLACEHOLDER_M8"
+                },
+                "supportsImages": true,
+                "isRecommended": true,
+                "allowedTiers": [
+                    "TEAMS_TIER_PRO",
+                    "TEAMS_TIER_TEAMS",
+                    "TEAMS_TIER_ENTERPRISE_SELF_HOSTED",
+                    "TEAMS_TIER_ENTERPRISE_SAAS",
+                    "TEAMS_TIER_HYBRID",
+                    "TEAMS_TIER_PRO_ULTIMATE"
+                ],
+                "quotaInfo": {
+                    "remainingFraction": 0.2,
+                    "resetTime": "2026-01-29T10:31:40Z"
+                },
+                "supportedMimeTypes": {
+                    "application/json": true,
+                    "application/pdf": true,
+                    "application/rtf": true,
+                    "application/x-ipynb+json": true,
+                    "application/x-javascript": true,
+                    "application/x-python-code": true,
+                    "application/x-typescript": true,
+                    "audio/webm;codecs=opus": true,
+                    "image/heic": true,
+                    "image/heif": true,
+                    "image/jpeg": true,
+                    "image/png": true,
+                    "image/webp": true,
+                    "text/css": true,
+                    "text/csv": true,
+                    "text/html": true,
+                    "text/javascript": true,
+                    "text/markdown": true,
+                    "text/plain": true,
+                    "text/rtf": true,
+                    "text/x-python": true,
+                    "text/x-python-script": true,
+                    "text/x-typescript": true,
+                    "text/xml": true,
+                    "video/audio/s16le": true,
+                    "video/audio/wav": true,
+                    "video/jpeg2000": true,
+                    "video/mp4": true,
+                    "video/text/timestamp": true,
+                    "video/videoframe/jpeg2000": true,
+                    "video/webm": true
+                }
+            },
+            {
+                "label": "Gemini 3 Pro (Low)",
+                "modelOrAlias": {
+                    "model": "MODEL_PLACEHOLDER_M7"
+                },
+                "supportsImages": true,
+                "isRecommended": true,
+                "allowedTiers": [
+                    "TEAMS_TIER_PRO",
+                    "TEAMS_TIER_TEAMS",
+                    "TEAMS_TIER_ENTERPRISE_SELF_HOSTED",
+                    "TEAMS_TIER_ENTERPRISE_SAAS",
+                    "TEAMS_TIER_HYBRID",
+                    "TEAMS_TIER_PRO_ULTIMATE"
+                ],
+                "quotaInfo": {
+                    "remainingFraction": 0.2,
+                    "resetTime": "2026-01-29T10:31:40Z"
+                },
+                "supportedMimeTypes": {
+                    "application/json": true,
+                    "application/pdf": true,
+                    "application/rtf": true,
+                    "application/x-ipynb+json": true,
+                    "application/x-javascript": true,
+                    "application/x-python-code": true,
+                    "application/x-typescript": true,
+                    "audio/webm;codecs=opus": true,
+                    "image/heic": true,
+                    "image/heif": true,
+                    "image/jpeg": true,
+                    "image/png": true,
+                    "image/webp": true,
+                    "text/css": true,
+                    "text/csv": true,
+                    "text/html": true,
+                    "text/javascript": true,
+                    "text/markdown": true,
+                    "text/plain": true,
+                    "text/rtf": true,
+                    "text/x-python": true,
+                    "text/x-python-script": true,
+                    "text/x-typescript": true,
+                    "text/xml": true,
+                    "video/audio/s16le": true,
+                    "video/audio/wav": true,
+                    "video/jpeg2000": true,
+                    "video/mp4": true,
+                    "video/text/timestamp": true,
+                    "video/videoframe/jpeg2000": true,
+                    "video/webm": true
+                }
+            },
+            {
+                "label": "Gemini 3 Flash",
+                "modelOrAlias": {
+                    "model": "MODEL_PLACEHOLDER_M18"
+                },
+                "supportsImages": true,
+                "isRecommended": true,
+                "allowedTiers": [
+                    "TEAMS_TIER_PRO",
+                    "TEAMS_TIER_TEAMS",
+                    "TEAMS_TIER_ENTERPRISE_SELF_HOSTED",
+                    "TEAMS_TIER_ENTERPRISE_SAAS",
+                    "TEAMS_TIER_HYBRID",
+                    "TEAMS_TIER_PRO_ULTIMATE"
+                ],
+                "quotaInfo": {
+                    "remainingFraction": 1,
+                    "resetTime": "2026-01-29T11:44:14Z"
+                },
+                "tagTitle": "New",
+                "supportedMimeTypes": {
+                    "application/json": true,
+                    "application/pdf": true,
+                    "application/rtf": true,
+                    "application/x-ipynb+json": true,
+                    "application/x-javascript": true,
+                    "application/x-python-code": true,
+                    "application/x-typescript": true,
+                    "audio/webm;codecs=opus": true,
+                    "image/heic": true,
+                    "image/heif": true,
+                    "image/jpeg": true,
+                    "image/png": true,
+                    "image/webp": true,
+                    "text/css": true,
+                    "text/csv": true,
+                    "text/html": true,
+                    "text/javascript": true,
+                    "text/markdown": true,
+                    "text/plain": true,
+                    "text/rtf": true,
+                    "text/x-python": true,
+                    "text/x-python-script": true,
+                    "text/x-typescript": true,
+                    "text/xml": true,
+                    "video/audio/s16le": true,
+                    "video/audio/wav": true,
+                    "video/jpeg2000": true,
+                    "video/mp4": true,
+                    "video/text/timestamp": true,
+                    "video/videoframe/jpeg2000": true,
+                    "video/webm": true
+                }
+            },
+            {
+                "label": "Claude Sonnet 4.5",
+                "modelOrAlias": {
+                    "model": "MODEL_CLAUDE_4_5_SONNET"
+                },
+                "supportsImages": true,
+                "isRecommended": true,
+                "allowedTiers": [
+                    "TEAMS_TIER_PRO",
+                    "TEAMS_TIER_TEAMS",
+                    "TEAMS_TIER_ENTERPRISE_SELF_HOSTED",
+                    "TEAMS_TIER_ENTERPRISE_SAAS",
+                    "TEAMS_TIER_HYBRID",
+                    "TEAMS_TIER_PRO_ULTIMATE"
+                ],
+                "quotaInfo": {
+                    "remainingFraction": 1,
+                    "resetTime": "2026-01-29T11:44:14Z"
+                },
+                "supportedMimeTypes": {
+                    "image/heic": true,
+                    "image/heif": true,
+                    "image/jpeg": true,
+                    "image/png": true,
+                    "image/webp": true,
+                    "video/jpeg2000": true,
+                    "video/videoframe/jpeg2000": true
+                }
+            },
+            {
+                "label": "Claude Sonnet 4.5 (Thinking)",
+                "modelOrAlias": {
+                    "model": "MODEL_CLAUDE_4_5_SONNET_THINKING"
+                },
+                "supportsImages": true,
+                "isRecommended": true,
+                "allowedTiers": [
+                    "TEAMS_TIER_PRO",
+                    "TEAMS_TIER_TEAMS",
+                    "TEAMS_TIER_ENTERPRISE_SELF_HOSTED",
+                    "TEAMS_TIER_ENTERPRISE_SAAS",
+                    "TEAMS_TIER_HYBRID",
+                    "TEAMS_TIER_PRO_ULTIMATE"
+                ],
+                "quotaInfo": {
+                    "remainingFraction": 1,
+                    "resetTime": "2026-01-29T11:44:14Z"
+                },
+                "supportedMimeTypes": {
+                    "image/heic": true,
+                    "image/heif": true,
+                    "image/jpeg": true,
+                    "image/png": true,
+                    "image/webp": true,
+                    "video/jpeg2000": true,
+                    "video/videoframe/jpeg2000": true
+                }
+            },
+            {
+                "label": "Claude Opus 4.5 (Thinking)",
+                "modelOrAlias": {
+                    "model": "MODEL_PLACEHOLDER_M12"
+                },
+                "supportsImages": true,
+                "isRecommended": true,
+                "allowedTiers": [
+                    "TEAMS_TIER_PRO",
+                    "TEAMS_TIER_TEAMS",
+                    "TEAMS_TIER_ENTERPRISE_SELF_HOSTED",
+                    "TEAMS_TIER_ENTERPRISE_SAAS",
+                    "TEAMS_TIER_HYBRID",
+                    "TEAMS_TIER_PRO_ULTIMATE"
+                ],
+                "quotaInfo": {
+                    "remainingFraction": 1,
+                    "resetTime": "2026-01-29T11:44:14Z"
+                },
+                "supportedMimeTypes": {
+                    "image/heic": true,
+                    "image/heif": true,
+                    "image/jpeg": true,
+                    "image/png": true,
+                    "image/webp": true,
+                    "video/jpeg2000": true,
+                    "video/videoframe/jpeg2000": true
+                }
+            },
+            {
+                "label": "GPT-OSS 120B (Medium)",
+                "modelOrAlias": {
+                    "model": "MODEL_OPENAI_GPT_OSS_120B_MEDIUM"
+                },
+                "isRecommended": true,
+                "allowedTiers": [
+                    "TEAMS_TIER_PRO",
+                    "TEAMS_TIER_TEAMS",
+                    "TEAMS_TIER_ENTERPRISE_SELF_HOSTED",
+                    "TEAMS_TIER_ENTERPRISE_SAAS",
+                    "TEAMS_TIER_HYBRID",
+                    "TEAMS_TIER_PRO_ULTIMATE"
+                ],
+                "quotaInfo": {
+                    "remainingFraction": 1,
+                    "resetTime": "2026-01-29T11:44:14Z"
+                }
+            }
+        ],
+        "clientModelSorts": [
+            {
+                "name": "Recommended",
+                "groups": [
+                    {
+                        "modelLabels": [
+                            "Gemini 3 Pro (High)",
+                            "Gemini 3 Pro (Low)",
+                            "Gemini 3 Flash",
+                            "Claude Sonnet 4.5",
+                            "Claude Sonnet 4.5 (Thinking)",
+                            "Claude Opus 4.5 (Thinking)",
+                            "GPT-OSS 120B (Medium)"
+                        ]
+                    }
+                ]
+            }
+        ],
+        "defaultOverrideModelConfig": {
+            "modelOrAlias": {
+                "model": "MODEL_PLACEHOLDER_M8"
+            }
+        }
+    },
+    "acceptedLatestTermsOfService": true,
+    "userTier": {
+        "id": "free-tier",
+        "name": "Free",
+        "description": "Free",
+        "upgradeSubscriptionUri": "https://antigravity.google/g1-upgrade",
+        "upgradeSubscriptionText": "You can upgrade to a Google AI plan to receive higher rate limits."
+    }
+}
