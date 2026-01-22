@@ -29,6 +29,7 @@ export interface QuotaSnapshot {
     userEmail?: string;
     projectId?: string;
     error?: string;
+    rawUserStatus?: any;
 }
 
 // API Response Types

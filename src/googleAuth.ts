@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as http from 'http';
 import * as url from 'url';
 import { google } from 'googleapis';
+import { LocalizationManager } from './l10n/localizationManager';
 
 // OAuth2 Configuration
 // 1. Create a project in Google Cloud Console
@@ -185,8 +186,26 @@ export class GoogleAuthProvider {
      * Start the OAuth2 sign-in flow
      */
     async signIn(): Promise<void> {
+        const lm = LocalizationManager.getInstance();
         // Reload credentials just in case they were updated
         this.loadCredentials();
+
+        // Check for client ID/Secret
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
+        const clientId = config.get<string>('google.clientId');
+        const clientSecret = config.get<string>('google.clientSecret');
+
+        if (!clientId || !clientSecret || clientId.includes('YOUR_CLIENT_ID')) {
+            const openSettings = lm.t('Open Settings');
+            const selection = await vscode.window.showErrorMessage(
+                lm.t('Google Drive OAuth credentials are missing. Please configure them in settings to enable sync.'),
+                openSettings
+            );
+            if (selection === openSettings) {
+                await vscode.commands.executeCommand('workbench.action.openSettings', `@ext:unchase.${EXT_NAME}`);
+            }
+            throw new Error(lm.t('Missing OAuth credentials'));
+        }
 
         return new Promise((resolve, reject) => {
             // Create a local HTTP server to receive the OAuth callback
@@ -250,7 +269,7 @@ export class GoogleAuthProvider {
 
             this.server.on('error', (err: NodeJS.ErrnoException) => {
                 if (err.code === 'EADDRINUSE') {
-                    reject(new Error(`Port ${REDIRECT_PORT} is already in use. Please close any other authentication attempts.`));
+                    reject(new Error(lm.t('Port {0} is already in use. Please close any other authentication attempts.', REDIRECT_PORT)));
                 } else {
                     reject(err);
                 }
@@ -269,10 +288,10 @@ export class GoogleAuthProvider {
 
                 vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
-                    title: vscode.l10n.t('Signing in to Google...'),
+                    title: lm.t('Signing in to Google...'),
                     cancellable: true
                 }, async (progress, token) => {
-                    progress.report({ message: vscode.l10n.t('Please authorize access in the browser window') });
+                    progress.report({ message: lm.t('Please authorize access in the browser window') });
 
                     // Wait for server to close (which happens on success or timeout)
                     return new Promise<void>((resolveProgress) => {
@@ -286,7 +305,7 @@ export class GoogleAuthProvider {
                         token.onCancellationRequested(() => {
                             if (this.server) {
                                 this.closeServer();
-                                reject(new Error('Authentication cancelled by user'));
+                                reject(new Error(lm.t('Authentication cancelled by user')));
                             }
                             clearInterval(checkInterval);
                             resolveProgress();
@@ -299,7 +318,7 @@ export class GoogleAuthProvider {
             setTimeout(() => {
                 if (this.server) {
                     this.closeServer();
-                    reject(new Error('Authentication timed out'));
+                    reject(new Error(lm.t('Authentication timed out')));
                 }
             }, 5 * 60 * 1000);
         });

@@ -156,7 +156,8 @@ export function parseQuotaResponse(response: any): QuotaSnapshot {
         timestamp: new Date(),
         promptCredits,
         models,
-        planName
+        planName,
+        rawUserStatus: userStatus
     };
 }
 

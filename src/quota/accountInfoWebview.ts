@@ -1,0 +1,558 @@
+import * as vscode from 'vscode';
+import { LocalizationManager } from '../l10n/localizationManager';
+import { QuotaSnapshot } from './types';
+import { drawProgressBar, formatResetTime, formatDuration } from './utils';
+
+export class AccountInfoWebview {
+    private static currentPanel: vscode.WebviewPanel | undefined;
+    private static latestSnapshot: QuotaSnapshot | undefined;
+    private static readonly viewType = 'accountInfo';
+
+    public static show(context: vscode.ExtensionContext, snapshot: QuotaSnapshot): void {
+        const column = vscode.window.activeTextEditor
+            ? vscode.window.activeTextEditor.viewColumn
+            : undefined;
+
+        AccountInfoWebview.latestSnapshot = snapshot;
+
+        // If we already have a panel, show it
+        if (AccountInfoWebview.currentPanel) {
+            AccountInfoWebview.currentPanel.reveal(column);
+            AccountInfoWebview.currentPanel.webview.html = AccountInfoWebview.getHtmlContent(snapshot);
+            return;
+        }
+
+        // Create a new panel
+        const panel = vscode.window.createWebviewPanel(
+            AccountInfoWebview.viewType,
+            LocalizationManager.getInstance().t('Account Information'),
+            column || vscode.ViewColumn.One,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true
+            }
+        );
+
+        AccountInfoWebview.currentPanel = panel;
+        panel.webview.html = AccountInfoWebview.getHtmlContent(snapshot);
+
+        // Handle messages from the webview
+        panel.webview.onDidReceiveMessage(
+            message => {
+                switch (message.command) {
+                    case 'viewRawJson':
+                        const dataToView = AccountInfoWebview.latestSnapshot?.rawUserStatus || AccountInfoWebview.latestSnapshot || snapshot;
+                        vscode.workspace.openTextDocument({
+                            content: JSON.stringify(dataToView, null, 2),
+                            language: 'json'
+                        }).then(doc => {
+                            vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+                        });
+                        return;
+                    case 'openPlan':
+                        vscode.env.openExternal(vscode.Uri.parse('https://one.google.com/ai'));
+                        return;
+                }
+            },
+            undefined,
+            context.subscriptions
+        );
+
+        // Reset when the panel is closed
+        panel.onDidDispose(
+            () => {
+                AccountInfoWebview.currentPanel = undefined;
+            },
+            undefined,
+            context.subscriptions
+        );
+    }
+
+    public static update(snapshot: QuotaSnapshot): void {
+        AccountInfoWebview.latestSnapshot = snapshot;
+        if (AccountInfoWebview.currentPanel) {
+            AccountInfoWebview.currentPanel.webview.html = AccountInfoWebview.getHtmlContent(snapshot);
+        }
+    }
+
+    private static getHtmlContent(snapshot: QuotaSnapshot): string {
+        const l = LocalizationManager.getInstance();
+        const data = snapshot.rawUserStatus?.userStatus || snapshot.rawUserStatus || {};
+        const planInfo = data.planStatus?.planInfo;
+        const userTier = data.userTier;
+
+        // Credits calculations
+        const promptCredits = snapshot.promptCredits;
+        const promptPercent = promptCredits?.remainingPercentage ?? 0;
+
+        // Model quotas
+        const models = snapshot.models || [];
+
+        // Features
+        const featuresList = [
+            { id: 'webSearch', name: l.t('Web Search'), enabled: planInfo?.cascadeWebSearchEnabled },
+            { id: 'browser', name: l.t('Browser Tool'), enabled: planInfo?.browserEnabled },
+            { id: 'kb', name: l.t('Knowledge Base'), enabled: planInfo?.knowledgeBaseEnabled },
+            { id: 'autorun', name: l.t('Auto-run Commands'), enabled: planInfo?.cascadeCanAutoRunCommands },
+            { id: 'commit', name: l.t('Generate Commit Messages'), enabled: planInfo?.canGenerateCommitMessages },
+            { id: 'mcp', name: l.t('MCP Servers'), enabled: planInfo?.defaultTeamConfig?.allowMcpServers },
+        ];
+
+        const getStatusIcon = (pct: number, isExhausted: boolean): string => {
+            if (isExhausted || pct === 0) return '🔴';
+            if (pct < 30) return '🟠';
+            if (pct < 50) return '🟡';
+            return '🟢';
+        };
+
+        const getProgressBarColor = (pct: number, isExhausted: boolean): string => {
+            if (isExhausted || pct === 0) return 'var(--danger)';
+            if (pct < 30) return 'var(--warning-dark)';
+            if (pct < 50) return 'var(--warning)';
+            return 'var(--success)';
+        };
+
+        const modelsHtml = models.map(model => {
+            const pct = model.remainingPercentage ?? 0;
+            const statusIcon = getStatusIcon(pct, model.isExhausted);
+            const color = getProgressBarColor(pct, model.isExhausted);
+            const resetTimeStr = formatResetTime(model.resetTime);
+
+            let cycleInfo = '';
+            const isHighTier = model.label.includes('Pro') || model.label.includes('Ultra') || model.label.includes('Thinking') || model.label.includes('Opus');
+            if (isHighTier && model.timeUntilReset > 0) {
+                let cycleDuration = 24 * 60 * 60 * 1000;
+                if (model.label.includes('Ultra') || model.label.includes('Opus') || model.label.includes('Thinking')) {
+                    cycleDuration = 6 * 60 * 60 * 1000;
+                } else if (model.label.includes('Pro')) {
+                    cycleDuration = 8 * 60 * 60 * 1000;
+                }
+                const progress = Math.max(0, Math.min(1, 1 - (model.timeUntilReset / cycleDuration)));
+                const cycleBar = drawProgressBar(progress * 100, 8);
+                cycleInfo = `<div class="cycle-info">${l.t('Cycle')}: <code class="bar">${cycleBar}</code> <span class="time">(${formatDuration(model.timeUntilReset)} ${l.t('left')})</span></div>`;
+            }
+
+            const stats = [];
+            if (model.requestUsage !== undefined && model.requestLimit) {
+                stats.push(`${l.t('Requests')}: <b>${model.requestUsage} / ${model.requestLimit}</b>`);
+            }
+            if (model.tokenUsage !== undefined && model.tokenLimit) {
+                stats.push(`${l.t('Tokens')}: <b>${model.tokenUsage} / ${model.tokenLimit}</b>`);
+            }
+
+            return `
+                <div class="model-row">
+                    <div class="model-header">
+                        <span class="model-title">${statusIcon} ${model.label}</span>
+                        <span class="model-reset">${resetTimeStr}</span>
+                    </div>
+                    <div class="model-stats-row">
+                        <div class="quota-container">
+                            <span class="quota-label">${l.t('Quota Left')}:</span>
+                            <div class="progress-bar-wrapper">
+                                <div class="progress-bar" style="width: ${pct}%; background: ${color};"></div>
+                            </div>
+                            <span class="quota-value" style="color: ${color};">${pct.toFixed(1)}%</span>
+                        </div>
+                        <div class="usage-stats">${stats.join(' &nbsp;|&nbsp; ')}</div>
+                    </div>
+                    ${cycleInfo}
+                </div>
+            `;
+        }).join('');
+
+        const featuresHtml = featuresList.map(f => `
+            <div class="feature-card ${f.enabled ? 'enabled' : 'disabled'}">
+                <div class="feature-top">
+                    <span class="feature-name">${f.name}</span>
+                    <span class="feature-badge">${f.enabled ? l.t('Enabled') : l.t('Disabled')}</span>
+                </div>
+            </div>
+        `).join('');
+
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${l.t('Account Information')}</title>
+    <style>
+        :root {
+            --bg-main: #0d1117;
+            --bg-card: #161b22;
+            --bg-hover: #21262d;
+            --border: #30363d;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --accent: #2f81f7;
+            --accent-glow: rgba(47, 129, 247, 0.15);
+            --success: #238636;
+            --warning: #d29922;
+            --warning-dark: #9e6a03;
+            --danger: #da3633;
+            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: var(--font);
+            margin: 0;
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 960px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .header-btns {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--text-dim);
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 16px;
+            margin-top: 32px;
+        }
+
+        /* Profile Card */
+        .profile-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .profile-box {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .p-label {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        .p-value {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .plan-tag {
+            background: var(--accent);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            display: inline-block;
+        }
+
+        /* Credits Card */
+        .credits-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .credit-row {
+            margin-bottom: 24px;
+        }
+
+        .credit-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .cred-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .cred-title {
+            font-weight: 600;
+        }
+
+        .cred-val {
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        .bar-outer {
+            height: 10px;
+            background: var(--border);
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bar-inner {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Models List */
+        .models-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .model-row {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px 24px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .model-row:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .model-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .model-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .model-reset {
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+
+        .model-stats-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .quota-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-grow: 1;
+            max-width: 400px;
+        }
+
+        .quota-label {
+            font-size: 13px;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
+
+        .progress-bar-wrapper {
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            border-radius: 4px;
+        }
+
+        .quota-value {
+            font-size: 14px;
+            font-weight: 700;
+            min-width: 50px;
+            text-align: right;
+        }
+
+        .usage-stats {
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+
+        .usage-stats b {
+            color: var(--text-main);
+        }
+
+        .cycle-info {
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .bar {
+            color: var(--text-main);
+            letter-spacing: -1px;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        }
+
+        /* Features */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 18px;
+        }
+
+        .feature-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .feature-name {
+            font-weight: 500;
+        }
+
+        .feature-badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .feature-card.enabled {
+            border-left: 4px solid var(--success);
+        }
+        .feature-card.enabled .feature-badge {
+            background: rgba(35, 134, 54, 0.15);
+            color: #3fb950;
+        }
+
+        .feature-card.disabled {
+            opacity: 0.6;
+            border-left: 4px solid var(--danger);
+        }
+        .feature-card.disabled .feature-badge {
+            background: rgba(218, 54, 51, 0.15);
+            color: #f85149;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>${l.t('Account Information')}</h1>
+            <div class="header-btns">
+                <button class="btn" onclick="openPlan()">${l.t('Upgrade Plan')}</button>
+                <button class="btn" onclick="viewRawJson()">${l.t('View Raw JSON')}</button>
+            </div>
+        </div>
+
+        <div class="section-title">${l.t('Profile')}</div>
+        <div class="profile-container">
+            <div class="profile-box">
+                <span class="p-label">${l.t('Name')}</span>
+                <span class="p-value">${snapshot.rawUserStatus?.name || 'alex turk'}</span>
+            </div>
+            <div class="profile-box">
+                <span class="p-label">${l.t('Email')}</span>
+                <span class="p-value">${snapshot.userEmail || snapshot.rawUserStatus?.email || 'N/A'}</span>
+            </div>
+            <div class="profile-box">
+                <span class="p-label">${l.t('Plan')}</span>
+                <div><span class="plan-tag">${userTier?.name || 'Free'}</span></div>
+            </div>
+            <div class="profile-box">
+                <span class="p-label">${l.t('Tier')}</span>
+                <span class="p-value">${userTier?.description || 'Free'}</span>
+            </div>
+        </div>
+
+        <div class="section-title">${l.t('Credits Balance')}</div>
+        <div class="credits-card">
+            <div class="credit-row">
+                <div class="cred-info">
+                    <span class="cred-title">${l.t('Prompt Credits')}</span>
+                    <span class="cred-val">${promptCredits?.available?.toLocaleString() || '0'} / ${promptCredits?.monthly?.toLocaleString() || '0'}</span>
+                </div>
+                <div class="bar-outer">
+                    <div class="bar-inner" style="width: ${promptPercent}%; background: ${getProgressBarColor(promptPercent, false)};"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-title">${l.t('Model Quotas')}</div>
+        <div class="models-list">
+            ${modelsHtml}
+        </div>
+
+        <div class="section-title">${l.t('Features')}</div>
+        <div class="features-grid">
+            ${featuresHtml}
+        </div>
+
+        <div style="margin-top: 48px; text-align: center; color: var(--text-dim); font-size: 12px; border-top: 1px solid var(--border); padding-top: 24px;">
+            ${l.t('Last updated: {0}', formatResetTime(new Date(snapshot.timestamp)))}
+        </div>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+        function viewRawJson() { vscode.postMessage({ command: 'viewRawJson' }); }
+        function openPlan() { vscode.postMessage({ command: 'openPlan' }); }
+    </script>
+</body>
+</html>`;
+    }
+}

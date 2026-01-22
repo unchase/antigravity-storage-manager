@@ -78,6 +78,8 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand(`${EXT_NAME}.showMenu`, async () => {
             const lm = LocalizationManager.getInstance();
+            const isReady = syncManager.isReady();
+
             // Helper to get keybinding label
             const getKeybindingLabel = (commandId: string): string => {
                 const packageJSON = context.extension.packageJSON;
@@ -97,17 +99,47 @@ export async function activate(context: vscode.ExtensionContext) {
                 return '';
             };
 
-            const items: (vscode.QuickPickItem & { command?: string, args?: any[] })[] = [
-                { label: `$(sync) ${lm.t('Sync Now')}`, description: `${lm.t('Trigger immediate synchronization')} ${getKeybindingLabel(`${EXT_NAME}.syncNow`)}`, command: `${EXT_NAME}.syncNow` },
-                { label: `$(graph) ${lm.t('Show Statistics')}`, description: `${lm.t('View detailed sync status and history')} ${getKeybindingLabel(`${EXT_NAME}.showSyncStats`)}`, command: `${EXT_NAME}.showSyncStats` },
-                { label: `$(cloud-upload) ${lm.t('Setup Sync')}`, description: `${lm.t('Configure Google Drive synchronization')} ${getKeybindingLabel(`${EXT_NAME}.syncSetup`)}`, command: `${EXT_NAME}.syncSetup` },
+            // Define items with an explicit 'requiresAuth' property or handling
+            const items: (vscode.QuickPickItem & { command?: string, args?: any[], requiresAuth?: boolean })[] = [
+                {
+                    label: `$(sync) ${lm.t('Sync Now')}`,
+                    description: `${lm.t('Trigger immediate synchronization')} ${getKeybindingLabel(`${EXT_NAME}.syncNow`)}`,
+                    command: `${EXT_NAME}.syncNow`
+                    // syncNow handles its own auth check, so we don't block it here
+                },
+                {
+                    label: `$(graph) ${lm.t('Show Statistics')}`,
+                    description: `${lm.t('View detailed sync status and history')} ${getKeybindingLabel(`${EXT_NAME}.showSyncStats`)}`,
+                    command: `${EXT_NAME}.showSyncStats`,
+                    requiresAuth: true
+                },
+                {
+                    label: `$(cloud-upload) ${lm.t('Setup Sync')}`,
+                    description: `${lm.t('Configure Google Drive synchronization')} ${getKeybindingLabel(`${EXT_NAME}.syncSetup`)}`,
+                    command: `${EXT_NAME}.syncSetup`
+                },
 
                 { label: '', kind: vscode.QuickPickItemKind.Separator },
 
                 // Management
-                { label: `$(shield) ${lm.t('Manage Authorized Deletion Machines')}`, description: lm.t('Manage authorized devices for deletion'), command: `${EXT_NAME}.syncManageAuthorizedMachines` },
-                { label: `$(list-unordered) ${lm.t('Manage Synced Conversations')}`, description: lm.t('Manage which conversations are synced'), command: `${EXT_NAME}.syncManage` },
-                { label: `$(sign-out) ${lm.t('Disconnect Google Drive Sync')}`, description: lm.t('Disconnect from Google Drive'), command: `${EXT_NAME}.syncDisconnect` },
+                {
+                    label: `$(shield) ${lm.t('Manage Authorized Deletion Machines')}`,
+                    description: lm.t('Manage authorized devices for deletion'),
+                    command: `${EXT_NAME}.syncManageAuthorizedMachines`,
+                    requiresAuth: true
+                },
+                {
+                    label: `$(list-unordered) ${lm.t('Manage Synced Conversations')}`,
+                    description: lm.t('Manage which conversations are synced'),
+                    command: `${EXT_NAME}.syncManage`,
+                    requiresAuth: true
+                },
+                {
+                    label: `$(sign-out) ${lm.t('Disconnect Google Drive Sync')}`,
+                    description: lm.t('Disconnect from Google Drive'),
+                    command: `${EXT_NAME}.syncDisconnect`,
+                    requiresAuth: true
+                },
 
                 { label: '', kind: vscode.QuickPickItemKind.Separator },
 
@@ -127,14 +159,49 @@ export async function activate(context: vscode.ExtensionContext) {
 
             if (quotaManager.isFeatureEnabled()) {
                 items.splice(2, 0, { label: `$(dashboard) ${lm.t('Show Quota')}`, description: `${lm.t('View Antigravity quota usage')} ${getKeybindingLabel(`${EXT_NAME}.showQuota`)}`, command: `${EXT_NAME}.showQuota` });
+                items.splice(3, 0, { label: `$(account) ${lm.t('Google Account Data')}`, description: lm.t('View raw account data from Google'), command: `${EXT_NAME}.showAccountData` });
             }
 
-            const selected = await vscode.window.showQuickPick(items, {
+            // Post-process items to reflect auth state
+            const processedItems = items.map(item => {
+                if (item.requiresAuth && !isReady) {
+                    // Extract icon and text from label
+                    const labelMatch = item.label.match(/^(\$\([a-z-]+\)\s*)?(.*)$/);
+                    const originalText = labelMatch ? labelMatch[2] : item.label;
+
+                    return {
+                        ...item,
+                        // Move the label text to description which renders in a dimmer color
+                        label: '$(lock)',
+                        description: `${originalText} [${lm.t('Requires Sync Setup')}] ${item.description || ''}`,
+                        // Clear detail if needed or use it for the warning
+                        detail: undefined
+                    };
+                }
+                return item;
+            });
+
+            const selected = await vscode.window.showQuickPick(processedItems, {
                 placeHolder: lm.t('Antigravity Storage Manager'),
                 title: lm.t('Select an action')
             });
 
             if (selected && selected.command) {
+                // Check if the ORIGINAL item required auth
+                const originalItem = items.find(i => i.command === selected.command);
+
+                if (originalItem?.requiresAuth && !isReady) {
+                    const setupNow = await vscode.window.showWarningMessage(
+                        lm.t('This action requires Google Drive Sync to be configured.'),
+                        lm.t('Setup Sync'),
+                        lm.t('Cancel')
+                    );
+                    if (setupNow === lm.t('Setup Sync')) {
+                        vscode.commands.executeCommand(`${EXT_NAME}.syncSetup`);
+                    }
+                    return;
+                }
+
                 if (selected.args) {
                     vscode.commands.executeCommand(selected.command, ...selected.args);
                 } else {
@@ -211,6 +278,12 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
             });
         }),
+        vscode.commands.registerCommand(`${EXT_NAME}.showQuota`, async () => {
+            await quotaManager.showQuota();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.showAccountData`, async () => {
+            await quotaManager.showAccountData();
+        }),
         vscode.commands.registerCommand(`${EXT_NAME}.syncManage`, async () => {
             if (!syncManager.isEnabled()) {
                 vscode.window.showWarningMessage(LocalizationManager.getInstance().t('Sync is not enabled. Please set up sync first.'));
@@ -235,9 +308,6 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.showSyncStats`, async () => {
             await syncManager.showStatistics();
-        }),
-        vscode.commands.registerCommand(`${EXT_NAME}.showQuota`, async () => {
-            await quotaManager.showQuota();
         })
     );
 

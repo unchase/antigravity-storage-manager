@@ -47,9 +47,9 @@ If you find this extension useful, consider supporting the development:
 - ⚡ **Parallel Per-File Sync** — Fast differential sync with parallel processing and hash caching.
 - 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
 - 📊 **Devices Dashboard** — Interactive dashboard with session grouping, online status indicators, and machine management.
-- 🌍 **Global Localization** — Native support for **16 languages** (English, Russian, Chinese, Japanese, Korean, German, and more).
+- 🌍 **Global Localization** — Native support for **15 languages** (English, Russian, Chinese, Japanese, Korean, German, French, Arabic, and more).
 - 📉 **Advanced Quota Dashboard** — Real-time tracking with consumption speed, remaining time estimates, and visual progress bars.
-- 🚦 **Smart Status Indicators** — Colored icons (🟢/🟡/🟠/🔴) and visual scales `[██░░]` to track quota and sync health at a glance.
+- 🚦 **Premium Status Indicators** — Colored icons (🟢/🟡/🟠/🔴) and visual scales `[██░░]` to track quota, model cycles, and sync health at a glance.
 - 🛑 **Cancellation Support** — Abort long-running operations (Sync, Export, Backup) safely at any time.
 - 🛠️ **Smart Configuration** — Auto-detects missing sync setup and prompts for configuration on startup. Hot-reloads on language changes.
 - 🎨 **Command Palette** — All commands available via `Ctrl+Shift+P`

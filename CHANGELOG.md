@@ -5,6 +5,42 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-01-22
+### User Interface
+- **Smart Menus**: The "AG Sync" menu now intelligently disables items requiring Google Drive connection when disconnected, showing a "Requires Sync Setup" indicator.
+- **Visual Feedback**: Disabled operations are marked with a lock icon 🔒 instead of their usual icon.
+
+### Authentication & Security
+- **Smart Auth Flow**: 
+    - Automatically checks for missing `client_id` or `client_secret` before attempting to sign in.
+    - Provides a direct "Open Settings" button if credentials are invalid, preventing failed browser redirects.
+- **Localized Errors**: All authentication errors (User Cancelled, Timeout, Port In Use) are now fully localized.
+
+### Localization
+- **Full Localization**: Completed translation of the "Account Information" dashboard and "Google Account Data" into all 15 supported languages.
+- **Comprehensive Coverage**: Added and localized strings for Account Plan, Cycle Info, Usage Stats, and the "Google Account Data" menu item.
+- **Consistency**: All localization bundles are now fully synchronized and verified for integrity.
+
+### Account Dashboard (New!)
+- **Real-time Updates**: The dashboard now automatically refreshes data every minute, synchronized with the status bar's polling.
+- **Premium UI**: Completely redesigned the "Account Information" dashboard with a modern, dark "GitHub-style" aesthetic and improved micro-animations.
+- **Enhanced Quotas**: Added status indicators (🟢/🟡/🟠/🔴), cycle progress bars, and detailed request/token usage statistics for all models.
+- **Accurate Plan Info**: Correctly identifies and displays "Plan" and "Tier" directly from Google API data.
+- **Live Raw Data**: The "View Raw JSON" function now always presents the most current snapshot from the last update.
+
+### Quota Interface
+- **Status Bar Consistency**: The dashboard visuals now perfectly match the premium feel of the status bar tooltip.
+- **Progress Bar**: Fixed progress bar rendering (replaced `▓` with `█` for better readability).
+
+### Device Management
+- **Authorized Machines**: Added details to the "Manage Authorized Deletion Machines" list:
+    - Online/Offline status (🟢/🔴).
+    - Last sync time.
+    - Current session duration.
+
+### Code Quality
+- **Linting**: Fixed linting errors (`formatDate`).
+
 ## [0.7.3] - 2026-01-21
 ### Sync & Performance
 - **Sync Feedback**: 

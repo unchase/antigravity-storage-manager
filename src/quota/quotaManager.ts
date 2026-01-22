@@ -9,6 +9,7 @@ import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaStatusBar } from './quotaStatusBar';
 import { drawProgressBar, formatResetTime, compareModels, formatDuration } from './utils';
 import { QuotaUsageTracker } from './quotaUsageTracker';
+import { AccountInfoWebview } from './accountInfoWebview';
 
 export class QuotaManager {
     private context: vscode.ExtensionContext;
@@ -87,6 +88,7 @@ export class QuotaManager {
             this.usageTracker.track(snapshot);
             this.checkAndNotifyResets(snapshot);
             this.statusBar.update(snapshot, undefined, this.usageTracker);
+            AccountInfoWebview.update(snapshot);
             return snapshot;
         } catch (error: any) {
             console.error('QuotaManager', `Fetch failed: ${error.message}`);
@@ -118,6 +120,24 @@ export class QuotaManager {
 
         if (snapshot) {
             await this.displayQuota(snapshot);
+        }
+    }
+
+    public async showAccountData(): Promise<void> {
+        if (!this.isEnabled) {
+            vscode.window.showInformationMessage(vscode.l10n.t('Quota feature is disabled in settings.'));
+            return;
+        }
+
+        let snapshot = this.statusBar.getLatestSnapshot();
+        if (!snapshot) {
+            snapshot = await this.fetchAndUpdate(true) || undefined;
+        }
+
+        if (snapshot) {
+            AccountInfoWebview.show(this.context, snapshot);
+        } else {
+            vscode.window.showErrorMessage(LocalizationManager.getInstance().t('No account data available.'));
         }
     }
 
@@ -263,6 +283,13 @@ export class QuotaManager {
         picker.onDidAccept(async () => {
             const selected = picker.selectedItems[0];
             if (!selected) return;
+
+            // Handle "Plan" click
+            if (selected.label.includes(lm.t('Plan'))) {
+                vscode.env.openExternal(vscode.Uri.parse('https://one.google.com/ai'));
+                picker.selectedItems = [];
+                return;
+            }
 
             // Handle Pinning
             // We need to find the model corresponding to this item.

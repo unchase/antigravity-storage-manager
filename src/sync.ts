@@ -2852,33 +2852,74 @@ export class SyncManager {
             const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
             const currentAuthorized = config.get<string[]>('sync.authorizedRemoteDeleteMachineIds') || [];
 
-            // Collect all known machines
-            const machinesMap = new Map<string, string>();
-            // Add current machine
-            machinesMap.set(this.config.machineId, this.config.machineName || 'Current Machine');
+            // Collect all known machines with details
+            const machinesMap = new Map<string, { name: string, lastSync?: string, createdAt?: string }>();
 
-            // Add from manifest machines
+            // Add current machine
+            machinesMap.set(this.config.machineId, {
+                name: this.config.machineName || LocalizationManager.getInstance().t('Current Machine'),
+                lastSync: new Date().toISOString(), // Assume active
+                createdAt: undefined // Unknown start for current without manifest lookup, but acceptable
+            });
+
+            // Add from manifest machines (rich info)
             if (manifest.machines) {
                 for (const m of manifest.machines) {
-                    machinesMap.set(m.id, m.name);
+                    machinesMap.set(m.id, {
+                        name: m.name,
+                        lastSync: m.lastSync,
+                        createdAt: m.createdAt
+                    });
                 }
             }
-            // Add from conversations override
+            // Add from conversations override (fallback)
             for (const c of manifest.conversations) {
                 if (c.createdBy && !machinesMap.has(c.createdBy)) {
-                    machinesMap.set(c.createdBy, c.createdByName || 'Unknown Machine');
+                    machinesMap.set(c.createdBy, { name: c.createdByName || LocalizationManager.getInstance().t('Unknown Machine') });
                 }
             }
 
             const items: vscode.QuickPickItem[] = [];
-            for (const [id, name] of machinesMap.entries()) {
+            const lm = LocalizationManager.getInstance();
+            const now = Date.now();
+
+            for (const [id, info] of machinesMap.entries()) {
                 const isAuth = currentAuthorized.includes(id);
-                // Mark current machine special?
                 const isCurrent = id === this.config.machineId;
 
+                // Status Logic
+                let statusIcon = '🔴'; // Default Offline
+                let statusText = lm.t('Offline');
+                let lastSyncText = '';
+                let durationText = '';
+
+                if (info.lastSync) {
+                    const lastSyncTime = new Date(info.lastSync).getTime();
+                    const diff = now - lastSyncTime;
+
+                    // Online if sync < 10 mins ago
+                    if (diff < 10 * 60 * 1000) {
+                        statusIcon = '🟢';
+                        statusText = lm.t('Online');
+                    }
+
+                    // Format Date
+                    lastSyncText = `${lm.t('Last Sync')}: ${lm.formatDateTime(new Date(info.lastSync))}`;
+
+                    // Duration
+                    if (info.createdAt) {
+                        const startTime = new Date(info.createdAt).getTime();
+                        const durationMs = lastSyncTime - startTime;
+                        if (durationMs > 0) {
+                            durationText = ` | ${lm.t('Duration')}: ${formatDuration(durationMs)}`;
+                        }
+                    }
+                }
+
                 items.push({
-                    label: name + (isCurrent ? ` (${LocalizationManager.getInstance().t('This Machine')})` : ''),
+                    label: `${statusIcon} ${info.name}${isCurrent ? ` (${lm.t('This Machine')})` : ''}`,
                     description: id,
+                    detail: `${statusText} | ${lastSyncText}${durationText}`,
                     picked: isAuth
                 });
             }

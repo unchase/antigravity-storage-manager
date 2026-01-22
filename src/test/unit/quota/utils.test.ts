@@ -19,9 +19,9 @@ describe('Quota Utilities', () => {
     describe('drawProgressBar', () => {
         test('returns correct ASCII bar', () => {
             expect(drawProgressBar(0)).toBe('░░░░░░░░░░');
-            expect(drawProgressBar(50)).toBe('▓▓▓▓▓░░░░░');
-            expect(drawProgressBar(100)).toBe('▓▓▓▓▓▓▓▓▓▓');
-            expect(drawProgressBar(25, 8)).toBe('▓▓░░░░░░');
+            expect(drawProgressBar(50)).toBe('█████░░░░░');
+            expect(drawProgressBar(100)).toBe('██████████');
+            expect(drawProgressBar(25, 8)).toBe('██░░░░░░');
         });
     });
 

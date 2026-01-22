@@ -55,17 +55,40 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                 if (!stats.isDirectory()) return null;
 
                 let label = id;
-                const taskPath = path.join(dirPath, 'task.md');
+                const parseTitle = async (filename: string): Promise<string | null> => {
+                    try {
+                        const filePath = path.join(dirPath, filename);
+                        // Check existence first to avoid reading error noise
+                        try {
+                            await fs.promises.access(filePath);
+                        } catch {
+                            return null;
+                        }
 
-                try {
-                    const content = await fs.promises.readFile(taskPath, 'utf8');
-                    // Match "# Task: Title" OR "# Title"
-                    const match = content.match(/^#\s*(?:Task:?\s*)?(.+)$/im);
-                    if (match && match[1]) {
-                        label = match[1].trim();
+                        const content = await fs.promises.readFile(filePath, 'utf8');
+                        // Match "# Task: Title" OR "# Title"
+                        // Also cleanup some common suffixes if needed, but keeping it simple for now
+                        const match = content.match(/^#\s*(?:Task:?\s*)?(.+)$/im);
+                        if (match && match[1]) {
+                            return match[1].trim();
+                        }
+                    } catch {
+                        // Ignore errors
                     }
-                } catch {
-                    // Ignore task.md errors
+                    return null;
+                };
+
+                // Priority: task.md > implementation_plan.md > walkthrough.md
+                const titleSourceFiles = ['task.md', 'implementation_plan.md', 'walkthrough.md'];
+
+                for (const file of titleSourceFiles) {
+                    const foundTitle = await parseTitle(file);
+                    if (foundTitle) {
+                        label = foundTitle;
+                        // Determine type for icon/detail hint? 
+                        // For now just using the label is better than UUID
+                        break;
+                    }
                 }
 
                 const lm = LocalizationManager.getInstance();
