@@ -104,6 +104,20 @@ export class SyncStatsWebview {
         const localPct = data.localCount > 0 ? (syncedCount / data.localCount) * 100 : 0;
         const remotePct = data.remoteCount > 0 ? (syncedCount / data.remoteCount) * 100 : 0;
 
+        const getFileIcon = (filename: string) => {
+            const ext = filename.split('.').pop()?.toLowerCase();
+            switch (ext) {
+                case 'md': return '📝';
+                case 'json': return '📦';
+                case 'js': case 'ts': case 'py': case 'java': case 'c': case 'cpp': case 'h': case 'cs': return '📜';
+                case 'html': case 'css': case 'xml': return '🌐';
+                case 'jpg': case 'png': case 'gif': case 'svg': case 'webp': return '🖼️';
+                case 'zip': case 'gz': case 'tar': return '🗜️';
+                case 'pdf': return '📕';
+                default: return '📄';
+            }
+        };
+
         return `<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -160,6 +174,7 @@ export class SyncStatsWebview {
                     gap: 24px;
                     margin-bottom: 40px;
                 }
+
 
                 .card {
                     background: var(--card-bg);
@@ -251,10 +266,12 @@ export class SyncStatsWebview {
                 .link { color: var(--link); text-decoration: none; font-weight: 600; cursor: pointer; }
                 .link:hover { text-decoration: underline; }
 
-                .file-list { display: none; margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; font-family: monospace; font-size: 12px; }
-                .file-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; }
+                .file-list-row { display: none; background: rgba(0,0,0,0.1); }
+                .file-list-wrapper { max-height: 300px; overflow-y: auto; padding: 10px; }
+                .file-item { display: flex; justify-content: space-between; padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; align-items: center; }
                 .file-item:last-child { border-bottom: none; }
                 .file-item:hover { background: rgba(255,255,255,0.05); }
+                .file-icon { font-size: 16px; margin-right: 8px; min-width: 20px; text-align: center; }
 
                 .meta-info { font-size: 11px; opacity: 0.6; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
 
@@ -368,7 +385,7 @@ export class SyncStatsWebview {
                                     <tr class="group-header" onclick="toggleGroup('${groupId}')">
                                         <td colspan="5">
                                             <span class="collapse-icon" id="icon-${groupId}">▼</span>
-                                            ${name} ${isCurrentGroup ? `<span class="badge accent" style="margin-left:10px">${lm.t('This Device')}</span>` : ''}
+                                            ${name} ${isCurrentGroup ? `<span class="badge accent" style="margin-left:10px">${lm.t('This Machine')}</span>` : ''}
                                             <span style="float:right; opacity:0.5; font-weight:400; font-size:11px">${group.length} ${lm.t('sessions')}</span>
                                         </td>
                                     </tr>
@@ -378,7 +395,7 @@ export class SyncStatsWebview {
                                             <tr class="session-row ${groupId}" style="${m.isCurrent ? 'background: rgba(255,255,255,0.05)' : ''}">
                                                 <td style="padding-left: 32px">
                                                     <span class="status-dot ${isOnline ? 'pulse' : ''}" style="color: ${isOnline ? 'var(--success)' : 'var(--error)'}; background: currentColor"></span>
-                                                    ${m.id.substring(0, 8)}...
+                                                    <span title="${m.id}" style="font-family: monospace; cursor: help;">${m.id.substring(0, 8)}...</span>
                                                     ${m.isCurrent ? `<b>(${lm.t('Active Now')})</b>` : ''}
                                                 </td>
                                                 <td>${m.syncCount}</td>
@@ -440,35 +457,46 @@ export class SyncStatsWebview {
                     if (files) {
                         const fileEntries = Object.entries(files);
                         if (fileEntries.length > 0) {
-                            fileListHtml = `<div class="file-list" id="files-${id}">
-                                ${fileEntries.map(([fPath, fInfo]) => {
+                            fileListHtml = fileEntries.map(([fPath, fInfo]) => {
                                 const size = (fInfo as any).size || 0;
+                                const icon = getFileIcon(fPath);
                                 return `<div class="file-item" onclick="event.stopPropagation(); postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})">
-                                        <span>📄 ${fPath.split('/').pop()}</span>
-                                        <span style="opacity:0.5">${formatBytes(size)}</span>
+                                        <div style="display:flex; align-items:center;">
+                                            <span class="file-icon">${icon}</span>
+                                            <span>${fPath.split('/').pop()}</span>
+                                            <span style="opacity:0.4; font-size:10px; margin-left:8px; font-family:monospace">${fPath}</span>
+                                        </div>
+                                        <span style="opacity:0.5; font-family:monospace">${formatBytes(size)}</span>
                                     </div>`;
-                            }).join('')}
-                            </div>`;
+                            }).join('');
                         }
                     }
 
                     return `
-                                        <tr>
-                                            <td onclick="toggleFiles('${id}')" style="cursor: pointer">
+                                        <tr onclick="toggleFiles('${id}')" style="cursor: pointer">
+                                            <td>
                                                 <div class="link" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})">${title}</div>
                                                 <div title="${id}" style="font-size:11px; opacity:0.5; font-family:monospace; display: inline-block;">${id.substring(0, 8)}...</div>
                                                 ${createdInfo ? `<div class="meta-info">👤 ${createdInfo}</div>` : ''}
-                                                ${fileListHtml}
                                             </td>
                                             <td>${statusBadge}</td>
                                             <td>${modDate ? lm.formatDateTime(modDate) : '-'}</td>
                                             <td style="text-align:right">
-                                                <button class="btn-icon" onclick="postCommand('renameConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Rename')}">✏️</button>
-                                                ${!remote ? `<button class="btn-icon" onclick="postCommand('pushConversation', {id:'${id}'})" title="${lm.t('Upload')}">⬆️</button>` : ''}
-                                                ${!local ? `<button class="btn-icon" onclick="postCommand('pullConversation', {id:'${id}'})" title="${lm.t('Download')}">⬇️</button>` : ''}
-                                                <button class="btn-icon danger" onclick="postCommand('deleteConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Delete')}">🗑️</button>
+                                                <button class="btn-icon" onclick="event.stopPropagation(); postCommand('renameConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Rename')}">✏️</button>
+                                                ${!remote ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pushConversation', {id:'${id}'})" title="${lm.t('Upload')}">⬆️</button>` : ''}
+                                                ${!local ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pullConversation', {id:'${id}'})" title="${lm.t('Download')}">⬇️</button>` : ''}
+                                                <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Delete')}">🗑️</button>
                                             </td>
                                         </tr>
+                                        ${fileListHtml ? `
+                                        <tr id="files-${id}" class="file-list-row">
+                                            <td colspan="4" style="padding: 0;">
+                                                <div class="file-list-wrapper">
+                                                    ${fileListHtml}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        ` : ''}
                                     `;
                 }).join('');
             })()}
@@ -498,7 +526,7 @@ export class SyncStatsWebview {
                 function toggleFiles(id) {
                     const el = document.getElementById('files-' + id);
                     if (el) {
-                        el.style.display = el.style.display === 'block' ? 'none' : 'block';
+                        el.style.display = el.style.display === 'table-row' ? 'none' : 'table-row';
                     }
                 }
             </script>

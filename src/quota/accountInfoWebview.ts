@@ -2,18 +2,21 @@ import * as vscode from 'vscode';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaSnapshot } from './types';
 import { drawProgressBar, formatResetTime, formatDuration, getCycleDuration } from './utils';
+import { QuotaUsageTracker } from './quotaUsageTracker';
 
 export class AccountInfoWebview {
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static latestSnapshot: QuotaSnapshot | undefined;
+    private static latestTracker: QuotaUsageTracker | undefined;
     private static readonly viewType = 'accountInfo';
 
-    public static show(context: vscode.ExtensionContext, snapshot: QuotaSnapshot): void {
+    public static show(context: vscode.ExtensionContext, snapshot: QuotaSnapshot, tracker?: QuotaUsageTracker): void {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
 
         AccountInfoWebview.latestSnapshot = snapshot;
+        if (tracker) AccountInfoWebview.latestTracker = tracker;
 
         // If we already have a panel, show it
         if (AccountInfoWebview.currentPanel) {
@@ -59,6 +62,19 @@ export class AccountInfoWebview {
                     case 'openCoffee':
                         vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
                         return;
+                    case 'togglePin': {
+                        const modelId = message.modelId;
+                        const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
+                        const pinned = [...(config.get<string[]>('quota.pinnedModels') || [])];
+                        const idx = pinned.indexOf(modelId);
+                        if (idx >= 0) {
+                            pinned.splice(idx, 1);
+                        } else {
+                            pinned.push(modelId);
+                        }
+                        config.update('quota.pinnedModels', pinned, vscode.ConfigurationTarget.Global);
+                        return;
+                    }
                 }
             },
             undefined,
@@ -75,8 +91,9 @@ export class AccountInfoWebview {
         );
     }
 
-    public static update(snapshot: QuotaSnapshot): void {
+    public static update(snapshot: QuotaSnapshot, tracker?: QuotaUsageTracker): void {
         AccountInfoWebview.latestSnapshot = snapshot;
+        if (tracker) AccountInfoWebview.latestTracker = tracker;
         if (AccountInfoWebview.currentPanel) {
             AccountInfoWebview.currentPanel.webview.html = AccountInfoWebview.getHtmlContent(snapshot);
         }
@@ -93,7 +110,14 @@ export class AccountInfoWebview {
         const promptPercent = promptCredits?.remainingPercentage ?? 0;
 
         // Model quotas
-        const models = snapshot.models || [];
+        const pinnedIds = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string[]>('quota.pinnedModels') || [];
+        const models = [...(snapshot.models || [])].sort((a, b) => {
+            const aPinned = pinnedIds.includes(a.modelId) || pinnedIds.includes(a.label);
+            const bPinned = pinnedIds.includes(b.modelId) || pinnedIds.includes(b.label);
+            if (aPinned && !bPinned) return -1;
+            if (!aPinned && bPinned) return 1;
+            return 0;
+        });
 
         // Features
         const featuresList = [
@@ -142,10 +166,28 @@ export class AccountInfoWebview {
                 stats.push(`${l.t('Tokens')}: <b>${model.tokenUsage} / ${model.tokenLimit}</b>`);
             }
 
+            // Estimation
+            let estimationInfo = '';
+            if (AccountInfoWebview.latestTracker) {
+                const est = AccountInfoWebview.latestTracker.getEstimation(model.modelId);
+                if (!(model.isExhausted || pct === 0) && est && est.speedPerHour > 0.1) {
+                    estimationInfo += `<div>${l.t('Speed')}: <b>~${est.speedPerHour.toFixed(1)}%${l.t('/h')}</b></div>`;
+                    if (est.estimatedTimeRemainingMs) {
+                        const timeRem = formatDuration(est.estimatedTimeRemainingMs);
+                        estimationInfo += `<div>${l.t('Estimated Remaining Time')}: <b>~${timeRem}</b></div>`;
+                    }
+                }
+            }
+
+            const isPinned = pinnedIds.includes(model.modelId) || pinnedIds.includes(model.label);
+
             return `
-                <div class="model-row">
+                <div class="model-row ${isPinned ? 'pinned-row' : ''}">
                     <div class="model-header">
-                        <span class="model-title">${statusIcon} ${model.label}</span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                             <div class="pin-btn ${isPinned ? 'pinned' : ''}" onclick="postCommand('togglePin', {modelId: '${model.modelId}'})" title="${isPinned ? l.t('Unpin') : l.t('Pin')}">📌</div>
+                             <span class="model-title">${statusIcon} ${model.label}</span>
+                        </div>
                         <span class="model-reset">${resetTimeStr}</span>
                     </div>
                     <div class="model-stats-row">
@@ -156,7 +198,10 @@ export class AccountInfoWebview {
                             </div>
                             <span class="quota-value" style="color: ${color};">${pct.toFixed(1)}%</span>
                         </div>
-                        <div class="usage-stats">${stats.join(' &nbsp;|&nbsp; ')}</div>
+                        <div class="usage-stats">
+                            ${stats.length > 0 ? stats.join(' &nbsp;|&nbsp; ') : ''}
+                            ${estimationInfo ? `<div style="margin-top:4px; display:flex; gap:16px; opacity:0.8">${estimationInfo}</div>` : ''}
+                        </div>
                     </div>
                     ${cycleInfo}
                 </div>
@@ -373,6 +418,11 @@ export class AccountInfoWebview {
             color: var(--text-dim);
         }
 
+        .pin-btn { cursor: pointer; opacity: 0.2; transition: all 0.2s; font-size: 16px; user-select: none; }
+        .pin-btn:hover { opacity: 0.6; transform: scale(1.1); }
+        .pin-btn.pinned { opacity: 1; text-shadow: 0 0 10px rgba(47, 129, 247, 0.4); }
+        .model-row.pinned-row { border-color: rgba(47, 129, 247, 0.4); background: rgba(47, 129, 247, 0.03); }
+
         .model-stats-row {
             display: flex;
             justify-content: space-between;
@@ -496,8 +546,8 @@ export class AccountInfoWebview {
         <div class="header">
             <h1>${l.t('Account Information')}</h1>
             <div class="header-btns">
-                <button class="btn" onclick="postCommand('openPatreon')" title="Support on Patreon" style="padding: 6px 10px;">🧡</button>
-                <button class="btn" onclick="postCommand('openCoffee')" title="Buy Me a Coffee" style="padding: 6px 10px;">☕</button>
+                <button class="btn" onclick="postCommand('openPatreon')" title="${l.t('Support on Patreon')}" style="padding: 6px 10px;">🧡</button>
+                <button class="btn" onclick="postCommand('openCoffee')" title="${l.t('Buy Me a Coffee')}" style="padding: 6px 10px;">☕</button>
                 <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
                 <button class="btn" onclick="openPlan()">${l.t('Upgrade Plan')}</button>
                 <button class="btn" onclick="viewRawJson()">${l.t('View Raw JSON')}</button>
@@ -524,6 +574,7 @@ export class AccountInfoWebview {
             </div>
         </div>
 
+        ${vscode.workspace.getConfiguration('antigravity-storage-manager').get('showCreditsBalance', false) ? `
         <div class="section-title">${l.t('Credits Balance')}</div>
         <div class="credits-card">
             <div class="credit-row">
@@ -536,6 +587,7 @@ export class AccountInfoWebview {
                 </div>
             </div>
         </div>
+        ` : ''}
 
         <div class="section-title">${l.t('Model Quotas')}</div>
         <div class="models-list">

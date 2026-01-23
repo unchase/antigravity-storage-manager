@@ -31,5 +31,6 @@
     "antigravity.command.syncManageAuthorizedMachines": "Yetkili Silme Makinelerini Yönet",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Diğer cihazlardan görüşmeleri silmeye yetkili makine kimlikleri listesi. Google Drive geçmişinizden seçim yapmak için [Yetkili Makineleri Yönet](command:antigravity-storage-manager.syncManageAuthorizedMachines) komutunu kullanın.",
     "antigravity.config.useMetadataCache": "Konuşma durumu rozetleri için önbelleğe alınmış meta verileri kullan (daha hızlı, Google Drive isteklerini azaltır)",
-    "antigravity.command.triggerBackup": "Şimdi Yedek Oluştur"
+    "antigravity.command.triggerBackup": "Şimdi Yedek Oluştur",
+    "antigravity.config.showCreditsBalance": "Gösterge paneli ve durum çubuğunda Antigravity kredi bakiyesini göster"
 }

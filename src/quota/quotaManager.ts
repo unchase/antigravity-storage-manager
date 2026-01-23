@@ -39,6 +39,7 @@ export class QuotaManager {
                 const snapshot = this.statusBar.getLatestSnapshot();
                 if (snapshot) {
                     this.statusBar.update(snapshot);
+                    AccountInfoWebview.update(snapshot, this.usageTracker);
                 }
             }
         });
@@ -88,7 +89,7 @@ export class QuotaManager {
             this.usageTracker.track(snapshot);
             this.checkAndNotifyResets(snapshot);
             this.statusBar.update(snapshot, undefined, this.usageTracker);
-            AccountInfoWebview.update(snapshot);
+            AccountInfoWebview.update(snapshot, this.usageTracker);
             return snapshot;
         } catch (error: any) {
             console.error('QuotaManager', `Fetch failed: ${error.message}`);
@@ -135,7 +136,7 @@ export class QuotaManager {
         }
 
         if (snapshot) {
-            AccountInfoWebview.show(this.context, snapshot);
+            AccountInfoWebview.show(this.context, snapshot, this.usageTracker);
         } else {
             vscode.window.showErrorMessage(LocalizationManager.getInstance().t('No account data available.'));
         }
@@ -217,7 +218,7 @@ export class QuotaManager {
             }
 
             // Prompt Credits
-            if (snapshot.promptCredits) {
+            if (snapshot.promptCredits && vscode.workspace.getConfiguration('antigravity-storage-manager').get('showCreditsBalance', false)) {
                 const credits = snapshot.promptCredits;
                 const percent = credits.remainingPercentage.toFixed(1);
                 items.push({

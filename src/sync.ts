@@ -2167,7 +2167,7 @@ export class SyncManager {
                     }))
                 };
 
-                SyncStatsWebview.show(this.context, statsData, async message => {
+                const onMessage = async (message: any) => {
                     switch (message.command) {
                         case 'openConversation': {
                             const convPath = path.join(BRAIN_DIR, message.id);
@@ -2280,7 +2280,13 @@ export class SyncManager {
                             this.refreshStatistics();
                             break;
                     }
-                });
+                };
+
+                if (SyncStatsWebview.isVisible()) {
+                    SyncStatsWebview.update(statsData);
+                } else {
+                    SyncStatsWebview.show(this.context, statsData, onMessage, preserveFocus);
+                }
 
             } catch (error: any) {
                 vscode.window.showErrorMessage(`${lm.t('Error loading statistics')}: ${error.message}`);

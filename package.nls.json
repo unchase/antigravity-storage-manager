@@ -31,5 +31,6 @@
     "antigravity.command.showQuota": "Show Antigravity Quota",
     "antigravity.command.syncManageAuthorizedMachines": "Manage Authorized Deletion Machines",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Authorized machine IDs for remote deletion (links to [Sync Menu](command:antigravity-storage-manager.syncManageAuthorizedMachines))",
-    "antigravity.config.useMetadataCache": "Use cached metadata for conversation status badges (faster, reduces Google Drive requests)"
+    "antigravity.config.useMetadataCache": "Use cached metadata for conversation status badges (faster, reduces Google Drive requests)",
+    "antigravity.config.showCreditsBalance": "Show Antigravity credits balance in dashboard and status bar"
 }

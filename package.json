@@ -373,6 +373,11 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%antigravity.config.useMetadataCache%"
+                },
+                "antigravity-storage-manager.showCreditsBalance": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%antigravity.config.showCreditsBalance%"
                 }
             }
         },

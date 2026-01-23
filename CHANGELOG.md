@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Refined Cycle Bar**: Updated cycle heuristics for models. **Gemini 3 Pro**, **Opus**, and **Thinking** models now correctly reflect a **5-hour cycle duration** (previously 24h or inaccurate), providing a true visual representation of quota reset times.
 - **Active Transfers**: Clicking on a transfer item (upload/download) in the "Active Transfers" section of the Sync Dashboard now directly opens the corresponding conversation.
 
+### Quota & Account Dashboard
+- **Model Pinning**: Pin your favorite models directly from the Account Dashboard (📌) to prioritize them in the list and status bar.
+- **Usage Insights**: Added "Speed" (~%/h) and "Estimated Time Remaining" to the Account Dashboard for models with active usage.
+- **Privacy Options**: Added `antigravity.showCreditsBalance` setting (default: `false`) to hide credit balance from the dashboard and status bar.
+
 ## [0.7.5] - 2026-01-22
 ### Sync Statistics Dashboard (Major Upgrade)
 - **Premium Design**: Completely overhauled the dashboard with a modern glassmorphism aesthetic, featuring vibrant gradients, interactive cards, and subtle animations.

@@ -31,5 +31,6 @@
     "antigravity.command.syncManageAuthorizedMachines": "Spravovat autorizovaná zařízení pro mazání",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Seznam ID zařízení oprávněných mazat konverzace z jiných zařízení. Použijte příkaz [Spravovat autorizovaná zařízení](command:antigravity-storage-manager.syncManageAuthorizedMachines) pro výběr z historie Google Drive.",
     "antigravity.config.useMetadataCache": "Použít metadata v mezipaměti pro odznaky stavu konverzace (rychlejší, snižuje požadavky na Google Drive)",
-    "antigravity.command.triggerBackup": "Vytvořit zálohu nyní"
+    "antigravity.command.triggerBackup": "Vytvořit zálohu nyní",
+    "antigravity.config.showCreditsBalance": "Zobrazit zůstatek kreditů Antigravity na řídicím panelu a ve stavovém řádku"
 }

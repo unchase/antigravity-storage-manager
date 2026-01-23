@@ -31,5 +31,6 @@
     "antigravity.command.syncManageAuthorizedMachines": "Autorisierte Löschgeräte verwalten",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Liste der Maschinen-IDs, die berechtigt sind, Konversationen von anderen Geräten zu löschen. Verwenden Sie den Befehl [Autorisierte Geräte verwalten](command:antigravity-storage-manager.syncManageAuthorizedMachines), um aus Ihrem Google Drive-Verlauf auszuwählen.",
     "antigravity.config.useMetadataCache": "Zwischengespeicherte Metadaten für Konversationsstatus-Badges verwenden (schneller, reduziert Google Drive-Anfragen)",
-    "antigravity.command.triggerBackup": "Jetzt Backup erstellen"
+    "antigravity.command.triggerBackup": "Jetzt Backup erstellen",
+    "antigravity.config.showCreditsBalance": "Antigravity-Guthaben im Dashboard und in der Statusleiste anzeigen"
 }

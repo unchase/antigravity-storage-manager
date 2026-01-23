@@ -31,5 +31,6 @@
     "antigravity.command.syncManageAuthorizedMachines": "管理授權刪除的裝置",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "授權從其他裝置刪除對話的機器 ID 清單。使用 [管理授權裝置](command:antigravity-storage-manager.syncManageAuthorizedMachines) 命令從 Google Drive 歷史記錄中選擇。",
     "antigravity.config.useMetadataCache": "針對對話狀態徽章使用快取的中繼資料（較快，減少 Google Drive 要求）",
-    "antigravity.command.triggerBackup": "立即建立備份"
+    "antigravity.command.triggerBackup": "立即建立備份",
+    "antigravity.config.showCreditsBalance": "在儀表板和狀態列中顯示 Antigravity 點數餘額"
 }

@@ -31,5 +31,6 @@
     "antigravity.command.syncManageAuthorizedMachines": "Quản lý các máy được ủy quyền xóa",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Danh sách ID máy được ủy quyền xóa cuộc trò chuyện từ các thiết bị khác. Sử dụng lệnh [Quản lý các máy được ủy quyền](command:antigravity-storage-manager.syncManageAuthorizedMachines) để chọn từ lịch sử Google Drive của bạn.",
     "antigravity.config.useMetadataCache": "Sử dụng siêu dữ liệu đã lưu trong bộ nhớ cache cho huy hiệu trạng thái cuộc trò chuyện (nhanh hơn, giảm yêu cầu Google Drive)",
-    "antigravity.command.triggerBackup": "Tạo sao lưu ngay"
+    "antigravity.command.triggerBackup": "Tạo sao lưu ngay",
+    "antigravity.config.showCreditsBalance": "Hiển thị số dư tín dụng Antigravity trong bảng điều khiển và thanh trạng thái"
 }

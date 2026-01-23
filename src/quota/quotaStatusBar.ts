@@ -143,7 +143,7 @@ export class QuotaStatusBar {
             // Global Plan Info
             if (snapshot.planName || snapshot.promptCredits) {
                 md.appendMarkdown(`\n### ${lm.t('Plan')}: ${snapshot.planName || 'Free'}\n\n`);
-                if (snapshot.promptCredits) {
+                if (snapshot.promptCredits && vscode.workspace.getConfiguration('antigravity-storage-manager').get('showCreditsBalance', false)) {
                     const cred = snapshot.promptCredits;
                     const credText = lm.t('Credits');
                     const availText = lm.t('available');

@@ -31,5 +31,6 @@
     "antigravity.command.syncManageAuthorizedMachines": "Zarządzaj autoryzowanymi urządzeniami do usuwania",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Lista identyfikatorów maszyn upoważnionych do usuwania rozmów z innych urządzeń. Użyj polecenia [Zarządzaj autoryzowanymi urządzeniami](command:antigravity-storage-manager.syncManageAuthorizedMachines), aby wybrać z historii Google Drive.",
     "antigravity.config.useMetadataCache": "Użyj zapisanych w pamięci podręcznej metadanych dla odznak statusu rozmowy (szybciej, zmniejsza liczbę żądań do Google Drive)",
-    "antigravity.command.triggerBackup": "Utwórz kopię zapasową teraz"
+    "antigravity.command.triggerBackup": "Utwórz kopię zapasową teraz",
+    "antigravity.config.showCreditsBalance": "Pokaż saldo kredytów Antigravity w panelu i na pasku stanu"
 }

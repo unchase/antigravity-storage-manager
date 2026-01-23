@@ -31,5 +31,6 @@
     "antigravity.command.syncManageAuthorizedMachines": "Gestionar máquinas de eliminación autorizadas",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Lista de IDs de máquinas autorizadas para eliminar conversaciones de otros dispositivos. Use el comando [Administrar máquinas autorizadas](command:antigravity-storage-manager.syncManageAuthorizedMachines) para seleccionar de su historial de Google Drive.",
     "antigravity.config.useMetadataCache": "Usar metadatos en caché para insignias de estado de conversación (más rápido, reduce solicitudes a Google Drive)",
-    "antigravity.command.triggerBackup": "Crear copia de seguridad ahora"
+    "antigravity.command.triggerBackup": "Crear copia de seguridad ahora",
+    "antigravity.config.showCreditsBalance": "Mostrar el saldo de créditos de Antigravity en el panel y la barra de estado"
 }
