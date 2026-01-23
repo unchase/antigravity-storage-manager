@@ -108,8 +108,9 @@ export class GoogleAuthProvider {
                         expiry_date: this.tokens.expiryDate
                     });
                 }
-            } catch (e) {
-                console.error('Failed to parse stored tokens:', e);
+            } catch (e: any) {
+                const lm = LocalizationManager.getInstance();
+                vscode.window.showErrorMessage(lm.t('Failed to parse stored tokens: {0}', e.message));
                 this.tokens = null;
             }
         }
@@ -174,11 +175,12 @@ export class GoogleAuthProvider {
                 expiryDate: credentials.expiry_date || 0
             };
             await this.saveTokens(this.tokens);
-        } catch (error) {
-            console.error('Failed to refresh token:', error);
+        } catch (error: any) {
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('Failed to refresh token: {0}', error.message));
             // Clear tokens on refresh failure
             await this.signOut();
-            throw new Error('Session expired. Please sign in again.');
+            throw new Error(lm.t('Session expired. Please sign in again.'));
         }
     }
 
@@ -473,8 +475,9 @@ export class GoogleAuthProvider {
                 email: data.email || '',
                 name: data.name || data.email || ''
             };
-        } catch (error) {
-            console.error('Failed to get user info:', error);
+        } catch (error: any) {
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('Failed to get user info: {0}', error.message));
             return null;
         }
     }

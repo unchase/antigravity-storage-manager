@@ -1,6 +1,7 @@
 
 import { IPlatformStrategy } from './types';
 import { SafePowerShellPath } from './safePowerShellPath';
+import { LocalizationManager } from '../l10n/localizationManager';
 
 export class WindowsProcessDetector implements IPlatformStrategy {
     private static readonly SYSTEM_ROOT: string = process.env.SystemRoot || 'C:\\Windows';
@@ -155,17 +156,18 @@ export class WindowsProcessDetector implements IPlatformStrategy {
         commandNotAvailable: string;
         requirements: string[];
     } {
+        const lm = LocalizationManager.getInstance();
         return {
-            processNotFound: 'language_server process not found',
+            processNotFound: lm.t('language_server process not found'),
             commandNotAvailable: this.usePowerShell
-                ? 'PowerShell command failed; please check system permissions'
-                : 'wmic/PowerShell command unavailable; please check the system environment',
+                ? lm.t('PowerShell command failed; please check system permissions')
+                : lm.t('wmic/PowerShell command unavailable; please check the system environment'),
             requirements: [
-                'Antigravity is running',
-                'language_server_windows_x64.exe process is running',
+                lm.t('Antigravity is running'),
+                lm.t('language_server_windows_x64.exe process is running'),
                 this.usePowerShell
-                    ? 'The system has permission to run PowerShell and netstat commands'
-                    : 'The system has permission to run wmic/PowerShell and netstat commands (auto-fallback supported)'
+                    ? lm.t('The system has permission to run PowerShell and netstat commands')
+                    : lm.t('The system has permission to run wmic/PowerShell and netstat commands (auto-fallback supported)')
             ]
         };
     }

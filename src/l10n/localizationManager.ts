@@ -82,8 +82,8 @@ export class LocalizationManager {
                 console.warn(`LocalizationManager: Bundle ${bundleFileName} not found, falling back to empty (keys will be used)`);
                 this.bundle = {};
             }
-        } catch (error) {
-            console.error(`LocalizationManager: Failed to load bundle ${bundleFileName}`, error);
+        } catch (error: any) {
+            vscode.window.showErrorMessage(this.t('LocalizationManager: Failed to load bundle {0} ({1})', bundleFileName, error.message));
             this.bundle = {};
         }
     }

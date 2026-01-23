@@ -439,6 +439,7 @@
         "sync:nls": "node check_nls_keys.js",
         "sync:l10n": "node check_l10n_bundles.js",
         "sync:localization": "npm run sync:nls && npm run sync:l10n",
+        "test:sync_redundancy": "C:\\PROGRA~1\\nodejs\\node.exe node_modules/jest/bin/jest.js sync_redundancy.test.ts",
         "check": "npx tsc --noEmit && npm run lint && npm run test:unit"
     },
     "devDependencies": {

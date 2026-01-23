@@ -92,7 +92,8 @@ export class QuotaManager {
             AccountInfoWebview.update(snapshot, this.usageTracker);
             return snapshot;
         } catch (error: any) {
-            console.error('QuotaManager', `Fetch failed: ${error.message}`);
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('QuotaManager: Fetch failed ({0})', error.message));
             if (isInitial) {
                 this.statusBar.showError('Fetch failed');
             }
@@ -102,7 +103,8 @@ export class QuotaManager {
 
     public async showQuota(): Promise<void> {
         if (!this.isEnabled) {
-            vscode.window.showInformationMessage(vscode.l10n.t('Quota feature is disabled in settings.'));
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showInformationMessage(lm.t('Quota feature is disabled in settings.'));
             return;
         }
 
@@ -112,7 +114,7 @@ export class QuotaManager {
         if (!snapshot) {
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: vscode.l10n.t('Fetching Antigravity quota...'),
+                title: LocalizationManager.getInstance().t('Fetching Antigravity quota...'),
                 cancellable: false
             }, async () => {
                 snapshot = await this.fetchAndUpdate(true) || undefined;
@@ -126,7 +128,8 @@ export class QuotaManager {
 
     public async showAccountData(): Promise<void> {
         if (!this.isEnabled) {
-            vscode.window.showInformationMessage(vscode.l10n.t('Quota feature is disabled in settings.'));
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showInformationMessage(lm.t('Quota feature is disabled in settings.'));
             return;
         }
 
@@ -138,7 +141,8 @@ export class QuotaManager {
         if (snapshot) {
             AccountInfoWebview.show(this.context, snapshot, this.usageTracker);
         } else {
-            vscode.window.showErrorMessage(LocalizationManager.getInstance().t('No account data available.'));
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('No account data available.'));
         }
     }
 
@@ -168,7 +172,8 @@ export class QuotaManager {
 
             // If it was exhausted and now is NOT exhausted (and has reasonable quota), notify
             if (wasExhausted && !isExhausted && (model.remainingPercentage === undefined || model.remainingPercentage > 20)) {
-                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Antigravity Quota: Limit for {0} has been reset!', model.label));
+                const lm = LocalizationManager.getInstance();
+                vscode.window.showInformationMessage(lm.t('Antigravity Quota: Limit for {0} has been reset!', model.label));
             }
 
             this.lastNotifiedModels.set(model.modelId, isExhausted);

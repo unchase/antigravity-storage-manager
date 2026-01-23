@@ -103,8 +103,9 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                     createdAt: stats.birthtime
                 } as ConversationItem;
 
-            } catch (e) {
-                console.error(`Error processing ${dirPath}:`, e);
+            } catch (e: any) {
+                const lm = LocalizationManager.getInstance();
+                vscode.window.showErrorMessage(lm.t('Error processing {0}: {1}', dirPath, e.message));
                 return null;
             }
         });
@@ -116,8 +117,9 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
         items.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
         return items;
 
-    } catch (e) {
-        console.error('Error loading conversations:', e);
+    } catch (e: any) {
+        const lm = LocalizationManager.getInstance();
+        vscode.window.showErrorMessage(lm.t('Error loading conversations: {0}', e.message));
         return [];
     }
 }

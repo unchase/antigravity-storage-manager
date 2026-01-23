@@ -6,6 +6,8 @@ import { IPlatformStrategy } from './types';
 
 const execAsync = promisify(exec);
 
+import { LocalizationManager } from '../l10n/localizationManager';
+
 export class UnixProcessDetector implements IPlatformStrategy {
     private platform: NodeJS.Platform;
     private availablePortCommand: 'lsof' | 'ss' | 'netstat' | null = null;
@@ -47,9 +49,10 @@ export class UnixProcessDetector implements IPlatformStrategy {
         }
 
         if (!this.availablePortCommand) {
+            const lm = LocalizationManager.getInstance();
             const message = this.platform === 'darwin'
-                ? vscode.l10n.t('Port detection command (lsof) is required but missing.')
-                : vscode.l10n.t('Port detection command (lsof/ss/netstat) is required but missing.');
+                ? lm.t('Port detection command (lsof) is required but missing.')
+                : lm.t('Port detection command (lsof/ss/netstat) is required but missing.');
 
             vscode.window.showErrorMessage(message, { modal: false });
             throw new Error('No port detection command available (lsof/ss/netstat)');

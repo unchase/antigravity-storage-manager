@@ -25,10 +25,11 @@ export class AccountInfoWebview {
             return;
         }
 
+        const lm = LocalizationManager.getInstance();
         // Create a new panel
         const panel = vscode.window.createWebviewPanel(
             AccountInfoWebview.viewType,
-            LocalizationManager.getInstance().t('Account Information'),
+            lm.t('Account Information'),
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,

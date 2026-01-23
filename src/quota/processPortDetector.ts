@@ -1,10 +1,12 @@
 
+import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as https from 'https';
 import { PlatformDetector } from './platformDetector';
 import { IPlatformStrategy } from './types';
 import { versionInfo } from './versionInfo';
+import { LocalizationManager } from '../l10n/localizationManager';
 
 const execAsync = promisify(exec);
 
@@ -78,7 +80,8 @@ export class ProcessPortDetector {
 
             } catch (error: any) {
                 const errorMsg = error?.message || String(error);
-                console.error('PortDetector', `Attempt ${attempt} failed: ${errorMsg}`);
+                const lm = LocalizationManager.getInstance();
+                vscode.window.showErrorMessage(lm.t('PortDetector: Attempt {0} failed ({1})', attempt, errorMsg));
 
                 if (errorMsg.includes('not found') || errorMsg.includes('unavailable')) {
                     if (this.platformDetector.getPlatformName() === 'Windows') {
@@ -115,7 +118,8 @@ export class ProcessPortDetector {
             const ports = this.platformStrategy.parseListeningPorts(stdout);
             return ports;
         } catch (error: any) {
-            console.error('PortDetector', `Failed to fetch listening ports: ${error.message}`);
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('PortDetector: Failed to fetch listening ports ({0})', error.message));
             return [];
         }
     }

@@ -176,8 +176,9 @@ export class QuotaStatusBar {
     }
 
     public showError(msg: string): void {
+        const lm = LocalizationManager.getInstance();
         this.item.text = '🔴 AGQ';
-        this.item.tooltip = `${LocalizationManager.getInstance().t('Sync Error')}: ${msg}`;
+        this.item.tooltip = `${lm.t('Sync Error')}: ${msg}`;
         this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         this.item.show();
     }

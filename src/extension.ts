@@ -54,13 +54,13 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand(`${EXT_NAME}.rename`, renameConversation),
         vscode.commands.registerCommand(`${EXT_NAME}.backupAll`, backupAll),
         vscode.commands.registerCommand(`${EXT_NAME}.triggerBackup`, async () => {
+            const lm = LocalizationManager.getInstance();
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: LocalizationManager.getInstance().t('Performing scheduled backup...'),
+                title: lm.t('Performing scheduled backup...'),
                 cancellable: false
             }, async () => {
                 const path = await backupManager.backupNow();
-                const lm = LocalizationManager.getInstance();
                 vscode.window.showInformationMessage(
                     lm.t('Backup created at: {0}', path),
                     lm.t('Show in Folder')
@@ -309,8 +309,9 @@ export async function activate(context: vscode.ExtensionContext) {
             await quotaManager.showAccountData();
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.syncManage`, async () => {
+            const lm = LocalizationManager.getInstance();
             if (!syncManager.isEnabled()) {
-                vscode.window.showWarningMessage(LocalizationManager.getInstance().t('Sync is not enabled. Please set up sync first.'));
+                vscode.window.showWarningMessage(lm.t('Sync is not enabled. Please set up sync first.'));
                 return;
             }
             await syncManager.manageConversations();

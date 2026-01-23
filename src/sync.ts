@@ -67,6 +67,8 @@ export class SyncManager {
     private cachedManifest: SyncManifest | null = null;
     private lastManifestFetch: number = 0;
     private activeTransfers: Map<string, { title: string; type: 'upload' | 'download'; startTime: number }> = new Map();
+    private lastStatsData: any | null = null;
+    private manifestUpdateQueue: Promise<void> = Promise.resolve();
 
     // Status bar item for sync status
     private statusBarItem: vscode.StatusBarItem | null = null;
@@ -161,6 +163,7 @@ export class SyncManager {
      * Verify password against stored manifest
      */
     private async verifyPassword(password: string): Promise<boolean> {
+        const lm = LocalizationManager.getInstance();
         try {
             await this.driveService.ensureSyncFolders();
 
@@ -177,8 +180,8 @@ export class SyncManager {
             } catch {
                 return false;
             }
-        } catch (error) {
-            console.error('Password verification failed:', error);
+        } catch (error: any) {
+            vscode.window.showErrorMessage(lm.t('Password verification failed: {0}', error.message));
             return false;
         }
     }
@@ -406,19 +409,19 @@ export class SyncManager {
             throw new Error(lm.t('Encryption password not set'));
         }
 
-        // Get local file hashes
-        this.reportProgress(progress, lm.t('Analyzing {0}...', conversationId));
-
         // Track active transfer for dashboard
         const convTitle = this.getConversationTitle(conversationId);
         this.activeTransfers.set(conversationId, { title: convTitle, type: 'upload', startTime: Date.now() });
         this.updateDashboardIfVisible();
 
+        // Get local file hashes
+        this.reportProgress(progress, lm.t('Analyzing "{0}"...', convTitle));
+
         try {
             const localData = await this.computeConversationFileHashesAsync(conversationId);
 
-            // Get remote file hashes from manifest
-            const manifest = await this.getDecryptedManifest();
+            // Get remote file hashes from manifest (Force Refresh to avoid stale data)
+            const manifest = await this.getDecryptedManifest(true);
             const remoteConv = manifest?.conversations.find(c => c.id === conversationId);
             const remoteHashes = remoteConv?.fileHashes || {};
 
@@ -432,6 +435,7 @@ export class SyncManager {
             for (const [relativePath, localInfo] of Object.entries(localData.fileHashes)) {
                 const remoteInfo = remoteHashes[relativePath];
                 if (!remoteInfo || remoteInfo.hash !== localInfo.hash) {
+                    console.log(`[Push] Uploading ${relativePath}: Remote=${remoteInfo ? remoteInfo.hash : 'missing'}, Local=${localInfo.hash}`);
                     filesToUpload.push(relativePath);
                 }
             }
@@ -453,7 +457,7 @@ export class SyncManager {
 
                 uploadedCount++;
                 this.uploadCount++;
-                this.reportProgress(progress, lm.t('Uploading: {0} ({1}/{2})...', relativePath, uploadedCount, filesToUpload.length));
+                this.reportProgress(progress, lm.t('Uploading "{0}": {1} ({2}/{3})...', convTitle, relativePath, uploadedCount, filesToUpload.length));
 
                 // Read and encrypt file
                 const fullPath = this.getFullPathForRelative(conversationId, relativePath);
@@ -511,8 +515,9 @@ export class SyncManager {
             throw new Error(lm.t('Encryption password not set'));
         }
 
+
         // Get remote manifest to check format and file hashes
-        const manifest = await this.getDecryptedManifest();
+        const manifest = await this.getDecryptedManifest(true);
         const remoteConv = manifest?.conversations.find(c => c.id === conversationId);
 
         if (!remoteConv) {
@@ -527,10 +532,10 @@ export class SyncManager {
         try {
             // Check if using new per-file format (version 2) or legacy ZIP
             if (remoteConv.version === 2 && remoteConv.fileHashes) {
-                await this.pullConversationPerFile(conversationId, remoteConv.fileHashes, progress, token);
+                await this.pullConversationPerFile(conversationId, convTitle, remoteConv.fileHashes, progress, token);
             } else {
                 // Legacy format - download entire ZIP
-                await this.pullConversationLegacy(conversationId, progress, token);
+                await this.pullConversationLegacy(conversationId, convTitle, progress, token);
             }
         } finally {
             this.activeTransfers.delete(conversationId);
@@ -546,6 +551,7 @@ export class SyncManager {
      */
     private async pullConversationPerFile(
         conversationId: string,
+        convTitle: string,
         remoteHashes: { [relativePath: string]: FileHashInfo },
         progress?: vscode.Progress<{ message?: string; increment?: number }>,
         token?: vscode.CancellationToken
@@ -553,7 +559,7 @@ export class SyncManager {
         const lm = LocalizationManager.getInstance();
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
         // Get local file hashes
-        this.reportProgress(progress, lm.t('Analyzing {0}...', conversationId));
+        this.reportProgress(progress, lm.t('Analyzing "{0}"...', convTitle));
         const localData = await this.computeConversationFileHashesAsync(conversationId);
         const localHashes = localData.fileHashes;
 
@@ -587,7 +593,7 @@ export class SyncManager {
             if (token?.isCancellationRequested) throw new vscode.CancellationError();
             downloadedCount++;
             this.downloadCount++;
-            this.reportProgress(progress, lm.t('Downloading: {0} ({1}/{2})...', relativePath, downloadedCount, filesToDownload.length));
+            this.reportProgress(progress, lm.t('Downloading "{0}": {1} ({2}/{3})...', convTitle, relativePath, downloadedCount, filesToDownload.length));
 
             const encrypted = await this.driveService.downloadConversationFile(conversationId, relativePath);
             if (encrypted) {
@@ -617,6 +623,7 @@ export class SyncManager {
      */
     private async pullConversationLegacy(
         conversationId: string,
+        convTitle: string,
         progress?: vscode.Progress<{ message?: string; increment?: number }>,
         token?: vscode.CancellationToken
     ): Promise<void> {
@@ -624,7 +631,7 @@ export class SyncManager {
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
         // Download encrypted ZIP
-        this.reportProgress(progress, lm.t('Downloading {0}...', conversationId));
+        this.reportProgress(progress, lm.t('Downloading "{0}"...', convTitle));
         this.downloadCount++;
         const encrypted = await this.driveService.downloadConversation(conversationId);
 
@@ -635,7 +642,7 @@ export class SyncManager {
         }
 
         // Decrypt
-        this.reportProgress(progress, lm.t('Decrypting {0}...', conversationId));
+        this.reportProgress(progress, lm.t('Decrypting "{0}"...', convTitle));
         const zipData = crypto.decrypt(encrypted, this.masterPassword!);
 
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
@@ -674,7 +681,8 @@ export class SyncManager {
      */
     async resolveConflict(conflict: SyncConflict, resolution: ConflictResolution): Promise<void> {
         if (!this.masterPassword) {
-            throw new Error(vscode.l10n.t('Encryption password not set'));
+            const lm = LocalizationManager.getInstance();
+            throw new Error(lm.t('Encryption password not set'));
         }
 
         switch (resolution) {
@@ -733,6 +741,7 @@ export class SyncManager {
             return this.cachedManifest;
         }
 
+        const lm = LocalizationManager.getInstance();
         try {
             if (!this.driveService) return null;
             await this.driveService.ensureSyncFolders();
@@ -749,12 +758,12 @@ export class SyncManager {
                 this.cachedManifest = manifest;
                 this.lastManifestFetch = Date.now();
                 return manifest;
-            } catch (e) {
-                console.error('Failed to parse manifest JSON:', e);
+            } catch (e: any) {
+                vscode.window.showErrorMessage(lm.t('Failed to parse manifest JSON: {0}', e.message));
                 return null;
             }
-        } catch (error) {
-            console.error('Failed to get/decrypt manifest:', error);
+        } catch (error: any) {
+            vscode.window.showErrorMessage(lm.t('Failed to get/decrypt manifest: {0}', error.message));
             return null;
         }
     }
@@ -838,62 +847,69 @@ export class SyncManager {
      * Update a single entry in the manifest
      */
     private async updateManifestEntry(conversationId: string, hash: string, size?: number, lastModified?: string): Promise<void> {
-        // Get current manifest, update entry, save back
-        // This is a simplified version - in production you'd want locking
-        const now = new Date().toISOString();
-        const localConversations = await this.getLocalConversationsAsync();
-        const local = localConversations.find(c => c.id === conversationId);
+        const lm = LocalizationManager.getInstance();
+        // Use a queue to ensure manifest updates are sequential and don't overwrite each other
+        this.manifestUpdateQueue = this.manifestUpdateQueue.then(async () => {
+            try {
+                const now = new Date().toISOString();
+                const title = this.getConversationTitle(conversationId);
 
-        const manifest = await this.getDecryptedManifest();
-        if (!manifest) {
-            // Should not happen if we pushed, but safeguard
-            return;
-        }
+                // Always get fresh manifest when updating
+                const manifest = await this.getDecryptedManifest(true);
+                if (!manifest) {
+                    return;
+                }
 
-        const existingIdx = manifest.conversations.findIndex(c => c.id === conversationId);
-        const existing = existingIdx >= 0 ? manifest.conversations[existingIdx] : null;
+                const existingIdx = manifest.conversations.findIndex(c => c.id === conversationId);
+                const existing = existingIdx >= 0 ? manifest.conversations[existingIdx] : null;
 
-        const entry: SyncedConversation = {
-            id: conversationId,
-            title: local?.title || conversationId,
-            lastModified: lastModified || now,
-            hash: hash,
-            modifiedBy: this.config!.machineId,
-            size: size,
-            // Preserve creation info or set if new
-            createdAt: existing?.createdAt || now,
-            createdBy: existing?.createdBy || this.config!.machineId,
-            createdByName: existing?.createdByName || this.config!.machineName
-        };
+                const entry: SyncedConversation = {
+                    id: conversationId,
+                    title: title,
+                    lastModified: lastModified || now,
+                    hash: hash,
+                    modifiedBy: this.config!.machineId,
+                    size: size,
+                    createdAt: existing?.createdAt || now,
+                    createdBy: existing?.createdBy || this.config!.machineId,
+                    createdByName: existing?.createdByName || this.config!.machineName
+                };
 
-        if (existingIdx >= 0) {
-            manifest.conversations[existingIdx] = entry;
-        } else {
-            manifest.conversations.push(entry);
-        }
+                if (existingIdx >= 0) {
+                    manifest.conversations[existingIdx] = entry;
+                } else {
+                    manifest.conversations.push(entry);
+                }
 
-        // Update machine info in manifest
-        if (!manifest.machines) manifest.machines = [];
-        const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
-        const existingMachine = machineIdx >= 0 ? manifest.machines[machineIdx] : null;
-        const machineInfo: Machine = {
-            id: this.config!.machineId,
-            name: this.config!.machineName,
-            lastSync: now,
-            createdAt: existingMachine?.createdAt || now
-        };
+                // Update machine info in manifest
+                if (!manifest.machines) manifest.machines = [];
+                const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
+                const existingMachine = machineIdx >= 0 ? manifest.machines[machineIdx] : null;
+                const machineInfo: Machine = {
+                    id: this.config!.machineId,
+                    name: this.config!.machineName,
+                    lastSync: now,
+                    createdAt: existingMachine?.createdAt || now
+                };
 
-        if (machineIdx >= 0) {
-            manifest.machines[machineIdx] = machineInfo;
-        } else {
-            manifest.machines.push(machineInfo);
-        }
+                if (machineIdx >= 0) {
+                    manifest.machines[machineIdx] = machineInfo;
+                } else {
+                    manifest.machines.push(machineInfo);
+                }
 
-        manifest.lastModified = now;
+                manifest.lastModified = now;
 
-        const manifestJson = JSON.stringify(manifest, null, 2);
-        const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
-        await this.driveService.updateManifest(encrypted);
+                const manifestJson = JSON.stringify(manifest, null, 2);
+                const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
+                await this.driveService.updateManifest(encrypted);
+            } catch (error: any) {
+                vscode.window.showErrorMessage(lm.t('Failed to update manifest for {0}: {1}', conversationId, error.message));
+                throw error;
+            }
+        });
+
+        return this.manifestUpdateQueue;
     }
 
     /**
@@ -905,63 +921,74 @@ export class SyncManager {
         fileHashes: { [relativePath: string]: FileHashInfo },
         lastModified?: string
     ): Promise<void> {
-        const now = new Date().toISOString();
-        const localConversations = await this.getLocalConversationsAsync();
-        const local = localConversations.find(c => c.id === conversationId);
+        const lm = LocalizationManager.getInstance();
+        // Use a queue to ensure manifest updates are sequential and don't overwrite each other
+        this.manifestUpdateQueue = this.manifestUpdateQueue.then(async () => {
+            try {
+                const now = new Date().toISOString();
+                const title = this.getConversationTitle(conversationId);
 
-        const manifest = await this.getDecryptedManifest();
-        if (!manifest) {
-            return;
-        }
+                // Always get fresh manifest when updating
+                const manifest = await this.getDecryptedManifest(true);
+                if (!manifest) {
+                    return;
+                }
 
-        const existingIdx = manifest.conversations.findIndex(c => c.id === conversationId);
-        const existing = existingIdx >= 0 ? manifest.conversations[existingIdx] : null;
+                const existingIdx = manifest.conversations.findIndex(c => c.id === conversationId);
+                const existing = existingIdx >= 0 ? manifest.conversations[existingIdx] : null;
 
-        // Calculate total size from file hashes
-        const totalSize = Object.values(fileHashes).reduce((sum, info) => sum + info.size, 0);
+                // Calculate total size from file hashes
+                const totalSize = Object.values(fileHashes).reduce((sum, info) => sum + info.size, 0);
 
-        const entry: SyncedConversation = {
-            id: conversationId,
-            title: local?.title || conversationId,
-            lastModified: lastModified || now,
-            hash: hash,
-            modifiedBy: this.config!.machineId,
-            fileHashes: fileHashes,
-            size: totalSize,
-            version: 2, // Mark as new per-file format
-            createdAt: existing?.createdAt || now,
-            createdBy: existing?.createdBy || this.config!.machineId,
-            createdByName: existing?.createdByName || this.config!.machineName
-        };
+                const entry: SyncedConversation = {
+                    id: conversationId,
+                    title: title,
+                    lastModified: lastModified || now,
+                    hash: hash,
+                    modifiedBy: this.config!.machineId,
+                    fileHashes: fileHashes,
+                    size: totalSize,
+                    version: 2, // Mark as new per-file format
+                    createdAt: existing?.createdAt || now,
+                    createdBy: existing?.createdBy || this.config!.machineId,
+                    createdByName: existing?.createdByName || this.config!.machineName
+                };
 
-        if (existingIdx >= 0) {
-            manifest.conversations[existingIdx] = entry;
-        } else {
-            manifest.conversations.push(entry);
-        }
+                if (existingIdx >= 0) {
+                    manifest.conversations[existingIdx] = entry;
+                } else {
+                    manifest.conversations.push(entry);
+                }
 
-        // Update machine info in manifest
-        if (!manifest.machines) manifest.machines = [];
-        const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
-        const existingMachine = machineIdx >= 0 ? manifest.machines[machineIdx] : null;
-        const machineInfo: Machine = {
-            id: this.config!.machineId,
-            name: this.config!.machineName,
-            lastSync: now,
-            createdAt: existingMachine?.createdAt || now
-        };
+                // Update machine info in manifest
+                if (!manifest.machines) manifest.machines = [];
+                const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
+                const existingMachine = machineIdx >= 0 ? manifest.machines[machineIdx] : null;
+                const machineInfo: Machine = {
+                    id: this.config!.machineId,
+                    name: this.config!.machineName,
+                    lastSync: now,
+                    createdAt: existingMachine?.createdAt || now
+                };
 
-        if (machineIdx >= 0) {
-            manifest.machines[machineIdx] = machineInfo;
-        } else {
-            manifest.machines.push(machineInfo);
-        }
+                if (machineIdx >= 0) {
+                    manifest.machines[machineIdx] = machineInfo;
+                } else {
+                    manifest.machines.push(machineInfo);
+                }
 
-        manifest.lastModified = now;
+                manifest.lastModified = now;
 
-        const manifestJson = JSON.stringify(manifest, null, 2);
-        const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
-        await this.driveService.updateManifest(encrypted);
+                const manifestJson = JSON.stringify(manifest, null, 2);
+                const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
+                await this.driveService.updateManifest(encrypted);
+            } catch (error: any) {
+                vscode.window.showErrorMessage(lm.t('Failed to update manifest (per-file) for {0}: {1}', conversationId, error.message));
+                throw error;
+            }
+        });
+
+        return this.manifestUpdateQueue;
     }
 
     /**
@@ -975,6 +1002,7 @@ export class SyncManager {
 
         // Fetch Quota
         const quota = await this.driveService.getStorageInfo();
+        const conversations = await this.getLocalConversationsAsync();
 
         const state: MachineState = {
             machineId: this.config.machineId,
@@ -984,7 +1012,7 @@ export class SyncManager {
             uploadCount: this.uploadCount,
             downloadCount: this.downloadCount,
             quota: quota || undefined,
-            conversationStates: (await this.getLocalConversationsAsync()).map(c => ({
+            conversationStates: conversations.map(c => ({
                 id: c.id,
                 localHash: c.hash,
                 lastSynced: new Date().toISOString()
@@ -1103,11 +1131,11 @@ export class SyncManager {
                                 timeText = `${seconds}s`;
                             }
 
-                            md.appendMarkdown(`$(watch) ${LocalizationManager.getInstance().t('Next Sync')}: \`${progressBar}\` (${timeText})\n\n`);
+                            md.appendMarkdown(`$(watch) ${lm.t('Next Sync')}: \`${progressBar}\` (${timeText})\n\n`);
                         }
                     }
 
-                    md.appendMarkdown(`$(sync) ${LocalizationManager.getInstance().t('Session Syncs')}: ${sessionCount}`);
+                    md.appendMarkdown(`$(sync) ${lm.t('Session Syncs')}: ${sessionCount}`);
 
                     this.statusBarItem.tooltip = md;
                     this.statusBarItem.color = undefined; // Default color
@@ -1162,9 +1190,14 @@ export class SyncManager {
         let files: string[] = [];
         if (!fs.existsSync(dirPath)) return files;
 
+        const EXCLUDE_LIST = ['.ds_store', 'thumbs.db', '.git', '.temp', '.bak'];
+
         try {
             const dirents = await fs.promises.readdir(dirPath, { withFileTypes: true });
             for (const dirent of dirents) {
+                if (EXCLUDE_LIST.includes(dirent.name.toLowerCase()) || dirent.name.endsWith('~')) {
+                    continue;
+                }
                 const fullPath = path.join(dirPath, dirent.name);
                 try {
                     if (dirent.isDirectory()) {
@@ -1180,7 +1213,6 @@ export class SyncManager {
         } catch {
             // ignore
         }
-
         return files;
     }
 
@@ -1720,7 +1752,8 @@ export class SyncManager {
         if (this.statusBarItem) {
             this.statusBarItem.hide();
         }
-        vscode.window.showInformationMessage(LocalizationManager.getInstance().t("Disconnected from sync. Local data is kept safe."));
+        const lm = LocalizationManager.getInstance();
+        vscode.window.showInformationMessage(lm.t("Disconnected from sync. Local data is kept safe."));
     }
 
     /**
@@ -1752,7 +1785,8 @@ export class SyncManager {
     private async ensureRemoteManifest(): Promise<SyncManifest | null> {
         const lm = LocalizationManager.getInstance();
         try {
-            let remoteManifest = await this.getDecryptedManifest();
+            // Always force a fresh manifest fetch at the start of sync to avoid stale data/race conditions
+            let remoteManifest = await this.getDecryptedManifest(true);
             if (!remoteManifest) {
                 try {
                     console.log('Remote manifest not found, attempting to recreate...');
@@ -1761,15 +1795,15 @@ export class SyncManager {
                     throw new Error(lm.t("Failed to get or create remote manifest: {0}", e.message));
                 }
 
-                const retryManifest = await this.getDecryptedManifest();
+                const retryManifest = await this.getDecryptedManifest(true);
                 if (!retryManifest) {
                     throw new Error(lm.t("Failed to get remote manifest after recreation attempt"));
                 }
                 remoteManifest = retryManifest;
             }
             return remoteManifest;
-        } catch (error) {
-            console.error('ensureRemoteManifest failed:', error);
+        } catch (error: any) {
+            vscode.window.showErrorMessage(lm.t('ensureRemoteManifest failed: {0}', error.message));
             throw error;
         }
     }
@@ -1790,6 +1824,7 @@ export class SyncManager {
     ): Promise<void> {
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
+        const lm = LocalizationManager.getInstance();
         const local = localConversations.find(c => c.id === convId);
         const remote = remoteManifest.conversations.find(c => c.id === convId);
         const title = local?.title || remote?.title || convId;
@@ -1805,7 +1840,7 @@ export class SyncManager {
             }
         }
 
-        this.reportProgress(progress, LocalizationManager.getInstance().t('Syncing "{0}"...', title));
+        this.reportProgress(progress, lm.t('Syncing "{0}"...', title));
 
         if (local && !remote) {
             // Local only - push to remote
@@ -1998,6 +2033,7 @@ export class SyncManager {
     }
 
     private async deleteConversation(id: string): Promise<void> {
+        const lm = LocalizationManager.getInstance();
         // Delete local
         const brainPath = path.join(BRAIN_DIR, id);
         const pbPath = path.join(CONV_DIR, `${id}.pb`);
@@ -2029,9 +2065,9 @@ export class SyncManager {
                 // Ideally: call this.driveService.deleteConversation(id) if needed.
             }
 
-            vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversation deleted.'));
+            vscode.window.showInformationMessage(lm.t('Conversation deleted.'));
         } catch (e: any) {
-            vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Error deleting: {0}', e.message));
+            vscode.window.showErrorMessage(lm.t('Error deleting: {0}', e.message));
         }
     }
 
@@ -2173,7 +2209,7 @@ export class SyncManager {
                             };
                         }
                     } catch (e: any) {
-                        console.error('Failed to load machine state', machineId, e);
+                        vscode.window.showErrorMessage(lm.t('Failed to load machine state for {0}: {1}', machineId, e.message));
                         // Fallback for partially corrupted or missing states
                         return {
                             name: machineName,
@@ -2229,9 +2265,44 @@ export class SyncManager {
                     }))
                 };
 
+                this.lastStatsData = statsData;
                 const onMessage = async (message: any) => {
                     switch (message.command) {
+                        case 'sort': {
+                            SyncStatsWebview.updateSort(message.table, message.col);
+                            if (this.lastStatsData) {
+                                SyncStatsWebview.update(this.lastStatsData);
+                            } else {
+                                this.refreshStatistics();
+                            }
+                            break;
+                        }
+                        case 'refresh': {
+                            this.refreshStatistics(false); // Force refresh
+                            break;
+                        }
                         case 'openConversation': {
+                            // Try to open in Antigravity/Roo-Cline/Claude-Dev first
+                            let opened = false;
+                            const possibleCommands = [
+                                'antigravity.openConversation',
+                                'roo-cline.openConversation',
+                                'claude-dev.openConversation',
+                                'cline.openConversation'
+                            ];
+
+                            for (const cmd of possibleCommands) {
+                                try {
+                                    await vscode.commands.executeCommand(cmd, message.id);
+                                    opened = true;
+                                    break;
+                                } catch {
+                                    // Command not found or failed, try next
+                                }
+                            }
+
+                            if (opened) break;
+
                             const convPath = path.join(BRAIN_DIR, message.id);
                             if (fs.existsSync(convPath)) {
                                 const taskMd = path.join(convPath, 'task.md');
@@ -2300,9 +2371,6 @@ export class SyncManager {
                             }
                             break;
                         }
-                        case 'refresh':
-                            this.refreshStatistics();
-                            break;
                         case 'pushConversation':
                             vscode.window.withProgress({
                                 location: vscode.ProgressLocation.Notification,
@@ -2378,17 +2446,18 @@ export class SyncManager {
 
 
     public async deleteRemoteConversationsForMachine(machineId: string, machineName: string): Promise<void> {
+        const lm = LocalizationManager.getInstance();
         const confirm = await vscode.window.showWarningMessage(
-            LocalizationManager.getInstance().t('Delete all conversations created by {0} from Google Drive? This cannot be undone.', machineName),
+            lm.t('Delete all conversations created by {0} from Google Drive? This cannot be undone.', machineName),
             { modal: true },
-            LocalizationManager.getInstance().t('Delete')
+            lm.t('Delete')
         );
 
-        if (confirm !== LocalizationManager.getInstance().t('Delete')) return;
+        if (confirm !== lm.t('Delete')) return;
 
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: LocalizationManager.getInstance().t('Deleting conversations...'),
+            title: lm.t('Deleting conversations...'),
             cancellable: false
         }, async (_progress) => {
             try {
@@ -2403,7 +2472,7 @@ export class SyncManager {
                 const toDelete = manifest.conversations.filter(c => c.createdBy === machineId);
 
                 if (toDelete.length === 0) {
-                    vscode.window.showInformationMessage(LocalizationManager.getInstance().t('No conversations found for this machine.'));
+                    vscode.window.showInformationMessage(lm.t('No conversations found for this machine.'));
                     return;
                 }
 
@@ -2414,7 +2483,9 @@ export class SyncManager {
                 for (const fid of fileIds) {
                     try {
                         await this.driveService.deleteFile(fid);
-                    } catch (e) { console.error('Failed to delete file', fid, e); }
+                    } catch (e: any) {
+                        vscode.window.showErrorMessage(lm.t('Failed to delete file {0}: {1}', fid, e.message));
+                    }
                 }
 
                 // Fallback delete via conversation ID (zip)
@@ -2422,7 +2493,9 @@ export class SyncManager {
                 for (const c of missingFileId) {
                     try {
                         await this.driveService.deleteConversation(c.id);
-                    } catch (e) { console.error('Failed to delete conversation zip', c.id, e); }
+                    } catch (e: any) {
+                        vscode.window.showErrorMessage(lm.t('Failed to delete conversation zip {0}: {1}', c.id, e.message));
+                    }
                 }
 
                 // Update Manifest by removing these conversations
@@ -2433,13 +2506,13 @@ export class SyncManager {
                 const encryptedNew = crypto.encrypt(Buffer.from(JSON.stringify(manifest), 'utf8'), this.masterPassword);
                 await this.driveService.updateManifest(encryptedNew);
 
-                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Conversations deleted.'));
+                vscode.window.showInformationMessage(lm.t('Conversations deleted.'));
 
                 // Refresh stats
                 this.showStatistics();
 
             } catch (error: any) {
-                vscode.window.showErrorMessage(`${LocalizationManager.getInstance().t('Error')}: ${error.message}`);
+                vscode.window.showErrorMessage(`${lm.t('Error')}: ${error.message}`);
                 // Also refresh stats in case of partial failure or to reset UI
                 this.showStatistics();
             }
@@ -2447,14 +2520,15 @@ export class SyncManager {
     }
 
     public async manageAuthorizedMachines(): Promise<void> {
+        const lm = LocalizationManager.getInstance();
         if (!this.config?.machineId) {
-            vscode.window.showWarningMessage(LocalizationManager.getInstance().t('Sync is not configured. Run setup first.'));
+            vscode.window.showWarningMessage(lm.t('Sync is not configured. Run setup first.'));
             return;
         }
 
         try {
             if (!this.driveService) {
-                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Drive service not initialized'));
+                vscode.window.showErrorMessage(lm.t('Drive service not initialized'));
                 return;
             }
 
@@ -2464,13 +2538,13 @@ export class SyncManager {
                 try {
                     manifest = JSON.parse(crypto.decrypt(encryptedManifest, this.masterPassword).toString('utf8')) as SyncManifest;
                 } catch {
-                    vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to decrypt manifest.'));
+                    vscode.window.showErrorMessage(lm.t('Failed to decrypt manifest.'));
                     return;
                 }
             }
 
             if (!manifest) {
-                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to fetch manifest.'));
+                vscode.window.showErrorMessage(lm.t('Failed to fetch manifest.'));
                 return;
             }
 
@@ -2482,7 +2556,7 @@ export class SyncManager {
 
             // Add current machine
             machinesMap.set(this.config.machineId, {
-                name: this.config.machineName || LocalizationManager.getInstance().t('Current Machine'),
+                name: this.config.machineName || lm.t('Current Machine'),
                 lastSync: new Date().toISOString(), // Assume active
                 createdAt: undefined // Unknown start for current without manifest lookup, but acceptable
             });
@@ -2500,12 +2574,11 @@ export class SyncManager {
             // Add from conversations override (fallback)
             for (const c of manifest.conversations) {
                 if (c.createdBy && !machinesMap.has(c.createdBy)) {
-                    machinesMap.set(c.createdBy, { name: c.createdByName || LocalizationManager.getInstance().t('Unknown Machine') });
+                    machinesMap.set(c.createdBy, { name: c.createdByName || lm.t('Unknown Machine') });
                 }
             }
 
             const items: vscode.QuickPickItem[] = [];
-            const lm = LocalizationManager.getInstance();
             const now = Date.now();
 
             for (const [id, info] of machinesMap.entries()) {
@@ -2552,17 +2625,17 @@ export class SyncManager {
             // Show QuickPick
             const selected = await vscode.window.showQuickPick(items, {
                 canPickMany: true,
-                placeHolder: LocalizationManager.getInstance().t('Select machines authorized to delete conversations from others'),
-                title: LocalizationManager.getInstance().t('Manage Authorized Deletion Machines')
+                placeHolder: lm.t('Select machines authorized to delete conversations from others'),
+                title: lm.t('Manage Authorized Deletion Machines')
             });
 
             if (selected) {
                 const newAuthorized = selected.map(i => i.description!);
                 await config.update('sync.authorizedRemoteDeleteMachineIds', newAuthorized, vscode.ConfigurationTarget.Global);
-                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Authorized machines updated.'));
+                vscode.window.showInformationMessage(lm.t('Authorized machines updated.'));
             }
         } catch (error: any) {
-            vscode.window.showErrorMessage(`${LocalizationManager.getInstance().t('Error')}: ${error.message}`);
+            vscode.window.showErrorMessage(`${lm.t('Error')}: ${error.message}`);
         }
     }
 
@@ -2570,6 +2643,7 @@ export class SyncManager {
      * Get title of a conversation from its task.md
      */
     private getConversationTitle(conversationId: string): string {
+        const lm = LocalizationManager.getInstance();
         try {
             const taskPath = path.join(BRAIN_DIR, conversationId, 'task.md');
             if (fs.existsSync(taskPath)) {
@@ -2577,8 +2651,8 @@ export class SyncManager {
                 const match = content.match(/^#\s+(.*)/);
                 if (match) return match[1].trim();
             }
-        } catch (e) {
-            console.error(LocalizationManager.getInstance().t('Failed to get conversation title'), e);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(lm.t('Failed to get conversation title for {0}: {1}', conversationId, e.message));
         }
         return conversationId;
     }

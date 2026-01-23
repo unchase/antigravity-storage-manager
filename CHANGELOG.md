@@ -15,8 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **File Sorting**: Files within conversation expansion lists are now sorted alphabetically by name.
     - **Fixed Transfer Counts**: Resolved issues where upload/download counts for the current session were not updating in real-time.
 - **Bug Fixes**:
-    - Fixed lint errors in `accountInfoWebview.ts` related to unused variables and empty blocks.
+    - Fixed lint errors in `accountInfoWebview.ts` and test files related to unused variables and empty blocks.
     - Localized `formatRelativeTime` strings ("Just now", "{0} days ago").
+- **UX & Localization**:
+    - **Refined Sync Notifications**: Progress notifications now display conversation titles instead of cryptic IDs (e.g., `Analyzing "My Project"...`), with full localization across all 15 supported languages.
+    - **Improved Legibility**: Conversation titles in notifications are now wrapped in double quotes for better visual separation.
 
 ## [0.7.6] - 2026-01-23
 ### Dashboard & UI Logic

@@ -1,6 +1,8 @@
+import * as vscode from 'vscode';
 import { google, drive_v3 } from 'googleapis';
 import { Readable } from 'stream';
 import { GoogleAuthProvider } from './googleAuth';
+import { LocalizationManager } from './l10n/localizationManager';
 
 const SYNC_FOLDER_NAME = 'AntigravitySync';
 const MACHINES_FOLDER_NAME = 'machines';
@@ -586,8 +588,9 @@ export class GoogleDriveService {
                 };
             }
             return null;
-        } catch (error) {
-            console.error('Failed to get storage info:', error);
+        } catch (error: any) {
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('Failed to get storage info: {0}', error.message));
             return null;
         }
     }
@@ -647,8 +650,9 @@ export class GoogleDriveService {
             });
 
             return true;
-        } catch (e) {
-            console.error('Failed to acquire lock:', e);
+        } catch (e: any) {
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('Failed to acquire lock: {0}', e.message));
             return false;
         }
     }
@@ -683,8 +687,9 @@ export class GoogleDriveService {
                     // Force delete if corrupt? No, better safe.
                 }
             }
-        } catch (e) {
-            console.error('Failed to release lock:', e);
+        } catch (e: any) {
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('Failed to release lock: {0}', e.message));
         }
     }
     /**

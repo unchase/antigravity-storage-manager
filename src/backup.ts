@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { LocalizationManager } from './l10n/localizationManager';
 
 import archiver from 'archiver';
 
@@ -80,7 +81,8 @@ export class BackupManager {
         try {
             await this.backupNow();
         } catch (error: any) {
-            console.error('Scheduled backup failed:', error);
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('Scheduled backup failed: {0}', error.message));
         }
     }
 
@@ -179,8 +181,9 @@ export class BackupManager {
                     console.log(`Deleted old backup: ${file.name}`);
                 }
             }
-        } catch (e) {
-            console.error('Failed to clean old backups:', e);
+        } catch (e: any) {
+            const lm = LocalizationManager.getInstance();
+            vscode.window.showErrorMessage(lm.t('Failed to clean old backups: {0}', e.message));
         }
     }
 }

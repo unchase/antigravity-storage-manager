@@ -27,6 +27,8 @@ export class SyncStatsWebview {
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static readonly viewType = 'syncStats';
     private static extensionUri: vscode.Uri | undefined;
+    private static devicesSort = { col: 'lastSync', dir: 'desc' as 'asc' | 'desc' };
+    private static convsSort = { col: 'modified', dir: 'desc' as 'asc' | 'desc' };
 
     public static show(context: vscode.ExtensionContext, data: SyncStatsData, onMessage: (message: any) => void, preserveFocus: boolean = false): void {
         const column = vscode.window.activeTextEditor
@@ -39,9 +41,10 @@ export class SyncStatsWebview {
             return;
         }
 
+        const lm = LocalizationManager.getInstance();
         const panel = vscode.window.createWebviewPanel(
             SyncStatsWebview.viewType,
-            LocalizationManager.getInstance().t('Antigravity Sync Statistics'),
+            lm.t('Antigravity Sync Statistics'),
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
@@ -80,6 +83,16 @@ export class SyncStatsWebview {
         }
     }
 
+    public static updateSort(table: 'devices' | 'conversations', col: string): void {
+        const sort = table === 'devices' ? SyncStatsWebview.devicesSort : SyncStatsWebview.convsSort;
+        if (sort.col === col) {
+            sort.dir = sort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+            sort.col = col;
+            sort.dir = 'asc';
+        }
+    }
+
     public static isVisible(): boolean {
         return !!SyncStatsWebview.currentPanel;
     }
@@ -88,9 +101,29 @@ export class SyncStatsWebview {
         const lm = LocalizationManager.getInstance();
         const now = Date.now();
 
-        // Group machines by name
+        // Sort machines
+        const sortedMachines = [...data.machines];
+        const dSort = SyncStatsWebview.devicesSort;
+        sortedMachines.sort((a, b) => {
+            let valA: any, valB: any;
+            switch (dSort.col) {
+                case 'name': valA = a.name || ''; valB = b.name || ''; break;
+                case 'syncs': valA = a.syncCount || 0; valB = b.syncCount || 0; break;
+                case 'data':
+                    valA = (a.uploadCount || 0) + (a.downloadCount || 0);
+                    valB = (b.uploadCount || 0) + (b.downloadCount || 0);
+                    break;
+                case 'lastSync': valA = new Date(a.lastSync).getTime(); valB = new Date(b.lastSync).getTime(); break;
+                default: valA = 0; valB = 0;
+            }
+            if (valA < valB) return dSort.dir === 'asc' ? -1 : 1;
+            if (valA > valB) return dSort.dir === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // Group machines by name (maintaining sorted order within groups or overall)
         const machineGroups = new Map<string, any[]>();
-        data.machines.forEach(m => {
+        sortedMachines.forEach(m => {
             const name = m.name || lm.t('Unknown Device');
             if (!machineGroups.has(name)) machineGroups.set(name, []);
             machineGroups.get(name)!.push(m);
@@ -130,10 +163,13 @@ export class SyncStatsWebview {
             codiconsUri = SyncStatsWebview.currentPanel.webview.asWebviewUri(codiconsPath).toString();
         }
 
+        const cspSource = SyncStatsWebview.currentPanel?.webview.cspSource || '';
+
         return `<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'unsafe-inline' ${cspSource}; font-src ${cspSource}; img-src ${cspSource} data:;">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             ${codiconsUri ? `<link href="${codiconsUri}" rel="stylesheet" />` : ''}
             <style>
@@ -236,6 +272,15 @@ export class SyncStatsWebview {
                 
                 table { width: 100%; border-collapse: collapse; text-align: left; }
                 th { padding: 16px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; border-bottom: 1px solid var(--border); font-weight: 600; }
+                th.sortable { cursor: pointer; user-select: none; transition: opacity 0.2s; position: relative; padding-right: 24px; }
+                th.sortable:hover { opacity: 1; color: var(--accent); }
+                th.sort-active { opacity: 1; color: var(--accent); }
+                .sort-indicator { 
+                    position: absolute; right: 8px; top: 50%; transform: translateY(-50%); 
+                    font-size: 10px; opacity: 0.5;
+                }
+                th.sort-active .sort-indicator { opacity: 1; }
+                
                 td { padding: 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
                 tr:last-child td { border-bottom: none; }
                 tr:hover td { background: rgba(255,255,255,0.02); }
@@ -383,10 +428,18 @@ export class SyncStatsWebview {
                     <table>
                         <thead>
                             <tr>
-                                <th>${lm.t('Device')}</th>
-                                <th style="width: 15%">${lm.t('Syncs')}</th>
-                                <th style="width: 15%">${lm.t('Data')}</th>
-                                <th style="width: 20%">${lm.t('Last Active')}</th>
+                                <th class="sortable ${SyncStatsWebview.devicesSort.col === 'name' ? 'sort-active' : ''}" onclick="postCommand('sort', {table:'devices', col:'name'})">
+                                    ${lm.t('Device')} ${SyncStatsWebview.devicesSort.col === 'name' ? `<span class="sort-indicator">${SyncStatsWebview.devicesSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
+                                <th class="sortable ${SyncStatsWebview.devicesSort.col === 'syncs' ? 'sort-active' : ''}" style="width: 15%" onclick="postCommand('sort', {table:'devices', col:'syncs'})">
+                                    ${lm.t('Syncs')} ${SyncStatsWebview.devicesSort.col === 'syncs' ? `<span class="sort-indicator">${SyncStatsWebview.devicesSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
+                                <th class="sortable ${SyncStatsWebview.devicesSort.col === 'data' ? 'sort-active' : ''}" style="width: 15%" onclick="postCommand('sort', {table:'devices', col:'data'})">
+                                    ${lm.t('Data')} ${SyncStatsWebview.devicesSort.col === 'data' ? `<span class="sort-indicator">${SyncStatsWebview.devicesSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
+                                <th class="sortable ${SyncStatsWebview.devicesSort.col === 'lastSync' ? 'sort-active' : ''}" style="width: 20%" onclick="postCommand('sort', {table:'devices', col:'lastSync'})">
+                                    ${lm.t('Last Active')} ${SyncStatsWebview.devicesSort.col === 'lastSync' ? `<span class="sort-indicator">${SyncStatsWebview.devicesSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
                                 <th style="text-align:right; width: 15%">${lm.t('Actions')}</th>
                             </tr>
                         </thead>
@@ -438,9 +491,15 @@ export class SyncStatsWebview {
                     <table>
                         <thead>
                             <tr>
-                                <th>${lm.t('Content')}</th>
-                                <th style="width: 15%">${lm.t('Status')}</th>
-                                <th style="width: 25%">${lm.t('Modified')}</th>
+                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'title' ? 'sort-active' : ''}" onclick="postCommand('sort', {table:'conversations', col:'title'})">
+                                    ${lm.t('Content')} ${SyncStatsWebview.convsSort.col === 'title' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
+                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'status' ? 'sort-active' : ''}" style="width: 15%" onclick="postCommand('sort', {table:'conversations', col:'status'})">
+                                    ${lm.t('Status')} ${SyncStatsWebview.convsSort.col === 'status' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
+                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'modified' ? 'sort-active' : ''}" style="width: 25%" onclick="postCommand('sort', {table:'conversations', col:'modified'})">
+                                    ${lm.t('Modified')} ${SyncStatsWebview.convsSort.col === 'modified' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
                                 <th style="text-align:right; width: 20%">${lm.t('Actions')}</th>
                             </tr>
                         </thead>
@@ -450,14 +509,41 @@ export class SyncStatsWebview {
                     ...data.localConversations.map(c => c.id),
                     ...data.remoteManifest.conversations.map(c => c.id)
                 ]);
-                return Array.from(allIds).map(id => {
+
+                const convList = Array.from(allIds).map(id => {
                     const local = data.localConversations.find(c => c.id === id);
                     const remote = data.remoteManifest.conversations.find(c => c.id === id);
                     const title = remote?.title || local?.title || id;
 
+                    let statusType = 0; // Synced
+                    if (!remote) statusType = 1; // Local Only
+                    else if (!local) statusType = 2; // Cloud Only
+
+                    return { id, local, remote, title, statusType };
+                });
+
+                // Sort conversations
+                const cSort = SyncStatsWebview.convsSort;
+                convList.sort((a, b) => {
+                    let valA: any, valB: any;
+                    switch (cSort.col) {
+                        case 'title': valA = a.title.toLowerCase(); valB = b.title.toLowerCase(); break;
+                        case 'status': valA = a.statusType; valB = b.statusType; break;
+                        case 'modified':
+                            valA = new Date(a.remote?.lastModified || a.local?.lastModified || 0).getTime();
+                            valB = new Date(b.remote?.lastModified || b.local?.lastModified || 0).getTime();
+                            break;
+                        default: valA = 0; valB = 0;
+                    }
+                    if (valA < valB) return cSort.dir === 'asc' ? -1 : 1;
+                    if (valA > valB) return cSort.dir === 'asc' ? 1 : -1;
+                    return 0;
+                });
+
+                return convList.map(({ id, local, remote, title, statusType }) => {
                     let statusBadge = '';
-                    if (remote && local) statusBadge = `<span class="badge success">${lm.t('Synced')}</span>`;
-                    else if (remote) statusBadge = `<span class="badge warning">${lm.t('Cloud Only')}</span>`;
+                    if (statusType === 0) statusBadge = `<span class="badge success">${lm.t('Synced')}</span>`;
+                    else if (statusType === 2) statusBadge = `<span class="badge warning">${lm.t('Cloud Only')}</span>`;
                     else statusBadge = `<span class="badge accent">${lm.t('Local Only')}</span>`;
 
                     const modDate = remote?.lastModified || local?.lastModified || '';
@@ -480,7 +566,7 @@ export class SyncStatsWebview {
                                 const icon = getFileIcon(fPath);
                                 return `<div class="file-item" onclick="event.stopPropagation(); postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})">
                                         <div style="display:flex; align-items:center;">
-                                            <i class="codicon codicon-${icon}" style="margin-right: 6px;"></i>
+                                            <i class="codicon codicon-${icon} file-icon" style="margin-right: 6px;"></i>
                                             <span>${fPath.split('/').pop()}</span>
                                             <span style="opacity:0.4; font-size:10px; margin-left:8px; font-family:monospace">${fPath}</span>
                                         </div>
