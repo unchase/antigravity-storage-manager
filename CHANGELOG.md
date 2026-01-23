@@ -5,6 +5,19 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.7] - 2026-01-23
+### Sync Logic & Dashboard Improvements
+- **Robust Sync Logic**:
+    - **Precise Modification Tracking**: Replaced directory-level monitoring with per-file `max(mtime)` tracking, ensuring sync triggers only when actual content changes.
+    - **Sync Loop Prevention**: Metadata-only updates (titles) now preserve existing timestamps, preventing redundant sync cycles across devices.
+- **Dashboard Enhancements**:
+    - **Time Localization**: All timestamps now respect the user's localized format via `LocalizationManager`.
+    - **File Sorting**: Files within conversation expansion lists are now sorted alphabetically by name.
+    - **Fixed Transfer Counts**: Resolved issues where upload/download counts for the current session were not updating in real-time.
+- **Bug Fixes**:
+    - Fixed lint errors in `accountInfoWebview.ts` related to unused variables and empty blocks.
+    - Localized `formatRelativeTime` strings ("Just now", "{0} days ago").
+
 ## [0.7.6] - 2026-01-23
 ### Dashboard & UI Logic
 - **Sync Dashboard 2.0**:

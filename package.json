@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Securely sync Antigravity Conversations with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.",
-    "version": "0.7.6",
+    "version": "0.7.7",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -460,6 +460,7 @@
     },
     "dependencies": {
         "@types/archiver": "^7.0.0",
+        "@vscode/codicons": "^0.0.44",
         "archiver": "^7.0.1",
         "extract-zip": "^2.0.1",
         "googleapis": "^144.0.0"

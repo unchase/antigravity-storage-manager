@@ -26,6 +26,7 @@ export interface SyncStatsData {
 export class SyncStatsWebview {
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static readonly viewType = 'syncStats';
+    private static extensionUri: vscode.Uri | undefined;
 
     public static show(context: vscode.ExtensionContext, data: SyncStatsData, onMessage: (message: any) => void, preserveFocus: boolean = false): void {
         const column = vscode.window.activeTextEditor
@@ -44,9 +45,12 @@ export class SyncStatsWebview {
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
-                retainContextWhenHidden: true
+                retainContextWhenHidden: true,
+                localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist')]
             }
         );
+
+        SyncStatsWebview.extensionUri = context.extensionUri;
 
         SyncStatsWebview.currentPanel = panel;
         panel.webview.html = SyncStatsWebview.getHtmlContent(data);
@@ -104,25 +108,34 @@ export class SyncStatsWebview {
         const localPct = data.localCount > 0 ? (syncedCount / data.localCount) * 100 : 0;
         const remotePct = data.remoteCount > 0 ? (syncedCount / data.remoteCount) * 100 : 0;
 
-        const getFileIcon = (filename: string) => {
+        // Use Codicon class names for file icons
+        const getFileIcon = (filename: string): string => {
             const ext = filename.split('.').pop()?.toLowerCase();
             switch (ext) {
-                case 'md': return '📝';
-                case 'json': return '📦';
-                case 'js': case 'ts': case 'py': case 'java': case 'c': case 'cpp': case 'h': case 'cs': return '📜';
-                case 'html': case 'css': case 'xml': return '🌐';
-                case 'jpg': case 'png': case 'gif': case 'svg': case 'webp': return '🖼️';
-                case 'zip': case 'gz': case 'tar': return '🗜️';
-                case 'pdf': return '📕';
-                default: return '📄';
+                case 'md': case 'txt': case 'log': return 'file';
+                case 'json': return 'json';
+                case 'js': case 'ts': case 'py': case 'java': case 'c': case 'cpp': case 'h': case 'cs': case 'go': case 'rs': case 'php': return 'file-code';
+                case 'html': case 'css': case 'xml': case 'scss': case 'less': return 'file-code';
+                case 'jpg': case 'png': case 'gif': case 'svg': case 'webp': case 'bmp': case 'ico': return 'file-media';
+                case 'zip': case 'gz': case 'tar': case 'rar': case '7z': return 'file-zip';
+                case 'yaml': case 'yml': case 'toml': case 'ini': case 'conf': return 'settings-gear';
+                default: return 'file';
             }
         };
+
+        // Generate Codicons CSS URI
+        let codiconsUri = '';
+        if (SyncStatsWebview.currentPanel && SyncStatsWebview.extensionUri) {
+            const codiconsPath = vscode.Uri.joinPath(SyncStatsWebview.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css');
+            codiconsUri = SyncStatsWebview.currentPanel.webview.asWebviewUri(codiconsPath).toString();
+        }
 
         return `<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            ${codiconsUri ? `<link href="${codiconsUri}" rel="stylesheet" />` : ''}
             <style>
                 :root {
                     --bg: var(--vscode-editor-background);
@@ -286,8 +299,8 @@ export class SyncStatsWebview {
                 <div class="header">
                     <h1>Antigravity <strong>${lm.t('Sync')}</strong></h1>
                     <div class="header-actions">
-                        <button class="btn" onclick="postCommand('openPatreon')" title="Support on Patreon" style="padding: 8px 12px; min-width: 40px; justify-content: center;">🧡</button>
-                        <button class="btn" onclick="postCommand('openCoffee')" title="Buy Me a Coffee" style="padding: 8px 12px; min-width: 40px; justify-content: center;">☕</button>
+                        <button class="btn" onclick="postCommand('openPatreon')" title="${lm.t('Support on Patreon')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">🧡</button>
+                        <button class="btn" onclick="postCommand('openCoffee')" title="${lm.t('Buy Me a Coffee')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">☕</button>
                         <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
                         <span class="last-sync">${lm.t('Last Update')}: ${lm.formatDateTime(new Date())}</span>
                         <button class="btn" onclick="postCommand('refresh')">🔄 ${lm.t('Refresh')}</button>
@@ -341,7 +354,7 @@ export class SyncStatsWebview {
                     <table>
                         <tbody>
                             ${data.activeTransfers.map(t => {
-            const startTime = t.startTime ? new Date(t.startTime).toLocaleTimeString() : '';
+            const startTime = t.startTime ? new Date(t.startTime).toLocaleTimeString(lm.getLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
             return `
                                 <tr>
                                     <td style="width: 40px; text-align: center;">
@@ -455,18 +468,26 @@ export class SyncStatsWebview {
 
                     let fileListHtml = '';
                     if (files) {
-                        const fileEntries = Object.entries(files);
+                        // Sort files by filename (basename)
+                        const fileEntries = Object.entries(files).sort((a, b) => {
+                            const nameA = a[0].split('/').pop()?.toLowerCase() || '';
+                            const nameB = b[0].split('/').pop()?.toLowerCase() || '';
+                            return nameA.localeCompare(nameB);
+                        });
                         if (fileEntries.length > 0) {
                             fileListHtml = fileEntries.map(([fPath, fInfo]) => {
                                 const size = (fInfo as any).size || 0;
                                 const icon = getFileIcon(fPath);
                                 return `<div class="file-item" onclick="event.stopPropagation(); postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})">
                                         <div style="display:flex; align-items:center;">
-                                            <span class="file-icon">${icon}</span>
+                                            <i class="codicon codicon-${icon}" style="margin-right: 6px;"></i>
                                             <span>${fPath.split('/').pop()}</span>
                                             <span style="opacity:0.4; font-size:10px; margin-left:8px; font-family:monospace">${fPath}</span>
                                         </div>
-                                        <span style="opacity:0.5; font-family:monospace">${formatBytes(size)}</span>
+                                        <div style="display:flex; align-items:center;">
+                                            <span style="opacity:0.5; font-family:monospace; margin-right: 10px;">${formatBytes(size)}</span>
+                                            <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversationFile', {id:'${id}', file:'${fPath}'})" title="${lm.t('Delete')}">🗑️</button>
+                                        </div>
                                     </div>`;
                             }).join('');
                         }

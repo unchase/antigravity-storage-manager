@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaSnapshot } from './types';
-import { drawProgressBar, formatResetTime, formatDuration, getCycleDuration } from './utils';
+import { formatResetTime, formatDuration, getCycleDuration } from './utils';
 import { QuotaUsageTracker } from './quotaUsageTracker';
 
 export class AccountInfoWebview {
@@ -32,7 +32,8 @@ export class AccountInfoWebview {
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
-                retainContextWhenHidden: true
+                retainContextWhenHidden: true,
+                localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'node_modules'), vscode.Uri.joinPath(context.extensionUri, 'media')]
             }
         );
 
@@ -100,6 +101,7 @@ export class AccountInfoWebview {
     }
 
     private static getHtmlContent(snapshot: QuotaSnapshot): string {
+
         const l = LocalizationManager.getInstance();
         const data = snapshot.rawUserStatus?.userStatus || snapshot.rawUserStatus || {};
         const planInfo = data.planStatus?.planInfo;
@@ -154,8 +156,9 @@ export class AccountInfoWebview {
             if (isHighTier && model.timeUntilReset > 0) {
                 const cycleDuration = getCycleDuration(model.label);
                 const progress = Math.max(0, Math.min(1, 1 - (model.timeUntilReset / cycleDuration)));
-                const cycleBar = drawProgressBar(progress * 100, 8);
-                cycleInfo = `<div class="cycle-info">${l.t('Cycle')}: <code class="bar">${cycleBar}</code> <span class="time">(${formatDuration(model.timeUntilReset)} ${l.t('left')})</span></div>`;
+                const progressPct = (progress * 100).toFixed(1);
+                // Use HTML progress bar instead of ASCII
+                cycleInfo = `<div class="cycle-info">${l.t('Cycle')}: <div class="cycle-bar-wrapper"><div class="cycle-bar" style="width: ${progressPct}%;"></div></div> <span class="time">(${formatDuration(model.timeUntilReset)} ${l.t('left')})</span></div>`;
             }
 
             const stats = [];
@@ -185,7 +188,11 @@ export class AccountInfoWebview {
                 <div class="model-row ${isPinned ? 'pinned-row' : ''}">
                     <div class="model-header">
                         <div style="display:flex; align-items:center; gap:8px;">
-                             <div class="pin-btn ${isPinned ? 'pinned' : ''}" onclick="postCommand('togglePin', {modelId: '${model.modelId}'})" title="${isPinned ? l.t('Unpin') : l.t('Pin')}">📌</div>
+                             <!-- Pin Button: Active (Pinned) vs Inactive (Add to Pinned) -->
+                             ${isPinned
+                    ? `<div class="pin-btn pinned" onclick="postCommand('togglePin', {modelId: '${model.modelId}'})" title="${l.t('Unpin')}">📌</div>`
+                    : `<div class="pin-btn unpinned" onclick="postCommand('togglePin', {modelId: '${model.modelId}'})" title="${l.t('Pin')}">📍</div>`
+                }
                              <span class="model-title">${statusIcon} ${model.label}</span>
                         </div>
                         <span class="model-reset">${resetTimeStr}</span>
@@ -418,9 +425,38 @@ export class AccountInfoWebview {
             color: var(--text-dim);
         }
 
-        .pin-btn { cursor: pointer; opacity: 0.2; transition: all 0.2s; font-size: 16px; user-select: none; }
-        .pin-btn:hover { opacity: 0.6; transform: scale(1.1); }
-        .pin-btn.pinned { opacity: 1; text-shadow: 0 0 10px rgba(47, 129, 247, 0.4); }
+        .pin-btn { 
+            cursor: pointer; 
+            transition: all 0.2s; 
+            font-size: 16px; 
+            user-select: none; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+        }
+        .pin-btn:hover { background: var(--bg-hover); transform: scale(1.1); }
+        
+        /* Pinned State (Active) */
+        .pin-btn.pinned { 
+            opacity: 1; 
+            color: var(--accent);
+            text-shadow: 0 0 10px rgba(47, 129, 247, 0.4); 
+        }
+        
+        /* Unpinned State (Inactive/Add) */
+        .pin-btn.unpinned { 
+            opacity: 0.3; 
+            filter: grayscale(100%);
+        }
+        .pin-btn.unpinned:hover {
+            opacity: 1;
+            color: var(--text-main);
+            filter: grayscale(0%);
+        }
+        
         .model-row.pinned-row { border-color: rgba(47, 129, 247, 0.4); background: rgba(47, 129, 247, 0.03); }
 
         .model-stats-row {
@@ -485,10 +521,21 @@ export class AccountInfoWebview {
             gap: 10px;
         }
 
-        .bar {
-            color: var(--text-main);
-            letter-spacing: -1px;
-            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        /* Styled Cycle Progress Bar */
+        .cycle-bar-wrapper {
+            height: 6px;
+            width: 80px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .cycle-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #58a6ff);
+            border-radius: 3px;
+            transition: width 0.3s ease;
         }
 
         /* Features */
@@ -606,6 +653,9 @@ export class AccountInfoWebview {
 
     <script>
         const vscode = acquireVsCodeApi();
+        function postCommand(command, data = {}) {
+            vscode.postMessage({ command, ...data });
+        }
         function viewRawJson() { vscode.postMessage({ command: 'viewRawJson' }); }
         function openPlan() { vscode.postMessage({ command: 'openPlan' }); }
     </script>

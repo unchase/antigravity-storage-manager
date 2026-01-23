@@ -306,7 +306,7 @@ export class SyncManager {
                 result.success ? undefined : result.errors.join('\n')
             );
 
-            // Auto-update statistics dashboard if open
+            // Auto-update statistics dashboard if ALREADY open (do not open it automatically)
             if (SyncStatsWebview.isVisible()) {
                 this.showStatistics();
             }
@@ -470,7 +470,12 @@ export class SyncManager {
             }
 
             // Update manifest with new file hashes
-            await this.updateManifestEntryWithFileHashes(conversationId, localData.overallHash, localData.fileHashes);
+            await this.updateManifestEntryWithFileHashes(
+                conversationId,
+                localData.overallHash,
+                localData.fileHashes,
+                localData.maxMtime > 0 ? new Date(localData.maxMtime).toISOString() : undefined
+            );
         } finally {
             this.activeTransfers.delete(conversationId);
             this.updateDashboardIfVisible();
@@ -581,6 +586,7 @@ export class SyncManager {
         await limitConcurrency(filesToDownload, concurrency, async (relativePath) => {
             if (token?.isCancellationRequested) throw new vscode.CancellationError();
             downloadedCount++;
+            this.downloadCount++;
             this.reportProgress(progress, lm.t('Downloading: {0} ({1}/{2})...', relativePath, downloadedCount, filesToDownload.length));
 
             const encrypted = await this.driveService.downloadConversationFile(conversationId, relativePath);
@@ -619,6 +625,7 @@ export class SyncManager {
 
         // Download encrypted ZIP
         this.reportProgress(progress, lm.t('Downloading {0}...', conversationId));
+        this.downloadCount++;
         const encrypted = await this.driveService.downloadConversation(conversationId);
 
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
@@ -830,7 +837,7 @@ export class SyncManager {
     /**
      * Update a single entry in the manifest
      */
-    private async updateManifestEntry(conversationId: string, hash: string, size?: number): Promise<void> {
+    private async updateManifestEntry(conversationId: string, hash: string, size?: number, lastModified?: string): Promise<void> {
         // Get current manifest, update entry, save back
         // This is a simplified version - in production you'd want locking
         const now = new Date().toISOString();
@@ -849,7 +856,7 @@ export class SyncManager {
         const entry: SyncedConversation = {
             id: conversationId,
             title: local?.title || conversationId,
-            lastModified: now,
+            lastModified: lastModified || now,
             hash: hash,
             modifiedBy: this.config!.machineId,
             size: size,
@@ -895,7 +902,8 @@ export class SyncManager {
     private async updateManifestEntryWithFileHashes(
         conversationId: string,
         hash: string,
-        fileHashes: { [relativePath: string]: FileHashInfo }
+        fileHashes: { [relativePath: string]: FileHashInfo },
+        lastModified?: string
     ): Promise<void> {
         const now = new Date().toISOString();
         const localConversations = await this.getLocalConversationsAsync();
@@ -915,7 +923,7 @@ export class SyncManager {
         const entry: SyncedConversation = {
             id: conversationId,
             title: local?.title || conversationId,
-            lastModified: now,
+            lastModified: lastModified || now,
             hash: hash,
             modifiedBy: this.config!.machineId,
             fileHashes: fileHashes,
@@ -1192,9 +1200,11 @@ export class SyncManager {
     private async computeConversationFileHashesAsync(conversationId: string): Promise<{
         overallHash: string;
         fileHashes: { [relativePath: string]: FileHashInfo };
+        maxMtime: number;
     }> {
         const parts: string[] = [];
         const fileHashes: { [relativePath: string]: FileHashInfo } = {};
+        let maxMtime = 0;
 
         // 1. Conversation PB file
         const pbPath = path.join(CONV_DIR, `${conversationId}.pb`);
@@ -1204,6 +1214,7 @@ export class SyncManager {
                 const relativePath = `conversations/${conversationId}.pb`;
                 parts.push(`${relativePath}:${hash}`);
                 const stats = await fs.promises.stat(pbPath);
+                maxMtime = Math.max(maxMtime, stats.mtimeMs);
                 fileHashes[relativePath] = {
                     hash,
                     size: stats.size,
@@ -1230,6 +1241,7 @@ export class SyncManager {
                 if (hash) {
                     parts.push(`${file.path}:${hash}`);
                     const stats = await fs.promises.stat(file.fullPath);
+                    maxMtime = Math.max(maxMtime, stats.mtimeMs);
                     fileHashes[file.path] = {
                         hash,
                         size: stats.size,
@@ -1241,7 +1253,7 @@ export class SyncManager {
 
         const overallHash = parts.length === 0 ? '' : crypto.computeMd5Hash(Buffer.from(parts.join('|')));
 
-        return { overallHash, fileHashes };
+        return { overallHash, fileHashes, maxMtime };
     }
 
     /**
@@ -1253,11 +1265,14 @@ export class SyncManager {
 
         // Map to format required by sync, computing hashes
         return Promise.all(items.map(async item => {
-            const { overallHash, fileHashes } = await this.computeConversationFileHashesAsync(item.id);
+            const { overallHash, fileHashes, maxMtime } = await this.computeConversationFileHashesAsync(item.id);
+            // Use the actual max mtime of files, falling back to the directory mtime if no files
+            const lastModified = maxMtime > 0 ? new Date(maxMtime).toISOString() : item.lastModified.toISOString();
+
             return {
                 id: item.id,
                 title: item.label, // Extracted title from utils
-                lastModified: item.lastModified.toISOString(),
+                lastModified: lastModified,
                 hash: overallHash,
                 files: fileHashes
             };
@@ -1781,11 +1796,12 @@ export class SyncManager {
 
         // Auto-correct remote title if local exists and differs
         if (local && remote && local.title !== remote.title && local.title !== local.id) {
-            // Force update manifest to sync title even if content hash matched
+            // Force update manifest to sync title even if content hash matched.
+            // Preserve the remote.lastModified to avoid triggering sync loops on other machines.
             if (remote.fileHashes) {
-                await this.updateManifestEntryWithFileHashes(convId, remote.hash, remote.fileHashes);
+                await this.updateManifestEntryWithFileHashes(convId, remote.hash, remote.fileHashes, remote.lastModified);
             } else {
-                await this.updateManifestEntry(convId, remote.hash, remote.size);
+                await this.updateManifestEntry(convId, remote.hash, remote.size, remote.lastModified);
             }
         }
 
@@ -2019,6 +2035,44 @@ export class SyncManager {
         }
     }
 
+    /**
+     * Delete a single file from a conversation (local and remote)
+     */
+    async deleteConversationFile(conversationId: string, relativePath: string): Promise<void> {
+        // 1. Delete locally if exists
+        const fullPath = this.getFullPathForRelative(conversationId, relativePath);
+        if (fs.existsSync(fullPath)) {
+            await fs.promises.unlink(fullPath);
+        }
+
+        // 2. Delete remotely if exists (update manifest)
+        const manifest = await this.getDecryptedManifest();
+        if (!manifest) return;
+
+        const remoteConv = manifest.conversations.find(c => c.id === conversationId);
+        if (remoteConv && remoteConv.fileHashes && remoteConv.fileHashes[relativePath]) {
+            // Delete file from Drive
+            await this.driveService.deleteConversationFile(conversationId, relativePath);
+
+            // Update manifest
+            delete remoteConv.fileHashes[relativePath];
+
+            // Recompute overall hash
+            const remainingFiles = Object.keys(remoteConv.fileHashes).sort();
+            const parts: string[] = [];
+            for (const path of remainingFiles) {
+                parts.push(`${path}:${remoteConv.fileHashes[path].hash}`);
+            }
+            remoteConv.hash = parts.length === 0 ? '' : crypto.computeMd5Hash(Buffer.from(parts.join('|')));
+
+            // Save manifest
+            manifest.lastModified = new Date().toISOString();
+            const manifestJson = JSON.stringify(manifest, null, 2);
+            const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
+            await this.driveService.updateManifest(encrypted);
+        }
+    }
+
     private async renameConversationId(id: string, newTitle: string): Promise<void> {
         // Rename title in task.md locally
         const taskPath = path.join(BRAIN_DIR, id, 'task.md');
@@ -2089,6 +2143,8 @@ export class SyncManager {
                                 lastSync: lastSync,
                                 isCurrent: true,
                                 syncCount: this.syncCount,
+                                uploadCount: this.uploadCount,
+                                downloadCount: this.downloadCount,
                                 quota: currentQuota || undefined,
                                 conversationStates: localConversations.map(c => ({ id: c.id }))
                             };
@@ -2110,6 +2166,8 @@ export class SyncManager {
                                 lastSync: lastSync,
                                 isCurrent: false,
                                 syncCount: syncCount,
+                                uploadCount: state.uploadCount || 0,
+                                downloadCount: state.downloadCount || 0,
                                 quota: quota,
                                 conversationStates: state.conversationStates || []
                             };
@@ -2124,6 +2182,8 @@ export class SyncManager {
                             lastSync: lastSync,
                             isCurrent: false,
                             syncCount: 0,
+                            uploadCount: 0,
+                            downloadCount: 0,
                             quota: undefined,
                             conversationStates: []
                         };
@@ -2143,6 +2203,8 @@ export class SyncManager {
                         lastSync: new Date().toISOString(),
                         isCurrent: true,
                         syncCount: this.syncCount,
+                        uploadCount: this.uploadCount,
+                        downloadCount: this.downloadCount,
                         quota: currentQuota || undefined,
                         conversationStates: localConversations.map(c => ({ id: c.id }))
                     });
@@ -2200,10 +2262,29 @@ export class SyncManager {
                         case 'openConversationFile': {
                             const fullPath = this.getFullPathForRelative(message.id, message.file);
                             if (fs.existsSync(fullPath)) {
-                                const doc = await vscode.workspace.openTextDocument(fullPath);
-                                await vscode.window.showTextDocument(doc);
+                                const uri = vscode.Uri.file(fullPath);
+                                // Use vscode.open command which delegates to the default editor for the file type (including images)
+                                await vscode.commands.executeCommand('vscode.open', uri);
                             } else {
                                 vscode.window.showInformationMessage(lm.t('File not found locally.'));
+                            }
+                            break;
+                        }
+                        case 'deleteConversationFile': {
+                            const confirm = await vscode.window.showWarningMessage(
+                                lm.t('Are you sure you want to delete file "{0}"?', message.file),
+                                { modal: true },
+                                lm.t('Delete'),
+                                lm.t('Cancel')
+                            );
+                            if (confirm === lm.t('Delete')) {
+                                try {
+                                    await this.deleteConversationFile(message.id, message.file);
+                                    vscode.window.showInformationMessage(lm.t('File deleted.'));
+                                    this.refreshStatistics();
+                                } catch (e: any) {
+                                    vscode.window.showErrorMessage(lm.t('Failed to delete file: {0}', e.message));
+                                }
                             }
                             break;
                         }

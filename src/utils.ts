@@ -22,18 +22,20 @@ export function formatRelativeTime(dateInput: Date | string): string {
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
+    const lm = LocalizationManager.getInstance();
+
     if (days > 7) {
-        return date.toLocaleDateString();
+        return date.toLocaleDateString(lm.getLocale());
     } else if (days > 0) {
-        return `${days} day${days > 1 ? 's' : ''} ago`;
+        return lm.t('{0} days ago', days);
     } else if (hours > 0) {
-        return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        return lm.t('{0} hours ago', hours);
     } else if (minutes > 1) {
-        return `${minutes} mins ago`;
+        return lm.t('{0} mins ago', minutes);
     } else if (minutes > 0) {
-        return `${minutes} min ago`;
+        return lm.t('{0} min ago', minutes);
     } else {
-        return 'Just now';
+        return lm.t('Just now');
     }
 }
 

@@ -66,6 +66,22 @@ export class QuotaStatusBar {
 
             md.appendMarkdown(`### ${lm.t('Pinned Models Quota')}\n\n`);
 
+            // Plan Info (Moved to top)
+            if (snapshot.planName || snapshot.promptCredits) {
+                const planLabel = lm.t('Plan');
+                // Use slightly smaller header or bold for plan to fit under main header
+                md.appendMarkdown(`**${planLabel}: ${snapshot.planName || 'Free'}**\n\n`);
+
+                if (snapshot.promptCredits && vscode.workspace.getConfiguration('antigravity-storage-manager').get('showCreditsBalance', false)) {
+                    const cred = snapshot.promptCredits;
+                    const credText = lm.t('Credits');
+                    const availText = lm.t('available');
+                    md.appendMarkdown(`- ${credText}: \`${cred.available} / ${cred.monthly}\` (${cred.remainingPercentage.toFixed(1)}% ${availText})\n\n`);
+                }
+            }
+
+            md.appendMarkdown('---\n\n');
+
             for (const m of pinnedModels) {
                 const pct = m.remainingPercentage ?? 0;
                 let statusIcon = '🟢';
@@ -138,17 +154,6 @@ export class QuotaStatusBar {
                 }
 
                 md.appendMarkdown('\n---\n');
-            }
-
-            // Global Plan Info
-            if (snapshot.planName || snapshot.promptCredits) {
-                md.appendMarkdown(`\n### ${lm.t('Plan')}: ${snapshot.planName || 'Free'}\n\n`);
-                if (snapshot.promptCredits && vscode.workspace.getConfiguration('antigravity-storage-manager').get('showCreditsBalance', false)) {
-                    const cred = snapshot.promptCredits;
-                    const credText = lm.t('Credits');
-                    const availText = lm.t('available');
-                    md.appendMarkdown(`- ${credText}: **${cred.available} / ${cred.monthly}** (${cred.remainingPercentage.toFixed(1)}% ${availText})\n`);
-                }
             }
 
             // Last Update Time
