@@ -1430,34 +1430,9 @@ export class SyncManager {
         await this.context.secrets.store('ag-sync-master-password', password);
         this.masterPassword = password; // Set local instance for immediate use to avoid race condition/null error
 
-        // check machine name
-        let machineName = this.config?.machineName;
-        if (!machineName) {
-            // ask for machine name
-            machineName = await vscode.window.showInputBox({
-                prompt: lm.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
-                value: os.hostname(),
-                validateInput: (val) => val ? null : lm.t("Machine name cannot be empty")
-            }) || os.hostname();
-        }
+        // NOTE: Machine name and config initialization moved inside withProgress
+        // to allow session selection logic to run first
 
-        // Initialize config with PERSISTENT machine ID (hash of hostname + username)
-        // This ensures the same machine gets the same ID even after reinstall
-        const persistentId = crypto.computeMd5Hash(Buffer.from(`${os.hostname()}-${os.userInfo().username}`)).substring(0, 32);
-        this.config = {
-            enabled: true,
-            machineId: persistentId,
-
-            machineName: machineName,
-            lastSync: new Date().toISOString(),
-            autoSync: true,
-            syncInterval: 300000,
-            showStatusBar: true,
-            selectedConversations: 'all',
-            silent: false
-        };
-
-        await this.saveConfig();
 
         // 4. Create or Get Master Manifest
         try {
@@ -1781,10 +1756,9 @@ export class SyncManager {
         this.config = null;
         await this.context.globalState.update('ag-sync-config', undefined);
         await this.context.secrets.delete('ag-sync-master-password');
-        this.updateStatusBar('idle'); // or hide
-        if (this.statusBarItem) {
-            this.statusBarItem.hide();
-        }
+        // Keep status bar visible with disconnected state (updateStatusBar shows warning icon)
+        this.updateStatusBar('idle');
+
         const lm = LocalizationManager.getInstance();
         vscode.window.showInformationMessage(lm.t("Disconnected from sync. Local data is kept safe."));
     }
