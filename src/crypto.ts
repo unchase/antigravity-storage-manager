@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import * as os from 'os';
 
 // Encryption configuration
 const ALGORITHM = 'aes-256-gcm';
@@ -158,7 +159,6 @@ export function computeMd5Hash(data: Buffer): string {
  * This ensures the same machine gets the same ID even after extension reinstall
  */
 export function generateMachineId(): string {
-    const os = require('os');
     const identifier = `${os.hostname()}-${os.userInfo().username}`;
     return computeMd5Hash(Buffer.from(identifier)).substring(0, 32);
 }

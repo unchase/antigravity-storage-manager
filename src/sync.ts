@@ -10,6 +10,7 @@ import * as crypto from './crypto';
 import { LocalizationManager } from './l10n/localizationManager';
 import { getConversationsAsync, limitConcurrency, formatDuration, ConversationItem } from './utils';
 import { SyncStatsWebview, SyncStatsData } from './quota/syncStatsWebview';
+import { QuotaManager } from './quota/quotaManager';
 
 const EXT_NAME = 'antigravity-storage-manager';
 const STORAGE_ROOT = path.join(os.homedir(), '.gemini', 'antigravity');
@@ -69,6 +70,7 @@ export class SyncManager {
     private activeTransfers: Map<string, { title: string; type: 'upload' | 'download'; startTime: number }> = new Map();
     private lastStatsData: any | null = null;
     private manifestUpdateQueue: Promise<void> = Promise.resolve();
+    private quotaManager: QuotaManager | null = null;
 
     // Status bar item for sync status
     private statusBarItem: vscode.StatusBarItem | null = null;
@@ -80,6 +82,10 @@ export class SyncManager {
         this.context = context;
         this.authProvider = authProvider;
         this.driveService = new GoogleDriveService(authProvider);
+    }
+
+    public setQuotaManager(quotaManager: QuotaManager) {
+        this.quotaManager = quotaManager;
     }
 
     /**
@@ -2262,6 +2268,10 @@ export class SyncManager {
                     });
                 }
 
+                // Use Drive API (about.get) to avoid requiring userinfo.email scope, which triggers re-auth
+                const userInfo = await this.driveService?.getUserInfo().catch(() => null);
+                const quotaSnapshot = this.quotaManager?.getLatestSnapshot();
+
                 // Render final HTML using SyncStatsWebview
                 const statsData: SyncStatsData = {
                     localConversations,
@@ -2278,7 +2288,9 @@ export class SyncManager {
                         conversationTitle: info.title,
                         type: info.type,
                         startTime: info.startTime
-                    }))
+                    })),
+                    accountQuotaSnapshot: quotaSnapshot || undefined,
+                    userEmail: quotaSnapshot?.userEmail || userInfo?.email
                 };
 
                 this.lastStatsData = statsData;

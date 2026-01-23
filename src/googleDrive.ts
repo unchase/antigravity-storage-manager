@@ -590,7 +590,31 @@ export class GoogleDriveService {
             return null;
         } catch (error: any) {
             const lm = LocalizationManager.getInstance();
-            vscode.window.showErrorMessage(lm.t('Failed to get storage info: {0}', error.message));
+            // Don't show error for storage info failure to avoid spam
+            console.error(lm.t('Failed to get storage info: {0}', error));
+            return null;
+        }
+    }
+
+    /**
+     * Get user info from Drive API
+     */
+    async getUserInfo(): Promise<{ email: string; name: string } | null> {
+        try {
+            const response = await this.drive.about.get({
+                fields: 'user'
+            });
+            const user = response.data.user;
+            if (user) {
+                return {
+                    email: user.emailAddress || '',
+                    name: user.displayName || user.emailAddress || ''
+                };
+            }
+            return null;
+        } catch (error: any) {
+            const lm = LocalizationManager.getInstance();
+            console.error(lm.t('Failed to get user info: {0}', error));
             return null;
         }
     }

@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { SyncManifest } from '../googleDrive';
+import { getFileIconSvg } from './fileIcons';
+import { QuotaSnapshot } from './types';
 
 export interface ActiveTransfer {
     conversationId: string;
@@ -21,6 +23,8 @@ export interface SyncStatsData {
     currentMachineId: string;
     driveQuota?: { used: number; limit: number };
     activeTransfers?: ActiveTransfer[];
+    accountQuotaSnapshot?: QuotaSnapshot;
+    userEmail?: string;
 }
 
 export class SyncStatsWebview {
@@ -48,8 +52,7 @@ export class SyncStatsWebview {
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist')]
+                retainContextWhenHidden: true
             }
         );
 
@@ -141,27 +144,39 @@ export class SyncStatsWebview {
         const localPct = data.localCount > 0 ? (syncedCount / data.localCount) * 100 : 0;
         const remotePct = data.remoteCount > 0 ? (syncedCount / data.remoteCount) * 100 : 0;
 
-        // Use Codicon class names for file icons
+        /*
+        // Use emoji icons for file types (reliable, no font loading required)
         const getFileIcon = (filename: string): string => {
             const ext = filename.split('.').pop()?.toLowerCase();
             switch (ext) {
-                case 'md': case 'txt': case 'log': return 'file';
-                case 'json': return 'json';
-                case 'js': case 'ts': case 'py': case 'java': case 'c': case 'cpp': case 'h': case 'cs': case 'go': case 'rs': case 'php': return 'file-code';
-                case 'html': case 'css': case 'xml': case 'scss': case 'less': return 'file-code';
-                case 'jpg': case 'png': case 'gif': case 'svg': case 'webp': case 'bmp': case 'ico': return 'file-media';
-                case 'zip': case 'gz': case 'tar': case 'rar': case '7z': return 'file-zip';
-                case 'yaml': case 'yml': case 'toml': case 'ini': case 'conf': return 'settings-gear';
-                default: return 'file';
+                // Document files
+                case 'md': return '📝';
+                case 'txt': case 'log': return '📄';
+
+                // Data files
+                case 'json': return '📋';
+                case 'yaml': case 'yml': case 'toml': case 'ini': case 'conf': return '⚙️';
+                case 'pb': return '💾';
+                case 'resolved': return '✅';
+                case 'metadata': return '🏷️';
+
+                // Code files
+                case 'js': case 'ts': case 'jsx': case 'tsx': return '📜';
+                case 'py': case 'java': case 'c': case 'cpp': case 'h': case 'cs': case 'go': case 'rs': case 'php': return '📜';
+                case 'html': case 'css': case 'xml': case 'scss': case 'less': return '🌐';
+
+                // Media files
+                case 'jpg': case 'jpeg': case 'png': case 'gif': case 'svg': case 'webp': case 'bmp': case 'ico': return '🖼️';
+
+                // Archive files
+                case 'zip': case 'gz': case 'tar': case 'rar': case '7z': return '📦';
+
+                default: return '📄';
             }
         };
+        */
 
-        // Generate Codicons CSS URI
-        let codiconsUri = '';
-        if (SyncStatsWebview.currentPanel && SyncStatsWebview.extensionUri) {
-            const codiconsPath = vscode.Uri.joinPath(SyncStatsWebview.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css');
-            codiconsUri = SyncStatsWebview.currentPanel.webview.asWebviewUri(codiconsPath).toString();
-        }
+
 
         const cspSource = SyncStatsWebview.currentPanel?.webview.cspSource || '';
 
@@ -171,7 +186,7 @@ export class SyncStatsWebview {
             <meta charset="UTF-8">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'unsafe-inline' ${cspSource}; font-src ${cspSource}; img-src ${cspSource} data:;">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            ${codiconsUri ? `<link href="${codiconsUri}" rel="stylesheet" />` : ''}
+
             <style>
                 :root {
                     --bg: var(--vscode-editor-background);
@@ -329,7 +344,8 @@ export class SyncStatsWebview {
                 .file-item { display: flex; justify-content: space-between; padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; align-items: center; }
                 .file-item:last-child { border-bottom: none; }
                 .file-item:hover { background: rgba(255,255,255,0.05); }
-                .file-icon { font-size: 16px; margin-right: 8px; min-width: 20px; text-align: center; }
+                .file-icon { width: 16px; height: 16px; margin-right: 8px; min-width: 16px; display: inline-flex; align-items: center; justify-content: center; }
+                .file-icon svg { width: 100%; height: 100%; display: block; }
 
                 .meta-info { font-size: 11px; opacity: 0.6; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
 
@@ -455,9 +471,49 @@ export class SyncStatsWebview {
                                             <span style="float:right; opacity:0.5; font-weight:400; font-size:11px">${group.length} ${lm.t('sessions')}</span>
                                         </td>
                                     </tr>
+                                    ${isCurrentGroup && data.accountQuotaSnapshot && data.accountQuotaSnapshot.models ? (() => {
+                    const snapshot = data.accountQuotaSnapshot;
+                    if (!snapshot || !snapshot.models || snapshot.models.length === 0) return '';
+                    // Filter helpful models (e.g. pinned or active, or just all non-exhausted?)
+                    // Let's show top 4 relevant models to keep it compact
+                    const models = [...snapshot.models].sort((a, b) => (a.remainingPercentage || 0) - (b.remainingPercentage || 0));
+
+                    return `
+                                    <tr class="quota-row ${groupId}" style="background: rgba(0,0,0,0.2);">
+                                        <td colspan="5" style="padding: 10px 16px 14px 44px;">
+                                            <div style="display:flex; justify-content: space-between; align-items:flex-end; margin-bottom: 12px;">
+                                                 <div style="font-size: 10px; font-weight: 700; opacity: 0.5; text-transform:uppercase; letter-spacing:1px;">${lm.t('Quota Usage')}</div>
+                                                 ${data.userEmail ? `<div style="font-size: 10px; opacity: 0.6;">${lm.t('User')}: ${data.userEmail} ${snapshot.planName ? `• ${lm.t('Plan')}: ${snapshot.planName}` : ''}</div>` : ''}
+                                            </div>
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px 24px;">
+                                                ${models.map(m => {
+                        const pct = m.remainingPercentage || 0;
+                        let color = 'var(--success)';
+                        if (pct < 5) color = 'var(--error)';
+                        else if (pct < 30) color = 'var(--warning)';
+
+                        const cleanLabel = m.label.replace('Gemini 1.5 ', '').replace('Gemini 3 ', '').replace('Claude 3.5 ', '').replace('Claude 3 ', '');
+
+                        return `
+                                                    <div style="display: flex; flex-direction: column;">
+                                                        <div style="display:flex; justify-content:space-between; font-size: 11px; margin-bottom: 3px;">
+                                                            <span style="opacity: 0.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${m.label}">${cleanLabel}</span>
+                                                            <span style="opacity: 0.7; font-feature-settings: 'tnum';">${pct.toFixed(0)}%</span>
+                                                        </div>
+                                                        <div style="height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                                                            <div style="height: 100%; width: ${pct}%; background: ${color}; transition: width 0.5s;"></div>
+                                                        </div>
+                                                    </div>
+                                                    `;
+                    }).join('')}
+                                            </div>
+                                        </td>
+                                    </tr>
+                `;
+                })() : ''}
                                     ${group.map(m => {
-                const isOnline = (now - new Date(m.lastSync).getTime()) < 600000;
-                return `
+                    const isOnline = (now - new Date(m.lastSync).getTime()) < 600000;
+                    return `
                                             <tr class="session-row ${groupId}" style="${m.isCurrent ? 'background: rgba(255,255,255,0.05)' : ''}">
                                                 <td style="padding-left: 32px">
                                                     <span class="status-dot ${isOnline ? 'pulse' : ''}" style="color: ${isOnline ? 'var(--success)' : 'var(--error)'}; background: currentColor"></span>
@@ -479,7 +535,7 @@ export class SyncStatsWebview {
                                                 </td>
                                             </tr>
                                         `;
-            }).join('')}
+                }).join('')}
                                 `;
         }).join('')}
                         </tbody>
@@ -552,6 +608,11 @@ export class SyncStatsWebview {
                     const files = local?.files || remote?.fileHashes;
                     // For remote, fileHashes is object {path: info}, local files is object {path: info} too
 
+                    let totalSize = 0;
+                    if (files) {
+                        totalSize = Object.values(files).reduce((acc: number, f: any) => acc + (f.size || 0), 0);
+                    }
+
                     let fileListHtml = '';
                     if (files) {
                         // Sort files by filename (basename)
@@ -563,10 +624,10 @@ export class SyncStatsWebview {
                         if (fileEntries.length > 0) {
                             fileListHtml = fileEntries.map(([fPath, fInfo]) => {
                                 const size = (fInfo as any).size || 0;
-                                const icon = getFileIcon(fPath);
+                                const icon = getFileIconSvg(fPath);
                                 return `<div class="file-item" onclick="event.stopPropagation(); postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})">
                                         <div style="display:flex; align-items:center;">
-                                            <i class="codicon codicon-${icon} file-icon" style="margin-right: 6px;"></i>
+                                            <span class="file-icon">${icon}</span>
                                             <span>${fPath.split('/').pop()}</span>
                                             <span style="opacity:0.4; font-size:10px; margin-left:8px; font-family:monospace">${fPath}</span>
                                         </div>
@@ -583,7 +644,9 @@ export class SyncStatsWebview {
                                         <tr onclick="toggleFiles('${id}')" style="cursor: pointer">
                                             <td>
                                                 <div class="link" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})">${title}</div>
-                                                <div title="${id}" style="font-size:11px; opacity:0.5; font-family:monospace; display: inline-block;">${id.substring(0, 8)}...</div>
+                                                <div title="${id}" style="font-size:11px; opacity:0.5; font-family:monospace; display: inline-block;">
+                                                    ${id.substring(0, 8)}... <span style="margin-left:8px; opacity:0.8">💾 ${formatBytes(totalSize)}</span>
+                                                </div>
                                                 ${createdInfo ? `<div class="meta-info">👤 ${createdInfo}</div>` : ''}
                                             </td>
                                             <td>${statusBadge}</td>

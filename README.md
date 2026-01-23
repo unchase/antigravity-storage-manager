@@ -96,6 +96,7 @@ Keep your conversations synchronized across multiple machines using your Google 
     - **Machine Management**:
       - **Delete (🗑️)**: Remove stale machines and their sessions.
       - **Force Push (🔄)**: Send a sync signal to other devices.
+    - **User Info**: Displays the current user's email and plan (from Google AI Studio or Google Drive).
     - **Active Transfers**: Monitor ongoing uploads and downloads in real-time. **Click** on any item to open the conversation instantly.
     - **Real-time Data**: Information is automatically refreshed during sync events; you can also use the **Refresh Data (🔄)** button to reload manually.
 - **Status Bar**: The **AG Sync** icon updates dynamically (☁️ Cloud, 🔄 Spinning, ⚠️ Error, ✅ Check) to reflect the current state.

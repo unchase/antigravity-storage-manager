@@ -146,6 +146,10 @@ export class QuotaManager {
         }
     }
 
+    public getLatestSnapshot(): QuotaSnapshot | undefined {
+        return this.statusBar.getLatestSnapshot();
+    }
+
     public async getQuota(): Promise<QuotaSnapshot> {
         // 1. Detect process and port
         const processInfo = await this.portDetector.detectProcessInfo();

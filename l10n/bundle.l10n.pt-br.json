@@ -383,5 +383,7 @@
     "Failed to release lock: {0}": "Falha ao liberar bloqueio: {0}",
     "Scheduled backup failed: {0}": "Backup agendado falhou: {0}",
     "Failed to clean old backups: {0}": "Falha ao limpar backups antigos: {0}",
-    "Failed to get user info: {0}": "Falha ao obter informações do usuário: {0}"
+    "Failed to get user info: {0}": "Falha ao obter informações do usuário: {0}",
+    "Quota Usage": "Uso da cota",
+    "User": "Usuário"
 }

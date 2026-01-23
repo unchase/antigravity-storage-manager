@@ -394,5 +394,7 @@
     "Port detection command (lsof) is required but missing.": "Il comando di rilevamento porta (lsof) è richiesto ma mancante.",
     "Port detection command (lsof/ss/netstat) is required but missing.": "Il comando di rilevamento porta (lsof/ss/netstat) è richiesto ma mancante.",
     "Quota feature is disabled in settings.": "La funzione quota è disabilitata nelle impostazioni.",
-    "Fetching Antigravity quota...": "Recupero quota Antigravity..."
+    "Fetching Antigravity quota...": "Recupero quota Antigravity...",
+    "Quota Usage": "Utilizzo quota",
+    "User": "Utente"
 }

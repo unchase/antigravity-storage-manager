@@ -394,5 +394,7 @@
     "Port detection command (lsof) is required but missing.": "Příkaz pro detekci portů (lsof) je vyžadován, ale chybí.",
     "Port detection command (lsof/ss/netstat) is required but missing.": "Příkaz pro detekci portů (lsof/ss/netstat) je vyžadován, ale chybí.",
     "Quota feature is disabled in settings.": "Funkce kvót je v nastavení zakázána.",
-    "Fetching Antigravity quota...": "Získávání kvóty Antigravity..."
+    "Fetching Antigravity quota...": "Získávání kvóty Antigravity...",
+    "Quota Usage": "Využití kvóty",
+    "User": "Uživatel"
 }

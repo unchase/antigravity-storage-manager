@@ -394,5 +394,7 @@
     "Port detection command (lsof) is required but missing.": "Hafen-Erkennungsbefehl (lsof) erforderlich, fehlt aber.",
     "Port detection command (lsof/ss/netstat) is required but missing.": "Hafen-Erkennungsbefehl (lsof/ss/netstat) erforderlich, fehlt aber.",
     "Quota feature is disabled in settings.": "Quota-Funktion ist in den Einstellungen deaktiviert.",
-    "Fetching Antigravity quota...": "Rufe Antigravity-Quota ab..."
+    "Fetching Antigravity quota...": "Rufe Antigravity-Quota ab...",
+    "Quota Usage": "Kontingentnutzung",
+    "User": "Benutzer"
 }

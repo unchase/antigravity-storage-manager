@@ -5,6 +5,16 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.10] - 2026-01-24
+### Bug Fixes
+- **Sync Statistics Icons**: Fixed an issue where file icons in the Sync Statistics dashboard were not displaying correctly. Replaced dependency on external fonts with high-quality **inline SVG icons** (VS Code Seti style).
+- **Sync Dashboard Improvements**: Added display of total conversation size, user account info (email, plan), and compact quota usage indicators for the current device.
+- **Improved File Recognition**: Added proper icon mapping for additional file types (`.pb`, `.jsx`, `.tsx`, `.jpeg`) in the dashboard.
+- **Localization**: Added missing translations for "Quota Usage", "User", and "Plan" across all supported languages.
+- **Quota Source**: User email is now sourced directly from the Quota API (Google AI Studio) for accuracy, falling back to Google Drive account only if unavailable.
+- **Error Logging**: Localized error messages in `console.error` logs for better debugging in non-English locales.
+- **Code Quality**: Resolved `require()` import usage in crypto module to comply with strict linting rules.
+
 ## [0.7.9] - 2026-01-23
 ### UX Improvements
 - **Status Bar Visibility**: Status bar now remains visible after disconnecting from sync, showing the warning icon (⚠) instead of disappearing.

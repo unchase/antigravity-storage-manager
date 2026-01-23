@@ -46,6 +46,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Initialize Quota Manager
     quotaManager = new QuotaManager(context);
+    syncManager.setQuotaManager(quotaManager);
 
     // Register existing commands
     context.subscriptions.push(

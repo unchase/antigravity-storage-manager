@@ -394,5 +394,7 @@
     "Port detection command (lsof) is required but missing.": "أمر الكشف عن المنفذ (lsof) مطلوب ولكنه مفقود.",
     "Port detection command (lsof/ss/netstat) is required but missing.": "أمر الكشف عن المنفذ (lsof/ss/netstat) مطلوب ولكنه مفقود.",
     "Quota feature is disabled in settings.": "ميزة الحصة معطلة في الإعدادات.",
-    "Fetching Antigravity quota...": "جاري جلب حصة Antigravity..."
+    "Fetching Antigravity quota...": "جاري جلب حصة Antigravity...",
+    "Quota Usage": "استخدام الحصة",
+    "User": "مستخدم"
 }

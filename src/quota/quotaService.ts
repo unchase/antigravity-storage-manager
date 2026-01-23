@@ -152,11 +152,17 @@ export function parseQuotaResponse(response: any): QuotaSnapshot {
 
     const planName = userStatus?.userTier?.name;
 
+    const userEmail = userStatus?.user?.email
+        || userStatus?.email
+        || userStatus?.user_email
+        || userStatus?.contactEmail;
+
     return {
         timestamp: new Date(),
         promptCredits,
         models,
         planName,
+        userEmail,
         rawUserStatus: userStatus
     };
 }

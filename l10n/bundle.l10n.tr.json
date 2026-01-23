@@ -383,5 +383,7 @@
     "Failed to release lock: {0}": "Kilit serbest bırakılamadı: {0}",
     "Scheduled backup failed: {0}": "Zamanlanmış yedekleme başarısız: {0}",
     "Failed to clean old backups: {0}": "Eski yedekler temizlenemedi: {0}",
-    "Failed to get user info: {0}": "Kullanıcı bilgisi alınamadı: {0}"
+    "Failed to get user info: {0}": "Kullanıcı bilgisi alınamadı: {0}",
+    "Quota Usage": "Kota Kullanımı",
+    "User": "Kullanıcı"
 }
