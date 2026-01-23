@@ -5,6 +5,13 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.8] - 2026-01-23 
+### Sync Logic
+- **Robust Sync Logic**:
+    - **Fixed redundant uploads**: Resolved an issue where files were re-uploaded during sync even when they were already synchronized. Hash cache is now properly updated after pulling and uploading files.
+    - **Persistent Machine ID**: Machine ID is now based on hostname + username hash, ensuring the same device always gets the same ID even after extension reinstall. This prevents duplicate device entries and redundant file uploads.
+    - **Smart Push**: Manifest is only updated when files are actually uploaded or deleted, skipping no-op operations.
+
 ## [0.7.7] - 2026-01-23
 ### Sync Logic & Dashboard Improvements
 - **Robust Sync Logic**:

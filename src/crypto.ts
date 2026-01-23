@@ -154,10 +154,13 @@ export function computeMd5Hash(data: Buffer): string {
 }
 
 /**
- * Generates a unique machine ID
+ * Generates a PERSISTENT machine ID based on hostname + username
+ * This ensures the same machine gets the same ID even after extension reinstall
  */
 export function generateMachineId(): string {
-    return crypto.randomUUID();
+    const os = require('os');
+    const identifier = `${os.hostname()}-${os.userInfo().username}`;
+    return computeMd5Hash(Buffer.from(identifier)).substring(0, 32);
 }
 
 /**

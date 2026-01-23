@@ -435,7 +435,10 @@ export class SyncManager {
             for (const [relativePath, localInfo] of Object.entries(localData.fileHashes)) {
                 const remoteInfo = remoteHashes[relativePath];
                 if (!remoteInfo || remoteInfo.hash !== localInfo.hash) {
-                    console.log(`[Push] Uploading ${relativePath}: Remote=${remoteInfo ? remoteInfo.hash : 'missing'}, Local=${localInfo.hash}`);
+                    console.log(`[Push] Will upload ${relativePath}:`);
+                    console.log(`  Remote hash: ${remoteInfo ? remoteInfo.hash : 'MISSING'}`);
+                    console.log(`  Local hash:  ${localInfo.hash}`);
+                    console.log(`  Remote size: ${remoteInfo ? remoteInfo.size : 'N/A'}, Local size: ${localInfo.size}`);
                     filesToUpload.push(relativePath);
                 }
             }
@@ -465,6 +468,11 @@ export class SyncManager {
                 const encrypted = crypto.encrypt(content, this.masterPassword!);
 
                 await this.driveService.uploadConversationFile(conversationId, relativePath, encrypted);
+
+                // Update hash cache to ensure consistency on next comparison
+                const fileHash = crypto.computeMd5Hash(content);
+                const stats = await fs.promises.stat(fullPath);
+                this.fileHashCache.set(fullPath, { mtime: stats.mtimeMs, hash: fileHash });
             }, token);
 
             // Delete removed files from remote
@@ -473,13 +481,19 @@ export class SyncManager {
                 await this.driveService.deleteConversationFile(conversationId, relativePath);
             }
 
-            // Update manifest with new file hashes
-            await this.updateManifestEntryWithFileHashes(
-                conversationId,
-                localData.overallHash,
-                localData.fileHashes,
-                localData.maxMtime > 0 ? new Date(localData.maxMtime).toISOString() : undefined
-            );
+            // Only update manifest if we actually made changes
+            if (filesToUpload.length > 0 || filesToDelete.length > 0) {
+                // Update manifest with new file hashes
+                await this.updateManifestEntryWithFileHashes(
+                    conversationId,
+                    localData.overallHash,
+                    localData.fileHashes,
+                    localData.maxMtime > 0 ? new Date(localData.maxMtime).toISOString() : undefined
+                );
+                console.log(`[Push] Updated manifest for ${conversationId}: ${filesToUpload.length} uploaded, ${filesToDelete.length} deleted`);
+            } else {
+                console.log(`[Push] Skipped ${conversationId}: no changes detected`);
+            }
         } finally {
             this.activeTransfers.delete(conversationId);
             this.updateDashboardIfVisible();
@@ -603,6 +617,11 @@ export class SyncManager {
                 // Ensure directory exists
                 await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
                 await fs.promises.writeFile(fullPath, content);
+
+                // Update hash cache with new content to prevent stale cache on next sync
+                const newHash = crypto.computeMd5Hash(content);
+                const newStats = await fs.promises.stat(fullPath);
+                this.fileHashCache.set(fullPath, { mtime: newStats.mtimeMs, hash: newHash });
             }
         }, token);
 
@@ -979,9 +998,12 @@ export class SyncManager {
 
                 manifest.lastModified = now;
 
+                console.log(`[Manifest] Updating for ${conversationId}: ${Object.keys(fileHashes).length} files, ${manifest.conversations.length} conversations total`);
                 const manifestJson = JSON.stringify(manifest, null, 2);
                 const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
                 await this.driveService.updateManifest(encrypted);
+                console.log(`[Manifest] Saved (${manifestJson.length} bytes)`);
+
             } catch (error: any) {
                 vscode.window.showErrorMessage(lm.t('Failed to update manifest (per-file) for {0}: {1}', conversationId, error.message));
                 throw error;
@@ -1419,11 +1441,13 @@ export class SyncManager {
             }) || os.hostname();
         }
 
-        // Initialize config
+        // Initialize config with PERSISTENT machine ID (hash of hostname + username)
+        // This ensures the same machine gets the same ID even after reinstall
+        const persistentId = crypto.computeMd5Hash(Buffer.from(`${os.hostname()}-${os.userInfo().username}`)).substring(0, 32);
         this.config = {
             enabled: true,
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            machineId: require('crypto').randomUUID(),
+            machineId: persistentId,
+
             machineName: machineName,
             lastSync: new Date().toISOString(),
             autoSync: true,
@@ -1644,10 +1668,11 @@ export class SyncManager {
                             if (sortMethod === 'created') sortTooltip = lm.t('Sort by Created Date and Time');
                             if (sortMethod === 'name') sortTooltip = lm.t('Sort by Name');
 
-                            quickPick.buttons = [{
-                                iconPath: new vscode.ThemeIcon('list-ordered'),
-                                tooltip: `${lm.t('Sort')}: ${sortTooltip}`
-                            }];
+                            quickPick.buttons = [
+                                { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') },
+                                { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') },
+                                { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` }
+                            ];
                         };
 
                         const updateItems = (preserveSelection = false) => {
@@ -1696,11 +1721,19 @@ export class SyncManager {
 
                         updateItems();
 
-                        quickPick.onDidTriggerButton(_button => {
-                            if (sortMethod === 'modified') sortMethod = 'created';
-                            else if (sortMethod === 'created') sortMethod = 'name';
-                            else sortMethod = 'modified';
-                            updateItems(true);
+                        quickPick.onDidTriggerButton(button => {
+                            const tooltip = button.tooltip?.toString() || '';
+                            if (tooltip.includes('Patreon')) {
+                                vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
+                            } else if (tooltip.includes('Coffee')) {
+                                vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+                            } else {
+                                // Sort button
+                                if (sortMethod === 'modified') sortMethod = 'created';
+                                else if (sortMethod === 'created') sortMethod = 'name';
+                                else sortMethod = 'modified';
+                                updateItems(true);
+                            }
                         });
 
                         const selected = await new Promise<(vscode.QuickPickItem & { id: string })[]>((resolve) => {
@@ -1954,10 +1987,11 @@ export class SyncManager {
             if (currentSort === 'created') sortTooltip = lm.t('Sort by Created Date and Time');
             if (currentSort === 'name') sortTooltip = lm.t('Sort by Name');
 
-            quickPick.buttons = [{
-                iconPath: new vscode.ThemeIcon('list-ordered'),
-                tooltip: `${lm.t('Sort')}: ${sortTooltip}`
-            }];
+            quickPick.buttons = [
+                { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') },
+                { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') },
+                { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` }
+            ];
         };
 
         const updateItems = () => {
@@ -1975,17 +2009,25 @@ export class SyncManager {
 
         updateItems();
 
-        // Handle Button Click (Sort)
-        quickPick.onDidTriggerButton(_button => {
-            if (currentSort === 'modified') currentSort = 'created';
-            else if (currentSort === 'created') currentSort = 'name';
-            else currentSort = 'modified';
+        // Handle Button Click (Sort and Donation)
+        quickPick.onDidTriggerButton(button => {
+            const tooltip = button.tooltip?.toString() || '';
+            if (tooltip.includes('Patreon')) {
+                vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
+            } else if (tooltip.includes('Coffee')) {
+                vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+            } else {
+                // Sort button
+                if (currentSort === 'modified') currentSort = 'created';
+                else if (currentSort === 'created') currentSort = 'name';
+                else currentSort = 'modified';
 
-            const previousSelectionIds = quickPick.selectedItems.map(i => i.id);
-            quickPick.items = prepareItems(conversations, currentSort);
-            quickPick.selectedItems = quickPick.items.filter(i => i.id && previousSelectionIds.includes(i.id));
+                const previousSelectionIds = quickPick.selectedItems.map(i => i.id);
+                quickPick.items = prepareItems(conversations, currentSort);
+                quickPick.selectedItems = quickPick.items.filter(i => i.id && previousSelectionIds.includes(i.id));
 
-            updateSortButton();
+                updateSortButton();
+            }
         });
         quickPick.onDidChangeSelection((_selection) => {
             // Keep selection updated for result
