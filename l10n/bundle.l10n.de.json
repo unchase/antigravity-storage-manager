@@ -1,4 +1,6 @@
 {
+    "Cycle": "Zyklus",
+    "left": "übrig",
     "h": "Std",
     "m": "Min",
     "Sync already in progress": "Synchronisierung läuft bereits",
@@ -352,6 +354,10 @@
     "Uploading": "Hochladen",
     "Downloading": "Herunterladen",
     "Failed to get conversation title": "Gesprächstitel konnte nicht abgerufen werden",
-    "Cycle": "Zyklus",
-    "left": "übrig"
+    "Support on Patreon": "Auf Patreon unterstützen",
+    "Buy Me a Coffee": "Einen Kaffee spendieren",
+    "Started at {0}": "Gestartet um {0}",
+    "Created by {0} on {1}": "Erstellt von {0} am {1}",
+    "Data": "Daten",
+    "File not found locally.": "Datei lokal nicht gefunden."
 }

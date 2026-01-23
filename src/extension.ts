@@ -105,7 +105,6 @@ export async function activate(context: vscode.ExtensionContext) {
                     label: `$(sync) ${lm.t('Sync Now')}`,
                     description: `${lm.t('Trigger immediate synchronization')} ${getKeybindingLabel(`${EXT_NAME}.syncNow`)}`,
                     command: `${EXT_NAME}.syncNow`
-                    // syncNow handles its own auth check, so we don't block it here
                 },
                 {
                     label: `$(graph) ${lm.t('Show Statistics')}`,
@@ -130,7 +129,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 },
                 {
                     label: `$(list-unordered) ${lm.t('Manage Synced Conversations')}`,
-                    description: lm.t('Manage which conversations are synced'),
+                    description: `${lm.t('Manage which conversations are synced')} ${getKeybindingLabel(`${EXT_NAME}.syncManage`)}`,
                     command: `${EXT_NAME}.syncManage`,
                     requiresAuth: true
                 },
@@ -165,50 +164,75 @@ export async function activate(context: vscode.ExtensionContext) {
             // Post-process items to reflect auth state
             const processedItems = items.map(item => {
                 if (item.requiresAuth && !isReady) {
-                    // Extract icon and text from label
                     const labelMatch = item.label.match(/^(\$\([a-z-]+\)\s*)?(.*)$/);
                     const originalText = labelMatch ? labelMatch[2] : item.label;
 
                     return {
                         ...item,
-                        // Move the label text to description which renders in a dimmer color
                         label: '$(lock)',
                         description: `${originalText} [${lm.t('Requires Sync Setup')}] ${item.description || ''}`,
-                        // Clear detail if needed or use it for the warning
                         detail: undefined
                     };
                 }
                 return item;
             });
 
-            const selected = await vscode.window.showQuickPick(processedItems, {
-                placeHolder: lm.t('Antigravity Storage Manager'),
-                title: lm.t('Select an action')
+            // Use createQuickPick for Title Bar Buttons
+            const quickPick = vscode.window.createQuickPick();
+            quickPick.items = processedItems;
+            quickPick.placeholder = lm.t('Antigravity Storage Manager');
+            quickPick.title = lm.t('Select an action');
+
+            const patreonBtn = {
+                iconPath: new vscode.ThemeIcon('heart'),
+                tooltip: 'Support on Patreon'
+            };
+            const coffeeBtn = {
+                iconPath: new vscode.ThemeIcon('gift'),
+                tooltip: 'Buy Me a Coffee'
+            };
+            quickPick.buttons = [patreonBtn, coffeeBtn];
+
+            quickPick.onDidTriggerButton(btn => {
+                if (btn === patreonBtn) {
+                    vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
+                } else if (btn === coffeeBtn) {
+                    vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+                }
+                quickPick.hide();
             });
 
-            if (selected && selected.command) {
-                // Check if the ORIGINAL item required auth
-                const originalItem = items.find(i => i.command === selected.command);
+            quickPick.onDidAccept(async () => {
+                const selected = quickPick.selectedItems[0] as any;
+                if (selected && selected.command) {
+                    const originalItem = items.find(i => i.command === selected.command);
 
-                if (originalItem?.requiresAuth && !isReady) {
-                    const setupNow = await vscode.window.showWarningMessage(
-                        lm.t('This action requires Google Drive Sync to be configured.'),
-                        lm.t('Setup Sync'),
-                        lm.t('Cancel')
-                    );
-                    if (setupNow === lm.t('Setup Sync')) {
-                        vscode.commands.executeCommand(`${EXT_NAME}.syncSetup`);
+                    if (originalItem?.requiresAuth && !isReady) {
+                        quickPick.hide();
+                        const setupNow = await vscode.window.showWarningMessage(
+                            lm.t('This action requires Google Drive Sync to be configured.'),
+                            lm.t('Setup Sync'),
+                            lm.t('Cancel')
+                        );
+                        if (setupNow === lm.t('Setup Sync')) {
+                            vscode.commands.executeCommand(`${EXT_NAME}.syncSetup`);
+                        }
+                        return;
                     }
-                    return;
-                }
 
-                if (selected.args) {
-                    vscode.commands.executeCommand(selected.command, ...selected.args);
-                } else {
-                    vscode.commands.executeCommand(selected.command);
+                    quickPick.hide();
+                    if (selected.args) {
+                        vscode.commands.executeCommand(selected.command, ...selected.args);
+                    } else {
+                        vscode.commands.executeCommand(selected.command);
+                    }
                 }
-            }
+            });
+
+            quickPick.onDidHide(() => quickPick.dispose());
+            quickPick.show();
         }),
+
         vscode.commands.registerCommand(`${EXT_NAME}.syncSetup`, async () => {
             await syncManager.setup();
         }),

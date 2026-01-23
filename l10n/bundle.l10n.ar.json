@@ -1,4 +1,6 @@
 {
+    "Cycle": "دورة",
+    "left": "متبقي",
     "h": "س",
     "m": "د",
     "Sync already in progress": "المزامنة قيد التنفيذ بالفعل",
@@ -352,6 +354,10 @@
     "Uploading": "جارٍ الرفع",
     "Downloading": "جارٍ التحميل",
     "Failed to get conversation title": "فشل في الحصول على عنوان المحادثة",
-    "Cycle": "دورة",
-    "left": "متبقي"
+    "Support on Patreon": "دعم على Patreon",
+    "Buy Me a Coffee": "اشتر لي قهوة",
+    "Started at {0}": "بدأ في {0}",
+    "Created by {0} on {1}": "تم الإنشاء بواسطة {0} في {1}",
+    "Data": "بيانات",
+    "File not found locally.": "الملف غير موجود محليًا."
 }

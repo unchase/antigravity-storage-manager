@@ -1,4 +1,6 @@
 {
+    "Cycle": "Döngü",
+    "left": "kaldı",
     "h": "s",
     "m": "dk",
     "Sync already in progress": "Senkronizasyon zaten devam ediyor",
@@ -352,6 +354,10 @@
     "Uploading": "Yükleniyor",
     "Downloading": "İndiriliyor",
     "Failed to get conversation title": "Konuşma başlığı alınamadı",
-    "Cycle": "Döngü",
-    "left": "kaldı"
+    "Support on Patreon": "Patreon'da Destekle",
+    "Buy Me a Coffee": "Bana Bir Kahve Ismarla",
+    "Started at {0}": "{0} saatinde başladı",
+    "Created by {0} on {1}": "{0} tarafından {1} tarihinde oluşturuldu",
+    "Data": "Veri",
+    "File not found locally.": "Dosya yerel olarak bulunamadı."
 }

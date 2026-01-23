@@ -347,9 +347,15 @@ export class GoogleAuthProvider {
                                         <h1>Authentication Successful</h1>
                                         <p>Your Google account has been successfully linked with Antigravity Storage Manager.</p>
                                         <div class="status">You can close this window now</div>
+                                        
+                                        <div style="margin-top: 30px; display: flex; gap: 10px; justify-content: center;">
+                                            <a href="https://www.patreon.com/unchase" target="_blank" style="text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.05); border-radius: 6px; color: var(--fg); font-size: 12px; transition: 0.2s;">🧡 Support on Patreon</a>
+                                            <a href="https://www.buymeacoffee.com/nikolaychebotov" target="_blank" style="text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.05); border-radius: 6px; color: var(--fg); font-size: 12px; transition: 0.2s;">☕ Buy Me a Coffee</a>
+                                        </div>
+
                                         <p style="font-size: 0.8em; opacity: 0.5; margin-top: 30px;">Redirecting back to VS Code...</p>
                                     </div>
-                                    <script>setTimeout(() => window.close(), 3000);</script>
+                                    <script>setTimeout(() => window.close(), 5000);</script>
                                 </body>
                                 </html>
                             `);

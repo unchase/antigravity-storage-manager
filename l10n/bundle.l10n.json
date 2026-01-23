@@ -1,4 +1,6 @@
 {
+    "Cycle": "Cycle",
+    "left": "left",
     "h": "h",
     "m": "m",
     "Sync already in progress": "Sync already in progress",
@@ -351,5 +353,11 @@
     "Active Transfers": "Active Transfers",
     "Uploading": "Uploading",
     "Downloading": "Downloading",
-    "Failed to get conversation title": "Failed to get conversation title"
+    "Failed to get conversation title": "Failed to get conversation title",
+    "Support on Patreon": "Support on Patreon",
+    "Buy Me a Coffee": "Buy Me a Coffee",
+    "Started at {0}": "Started at {0}",
+    "Created by {0} on {1}": "Created by {0} on {1}",
+    "Data": "Data",
+    "File not found locally.": "File not found locally."
 }

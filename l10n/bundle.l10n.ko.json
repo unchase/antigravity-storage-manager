@@ -1,4 +1,6 @@
 {
+    "Cycle": "사이클",
+    "left": "남음",
     "h": "시간",
     "m": "분",
     "Sync already in progress": "동기화가 이미 진행 중입니다",
@@ -352,6 +354,10 @@
     "Uploading": "업로드 중",
     "Downloading": "다운로드 중",
     "Failed to get conversation title": "대화 제목을 가져오지 못했습니다",
-    "Cycle": "사이클",
-    "left": "남음"
+    "Support on Patreon": "Patreon에서 후원하기",
+    "Buy Me a Coffee": "커피 한 잔 사주기",
+    "Started at {0}": "{0}에 시작됨",
+    "Created by {0} on {1}": "{0}님이 {1}에 생성함",
+    "Data": "데이터",
+    "File not found locally.": "로컬에서 파일을 찾을 수 없습니다."
 }

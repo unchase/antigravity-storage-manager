@@ -5,6 +5,29 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.6] - 2026-01-23
+### Dashboard & UI Logic
+- **Sync Dashboard 2.0**:
+    - **Detailed File View**: Each conversation now features a collapsible file list, allowing inspection of individual files, their sizes, and sync status.
+    - **Transfer Stats**: Added "Uploads" and "Downloads" columns to the Connected Devices table, tracking session-based file transfer counts.
+    - **Enhanced Metadata**: Conversations now display "Created by [User]" and precise timestamps for better context.
+    - **Smart UX**: Resolved a focus-stealing issue where auto-refreshing the dashboard would interrupt typing in the editor.
+    - **Action Tooltips**: Added descriptive tooltips to all dashboard buttons (Rename, Delete, Ping, etc.) for better accessibility.
+- **Community Support**:
+    - Integrated "Support on Patreon" and "Buy Me a Coffee" buttons across the extension's UI:
+        - **Account Dashboard**: Header actions.
+        - **Sync Statistics**: Header actions.
+        - **Quota Menu**: Title bar icon buttons.
+        - **Authentication**: Success confirmation page.
+- **Localization**:
+    - **Complete Coverage**: Localized all new dashboard components (file lists, stats columns, badges) into all 16 supported languages.
+    - **Support Links**: Translated tooltips for support buttons.
+    - Added full native localization for the new "Create Backup Now" command across all 15 supported languages.
+
+### UI & UX
+- **Refined Cycle Bar**: Updated cycle heuristics for models. **Gemini 3 Pro**, **Opus**, and **Thinking** models now correctly reflect a **5-hour cycle duration** (previously 24h or inaccurate), providing a true visual representation of quota reset times.
+- **Active Transfers**: Clicking on a transfer item (upload/download) in the "Active Transfers" section of the Sync Dashboard now directly opens the corresponding conversation.
+
 ## [0.7.5] - 2026-01-22
 ### Sync Statistics Dashboard (Major Upgrade)
 - **Premium Design**: Completely overhauled the dashboard with a modern glassmorphism aesthetic, featuring vibrant gradients, interactive cards, and subtle animations.

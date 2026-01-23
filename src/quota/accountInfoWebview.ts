@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaSnapshot } from './types';
-import { drawProgressBar, formatResetTime, formatDuration } from './utils';
+import { drawProgressBar, formatResetTime, formatDuration, getCycleDuration } from './utils';
 
 export class AccountInfoWebview {
     private static currentPanel: vscode.WebviewPanel | undefined;
@@ -52,6 +52,12 @@ export class AccountInfoWebview {
                     }
                     case 'openPlan':
                         vscode.env.openExternal(vscode.Uri.parse('https://one.google.com/ai'));
+                        return;
+                    case 'openPatreon':
+                        vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
+                        return;
+                    case 'openCoffee':
+                        vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
                         return;
                 }
             },
@@ -122,12 +128,7 @@ export class AccountInfoWebview {
             let cycleInfo = '';
             const isHighTier = model.label.includes('Pro') || model.label.includes('Ultra') || model.label.includes('Thinking') || model.label.includes('Opus');
             if (isHighTier && model.timeUntilReset > 0) {
-                let cycleDuration = 24 * 60 * 60 * 1000;
-                if (model.label.includes('Ultra') || model.label.includes('Opus') || model.label.includes('Thinking')) {
-                    cycleDuration = 6 * 60 * 60 * 1000;
-                } else if (model.label.includes('Pro')) {
-                    cycleDuration = 8 * 60 * 60 * 1000;
-                }
+                const cycleDuration = getCycleDuration(model.label);
                 const progress = Math.max(0, Math.min(1, 1 - (model.timeUntilReset / cycleDuration)));
                 const cycleBar = drawProgressBar(progress * 100, 8);
                 cycleInfo = `<div class="cycle-info">${l.t('Cycle')}: <code class="bar">${cycleBar}</code> <span class="time">(${formatDuration(model.timeUntilReset)} ${l.t('left')})</span></div>`;
@@ -495,6 +496,9 @@ export class AccountInfoWebview {
         <div class="header">
             <h1>${l.t('Account Information')}</h1>
             <div class="header-btns">
+                <button class="btn" onclick="postCommand('openPatreon')" title="Support on Patreon" style="padding: 6px 10px;">🧡</button>
+                <button class="btn" onclick="postCommand('openCoffee')" title="Buy Me a Coffee" style="padding: 6px 10px;">☕</button>
+                <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
                 <button class="btn" onclick="openPlan()">${l.t('Upgrade Plan')}</button>
                 <button class="btn" onclick="viewRawJson()">${l.t('View Raw JSON')}</button>
             </div>

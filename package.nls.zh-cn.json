@@ -30,5 +30,6 @@
     "antigravity.command.showQuota": "显示 Antigravity 配额",
     "antigravity.command.syncManageAuthorizedMachines": "管理授权删除设备",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "授权从其他设备删除对话的机器 ID 列表。使用 [管理授权设备](command:antigravity-storage-manager.syncManageAuthorizedMachines) 命令从 Google Drive 历史记录中选择。",
-    "antigravity.config.useMetadataCache": "使用缓存的元数据作为对话状态徽章（更快，减少 Google Drive 请求）"
+    "antigravity.config.useMetadataCache": "使用缓存的元数据作为对话状态徽章（更快，减少 Google Drive 请求）",
+    "antigravity.command.triggerBackup": "立即创建备份"
 }

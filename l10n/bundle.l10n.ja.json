@@ -1,4 +1,6 @@
 {
+    "Cycle": "サイクル",
+    "left": "残り",
     "h": "時間",
     "m": "分",
     "Sync already in progress": "同期は既に進行中です",
@@ -352,6 +354,10 @@
     "Uploading": "アップロード中",
     "Downloading": "ダウンロード中",
     "Failed to get conversation title": "会話タイトルの取得に失敗しました",
-    "Cycle": "サイクル",
-    "left": "残り"
+    "Support on Patreon": "Patreonでサポート",
+    "Buy Me a Coffee": "コーヒーをおごる",
+    "Started at {0}": "{0} に開始",
+    "Created by {0} on {1}": "{0} によって {1} に作成",
+    "Data": "データ",
+    "File not found locally.": "ローカルにファイルが見つかりません。"
 }

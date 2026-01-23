@@ -106,3 +106,26 @@ export function compareModels(a: { remainingPercentage?: number, resetTime: Date
         return quotaA - quotaB;
     }
 }
+
+/**
+ * Estimates the total cycle duration based on the model label.
+ */
+export function getCycleDuration(label: string): number {
+    // Gemini 3 Pro, Opus, and Thinking seem to have a 5h cycle
+    if (label.includes('Gemini 3 Pro') || label.includes('Opus') || label.includes('Thinking')) {
+        return 5 * 60 * 60 * 1000;
+    }
+
+    // 6h cycle models
+    if (label.includes('Ultra')) {
+        return 6 * 60 * 60 * 1000;
+    }
+
+    // 8h cycle models (Legacy Pro?)
+    if (label.includes('Pro')) {
+        return 8 * 60 * 60 * 1000;
+    }
+
+    // Default 24h
+    return 24 * 60 * 60 * 1000;
+}

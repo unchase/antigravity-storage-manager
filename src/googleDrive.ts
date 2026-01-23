@@ -28,6 +28,8 @@ export interface Machine {
     id: string;
     name: string;
     lastSync: string;
+    uploadCount?: number;
+    downloadCount?: number;
     createdAt?: string;
 }
 
@@ -57,6 +59,8 @@ export interface MachineState {
     machineName: string;
     lastSync: string;
     syncCount?: number;
+    uploadCount?: number;
+    downloadCount?: number;
     quota?: {
         used: number;
         limit: number;

@@ -1,4 +1,6 @@
 {
+    "Cycle": "Cyklus",
+    "left": "zbývá",
     "h": "h",
     "m": "m",
     "Sync already in progress": "Synchronizace již probíhá",
@@ -352,6 +354,10 @@
     "Uploading": "Nahrávání",
     "Downloading": "Stahování",
     "Failed to get conversation title": "Nepodařilo se získat název konverzace",
-    "Cycle": "Cyklus",
-    "left": "zbývá"
+    "Support on Patreon": "Podpořit na Patreonu",
+    "Buy Me a Coffee": "Koupit mi kávu",
+    "Started at {0}": "Zahájeno v {0}",
+    "Created by {0} on {1}": "Vytvořeno uživatelem {0} dne {1}",
+    "Data": "Data",
+    "File not found locally.": "Soubor nebyl lokálně nalezen."
 }

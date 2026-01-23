@@ -30,5 +30,6 @@
     "antigravity.command.showQuota": "Mostra quota Antigravity",
     "antigravity.command.syncManageAuthorizedMachines": "Gestisci macchine di eliminazione autorizzate",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Elenco di ID macchina autorizzati a eliminare conversazioni da altri dispositivi. Usa il comando [Gestisci macchine autorizzate](command:antigravity-storage-manager.syncManageAuthorizedMachines) per selezionare dalla cronologia di Google Drive.",
-    "antigravity.config.useMetadataCache": "Usa metadati nella cache per i badge di stato (più veloce, riduce le richieste a Google Drive)"
+    "antigravity.config.useMetadataCache": "Usa metadati nella cache per i badge di stato (più veloce, riduce le richieste a Google Drive)",
+    "antigravity.command.triggerBackup": "Crea backup ora"
 }

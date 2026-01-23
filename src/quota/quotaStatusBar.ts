@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { QuotaSnapshot } from './types';
-import { getModelAbbreviation, formatResetTime, drawProgressBar, formatDuration as formatDurationCommon } from './utils';
+import { getModelAbbreviation, formatResetTime, drawProgressBar, formatDuration as formatDurationCommon, getCycleDuration } from './utils';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaUsageTracker } from './quotaUsageTracker';
 
@@ -114,12 +114,7 @@ export class QuotaStatusBar {
                         const isHighTier = m.label.includes('Pro') || m.label.includes('Ultra') || m.label.includes('Thinking') || m.label.includes('Opus');
                         if (isHighTier) {
                             // Heuristic for cycle duration
-                            let cycleDuration = 24 * 60 * 60 * 1000; // Default 24h
-                            if (m.label.includes('Ultra') || m.label.includes('Opus') || m.label.includes('Thinking')) {
-                                cycleDuration = 6 * 60 * 60 * 1000; // 6h cycle
-                            } else if (m.label.includes('Pro')) {
-                                cycleDuration = 8 * 60 * 60 * 1000; // 8h cycle
-                            }
+                            const cycleDuration = getCycleDuration(m.label);
 
                             const progress = Math.max(0, Math.min(1, 1 - (msUntilReset / cycleDuration)));
                             const progressBar = drawProgressBar(progress * 100);

@@ -1,4 +1,6 @@
 {
+    "Cycle": "Chu kỳ",
+    "left": "còn lại",
     "h": "giờ",
     "m": "phút",
     "Sync already in progress": "Đang tiến hành đồng bộ hóa",
@@ -352,6 +354,10 @@
     "Uploading": "Đang tải lên",
     "Downloading": "Đang tải xuống",
     "Failed to get conversation title": "Không thể lấy tiêu đề cuộc hội thoại",
-    "Cycle": "Chu kỳ",
-    "left": "còn lại"
+    "Support on Patreon": "Ủng hộ trên Patreon",
+    "Buy Me a Coffee": "Mua cho tôi một ly cà phê",
+    "Started at {0}": "Bắt đầu lúc {0}",
+    "Created by {0} on {1}": "Được tạo bởi {0} vào {1}",
+    "Data": "Dữ liệu",
+    "File not found locally.": "Không tìm thấy tệp cục bộ."
 }

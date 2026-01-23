@@ -61,10 +61,12 @@ export class SyncManager {
     private nextAutoSyncTime: number | null = null;
     private isSyncing: boolean = false;
     private syncCount: number = 0;
+    private uploadCount: number = 0;
+    private downloadCount: number = 0;
     private fileHashCache: Map<string, { mtime: number, hash: string }> = new Map();
     private cachedManifest: SyncManifest | null = null;
     private lastManifestFetch: number = 0;
-    private activeTransfers: Map<string, { title: string; type: 'upload' | 'download' }> = new Map();
+    private activeTransfers: Map<string, { title: string; type: 'upload' | 'download'; startTime: number }> = new Map();
 
     // Status bar item for sync status
     private statusBarItem: vscode.StatusBarItem | null = null;
@@ -409,7 +411,7 @@ export class SyncManager {
 
         // Track active transfer for dashboard
         const convTitle = this.getConversationTitle(conversationId);
-        this.activeTransfers.set(conversationId, { title: convTitle, type: 'upload' });
+        this.activeTransfers.set(conversationId, { title: convTitle, type: 'upload', startTime: Date.now() });
         this.updateDashboardIfVisible();
 
         try {
@@ -450,6 +452,7 @@ export class SyncManager {
                 if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
                 uploadedCount++;
+                this.uploadCount++;
                 this.reportProgress(progress, lm.t('Uploading: {0} ({1}/{2})...', relativePath, uploadedCount, filesToUpload.length));
 
                 // Read and encrypt file
@@ -513,7 +516,7 @@ export class SyncManager {
 
         // Track active transfer for dashboard
         const convTitle = this.getConversationTitle(conversationId);
-        this.activeTransfers.set(conversationId, { title: convTitle, type: 'download' });
+        this.activeTransfers.set(conversationId, { title: convTitle, type: 'download', startTime: Date.now() });
         this.updateDashboardIfVisible();
 
         try {
@@ -970,6 +973,8 @@ export class SyncManager {
             machineName: machineName,
             lastSync: new Date().toISOString(),
             syncCount: this.syncCount,
+            uploadCount: this.uploadCount,
+            downloadCount: this.downloadCount,
             quota: quota || undefined,
             conversationStates: (await this.getLocalConversationsAsync()).map(c => ({
                 id: c.id,
@@ -1248,12 +1253,13 @@ export class SyncManager {
 
         // Map to format required by sync, computing hashes
         return Promise.all(items.map(async item => {
-            const hash = await this.computeConversationHashAsync(item.id);
+            const { overallHash, fileHashes } = await this.computeConversationFileHashesAsync(item.id);
             return {
                 id: item.id,
                 title: item.label, // Extracted title from utils
                 lastModified: item.lastModified.toISOString(),
-                hash
+                hash: overallHash,
+                files: fileHashes
             };
         }));
     }
@@ -1972,7 +1978,7 @@ export class SyncManager {
             return;
         }
 
-        this.refreshStatistics();
+        this.refreshStatistics(false);
     }
 
     private async deleteConversation(id: string): Promise<void> {
@@ -2046,7 +2052,7 @@ export class SyncManager {
         }
     }
 
-    private async refreshStatistics() {
+    private async refreshStatistics(preserveFocus: boolean = true) {
         const lm = LocalizationManager.getInstance();
 
         await vscode.window.withProgress({
@@ -2156,7 +2162,8 @@ export class SyncManager {
                     activeTransfers: Array.from(this.activeTransfers.entries()).map(([id, info]) => ({
                         conversationId: id,
                         conversationTitle: info.title,
-                        type: info.type
+                        type: info.type,
+                        startTime: info.startTime
                     }))
                 };
 
@@ -2187,6 +2194,16 @@ export class SyncManager {
                             if (confirm === lm.t('Delete')) {
                                 await this.deleteConversation(message.id);
                                 this.refreshStatistics();
+                            }
+                            break;
+                        }
+                        case 'openConversationFile': {
+                            const fullPath = this.getFullPathForRelative(message.id, message.file);
+                            if (fs.existsSync(fullPath)) {
+                                const doc = await vscode.workspace.openTextDocument(fullPath);
+                                await vscode.window.showTextDocument(doc);
+                            } else {
+                                vscode.window.showInformationMessage(lm.t('File not found locally.'));
                             }
                             break;
                         }

@@ -353,5 +353,11 @@
     "Active Transfers": "Активные передачи",
     "Uploading": "Загрузка",
     "Downloading": "Скачивание",
-    "Failed to get conversation title": "Не удалось получить заголовок диалога"
+    "Failed to get conversation title": "Не удалось получить заголовок диалога",
+    "Support on Patreon": "Поддержать на Patreon",
+    "Buy Me a Coffee": "Купить мне кофе",
+    "Started at {0}": "Начато в {0}",
+    "Created by {0} on {1}": "Создано {0} ({1})",
+    "Data": "Данные",
+    "File not found locally.": "Файл не найден локально."
 }

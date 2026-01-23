@@ -6,6 +6,7 @@ export interface ActiveTransfer {
     conversationId: string;
     conversationTitle: string;
     type: 'upload' | 'download';
+    startTime?: number;
     progress?: number; // 0-100
 }
 
@@ -26,13 +27,13 @@ export class SyncStatsWebview {
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static readonly viewType = 'syncStats';
 
-    public static show(context: vscode.ExtensionContext, data: SyncStatsData, onMessage: (message: any) => void): void {
+    public static show(context: vscode.ExtensionContext, data: SyncStatsData, onMessage: (message: any) => void, preserveFocus: boolean = false): void {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
 
         if (SyncStatsWebview.currentPanel) {
-            SyncStatsWebview.currentPanel.reveal(column);
+            SyncStatsWebview.currentPanel.reveal(column, preserveFocus);
             SyncStatsWebview.currentPanel.webview.html = SyncStatsWebview.getHtmlContent(data);
             return;
         }
@@ -50,7 +51,15 @@ export class SyncStatsWebview {
         SyncStatsWebview.currentPanel = panel;
         panel.webview.html = SyncStatsWebview.getHtmlContent(data);
 
-        panel.webview.onDidReceiveMessage(onMessage, undefined, context.subscriptions);
+        panel.webview.onDidReceiveMessage(message => {
+            if (message.command === 'openPatreon') {
+                vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
+            } else if (message.command === 'openCoffee') {
+                vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+            } else {
+                onMessage(message);
+            }
+        }, undefined, context.subscriptions);
 
         panel.onDidDispose(
             () => {
@@ -242,6 +251,13 @@ export class SyncStatsWebview {
                 .link { color: var(--link); text-decoration: none; font-weight: 600; cursor: pointer; }
                 .link:hover { text-decoration: underline; }
 
+                .file-list { display: none; margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; font-family: monospace; font-size: 12px; }
+                .file-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; }
+                .file-item:last-child { border-bottom: none; }
+                .file-item:hover { background: rgba(255,255,255,0.05); }
+
+                .meta-info { font-size: 11px; opacity: 0.6; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
+
                 ::-webkit-scrollbar { width: 10px; }
                 ::-webkit-scrollbar-track { background: transparent; }
                 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
@@ -253,6 +269,9 @@ export class SyncStatsWebview {
                 <div class="header">
                     <h1>Antigravity <strong>${lm.t('Sync')}</strong></h1>
                     <div class="header-actions">
+                        <button class="btn" onclick="postCommand('openPatreon')" title="Support on Patreon" style="padding: 8px 12px; min-width: 40px; justify-content: center;">🧡</button>
+                        <button class="btn" onclick="postCommand('openCoffee')" title="Buy Me a Coffee" style="padding: 8px 12px; min-width: 40px; justify-content: center;">☕</button>
+                        <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
                         <span class="last-sync">${lm.t('Last Update')}: ${lm.formatDateTime(new Date())}</span>
                         <button class="btn" onclick="postCommand('refresh')">🔄 ${lm.t('Refresh')}</button>
                     </div>
@@ -304,14 +323,17 @@ export class SyncStatsWebview {
                 <div class="data-container" style="background: linear-gradient(135deg, var(--card-bg), rgba(100,200,255,0.05)); border: 1px solid rgba(100,200,255,0.2);">
                     <table>
                         <tbody>
-                            ${data.activeTransfers.map(t => `
+                            ${data.activeTransfers.map(t => {
+            const startTime = t.startTime ? new Date(t.startTime).toLocaleTimeString() : '';
+            return `
                                 <tr>
                                     <td style="width: 40px; text-align: center;">
                                         <span class="pulse" style="font-size: 18px;">${t.type === 'upload' ? '⬆️' : '⬇️'}</span>
                                     </td>
                                     <td>
-                                        <div style="font-weight: 600">${t.conversationTitle}</div>
+                                        <div class="link" onclick="postCommand('openConversation', {id:'${t.conversationId}'})">${t.conversationTitle}</div>
                                         <div style="font-size: 11px; opacity: 0.6; font-family: monospace">${t.conversationId}</div>
+                                        ${startTime ? `<div style="font-size: 10px; opacity: 0.5;">${lm.t('Started at {0}', startTime)}</div>` : ''}
                                     </td>
                                     <td style="width: 150px">
                                         <div style="display: flex; align-items: center; gap: 10px;">
@@ -319,7 +341,8 @@ export class SyncStatsWebview {
                                         </div>
                                     </td>
                                 </tr>
-                            `).join('')}
+                                `;
+        }).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -332,8 +355,9 @@ export class SyncStatsWebview {
                             <tr>
                                 <th>${lm.t('Device')}</th>
                                 <th style="width: 15%">${lm.t('Syncs')}</th>
-                                <th style="width: 25%">${lm.t('Last Active')}</th>
-                                <th style="text-align:right; width: 20%">${lm.t('Actions')}</th>
+                                <th style="width: 15%">${lm.t('Data')}</th>
+                                <th style="width: 20%">${lm.t('Last Active')}</th>
+                                <th style="text-align:right; width: 15%">${lm.t('Actions')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -342,7 +366,7 @@ export class SyncStatsWebview {
             const isCurrentGroup = group.some(m => m.isCurrent);
             return `
                                     <tr class="group-header" onclick="toggleGroup('${groupId}')">
-                                        <td colspan="4">
+                                        <td colspan="5">
                                             <span class="collapse-icon" id="icon-${groupId}">▼</span>
                                             ${name} ${isCurrentGroup ? `<span class="badge accent" style="margin-left:10px">${lm.t('This Device')}</span>` : ''}
                                             <span style="float:right; opacity:0.5; font-weight:400; font-size:11px">${group.length} ${lm.t('sessions')}</span>
@@ -358,6 +382,10 @@ export class SyncStatsWebview {
                                                     ${m.isCurrent ? `<b>(${lm.t('Active Now')})</b>` : ''}
                                                 </td>
                                                 <td>${m.syncCount}</td>
+                                                <td>
+                                                    <span title="${lm.t('Uploads')}">⬆️ ${m.uploadCount || 0}</span>
+                                                    <span title="${lm.t('Downloads')}" style="margin-left:8px">⬇️ ${m.downloadCount || 0}</span>
+                                                </td>
                                                 <td>${lm.formatDateTime(m.lastSync)}</td>
                                                 <td style="text-align:right">
                                                     ${!m.isCurrent ? `
@@ -403,20 +431,42 @@ export class SyncStatsWebview {
                     else statusBadge = `<span class="badge accent">${lm.t('Local Only')}</span>`;
 
                     const modDate = remote?.lastModified || local?.lastModified || '';
+                    const createdInfo = remote && remote.createdByName ? `${lm.t('Created by {0} on {1}', remote.createdByName, lm.formatDateTime(remote.createdAt || ''))}` : '';
+
+                    const files = local?.files || remote?.fileHashes;
+                    // For remote, fileHashes is object {path: info}, local files is object {path: info} too
+
+                    let fileListHtml = '';
+                    if (files) {
+                        const fileEntries = Object.entries(files);
+                        if (fileEntries.length > 0) {
+                            fileListHtml = `<div class="file-list" id="files-${id}">
+                                ${fileEntries.map(([fPath, fInfo]) => {
+                                const size = (fInfo as any).size || 0;
+                                return `<div class="file-item" onclick="event.stopPropagation(); postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})">
+                                        <span>📄 ${fPath.split('/').pop()}</span>
+                                        <span style="opacity:0.5">${formatBytes(size)}</span>
+                                    </div>`;
+                            }).join('')}
+                            </div>`;
+                        }
+                    }
 
                     return `
                                         <tr>
-                                            <td>
-                                                <div class="link" onclick="postCommand('openConversation', {id:'${id}'})">${title}</div>
-                                                <div style="font-size:11px; opacity:0.5; font-family:monospace">${id}</div>
+                                            <td onclick="toggleFiles('${id}')" style="cursor: pointer">
+                                                <div class="link" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})">${title}</div>
+                                                <div title="${id}" style="font-size:11px; opacity:0.5; font-family:monospace; display: inline-block;">${id.substring(0, 8)}...</div>
+                                                ${createdInfo ? `<div class="meta-info">👤 ${createdInfo}</div>` : ''}
+                                                ${fileListHtml}
                                             </td>
                                             <td>${statusBadge}</td>
                                             <td>${modDate ? lm.formatDateTime(modDate) : '-'}</td>
                                             <td style="text-align:right">
-                                                <button class="btn-icon" onclick="postCommand('renameConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})">✏️</button>
-                                                ${!remote ? `<button class="btn-icon" onclick="postCommand('pushConversation', {id:'${id}'})">⬆️</button>` : ''}
-                                                ${!local ? `<button class="btn-icon" onclick="postCommand('pullConversation', {id:'${id}'})">⬇️</button>` : ''}
-                                                <button class="btn-icon danger" onclick="postCommand('deleteConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})">🗑️</button>
+                                                <button class="btn-icon" onclick="postCommand('renameConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Rename')}">✏️</button>
+                                                ${!remote ? `<button class="btn-icon" onclick="postCommand('pushConversation', {id:'${id}'})" title="${lm.t('Upload')}">⬆️</button>` : ''}
+                                                ${!local ? `<button class="btn-icon" onclick="postCommand('pullConversation', {id:'${id}'})" title="${lm.t('Download')}">⬇️</button>` : ''}
+                                                <button class="btn-icon danger" onclick="postCommand('deleteConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Delete')}">🗑️</button>
                                             </td>
                                         </tr>
                                     `;
@@ -443,6 +493,13 @@ export class SyncStatsWebview {
                     rows.forEach(row => {
                         row.classList.toggle('collapsed-row');
                     });
+                }
+                
+                function toggleFiles(id) {
+                    const el = document.getElementById('files-' + id);
+                    if (el) {
+                        el.style.display = el.style.display === 'block' ? 'none' : 'block';
+                    }
                 }
             </script>
         </body>

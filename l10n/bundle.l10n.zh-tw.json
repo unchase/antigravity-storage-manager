@@ -1,4 +1,6 @@
 {
+    "Cycle": "週期",
+    "left": "剩餘",
     "h": "小時",
     "m": "分鐘",
     "Sync already in progress": "同步已在進行中",
@@ -352,6 +354,10 @@
     "Uploading": "正在上傳",
     "Downloading": "正在下載",
     "Failed to get conversation title": "獲取對話標題失敗",
-    "Cycle": "週期",
-    "left": "剩餘"
+    "Support on Patreon": "在 Patreon 上支持",
+    "Buy Me a Coffee": "請我喝杯咖啡",
+    "Started at {0}": "開始於 {0}",
+    "Created by {0} on {1}": "由 {0} 創建於 {1}",
+    "Data": "數據",
+    "File not found locally.": "本地找不到檔案。"
 }

@@ -183,10 +183,20 @@ export class QuotaManager {
 
         const updateSortButton = () => {
             const sortText = this.sortMethod === 'quota' ? lm.t('Sort by Reset Time') : lm.t('Sort by Quota Remaining');
-            picker.buttons = [{
-                iconPath: new vscode.ThemeIcon(this.sortMethod === 'quota' ? 'list-ordered' : 'clock'),
-                tooltip: `${lm.t('Sort')}: ${sortText}`
-            }];
+            picker.buttons = [
+                {
+                    iconPath: new vscode.ThemeIcon('heart'),
+                    tooltip: lm.t('Support on Patreon')
+                },
+                {
+                    iconPath: new vscode.ThemeIcon('gift'),
+                    tooltip: lm.t('Buy Me a Coffee')
+                },
+                {
+                    iconPath: new vscode.ThemeIcon(this.sortMethod === 'quota' ? 'list-ordered' : 'clock'),
+                    tooltip: `${lm.t('Sort')}: ${sortText}`
+                }
+            ];
         };
 
         const updateItems = () => {
@@ -274,10 +284,17 @@ export class QuotaManager {
 
         updateItems();
 
-        // Handle Button Click (Sort)
-        picker.onDidTriggerButton(_button => {
-            this.sortMethod = this.sortMethod === 'quota' ? 'time' : 'quota';
-            updateItems();
+        // Handle Button Click (Sort & Support)
+        picker.onDidTriggerButton(button => {
+            const tooltip = button.tooltip || '';
+            if (tooltip.startsWith(lm.t('Sort'))) {
+                this.sortMethod = this.sortMethod === 'quota' ? 'time' : 'quota';
+                updateItems();
+            } else if (tooltip === lm.t('Support on Patreon')) {
+                vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
+            } else if (tooltip === lm.t('Buy Me a Coffee')) {
+                vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+            }
         });
 
         picker.onDidAccept(async () => {

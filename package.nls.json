@@ -3,6 +3,7 @@
     "antigravity.command.import": "Import Conversations",
     "antigravity.command.rename": "Rename Conversation",
     "antigravity.command.backupAll": "Backup All Conversations",
+    "antigravity.command.triggerBackup": "Create Backup Now",
     "antigravity.command.resolveConflicts": "Resolve Conflict Copies",
     "antigravity.command.syncSetup": "Setup Google Drive Sync",
     "antigravity.command.syncNow": "Sync Now",

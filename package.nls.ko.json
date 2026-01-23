@@ -30,5 +30,6 @@
     "antigravity.command.showQuota": "Antigravity 할당량 표시",
     "antigravity.command.syncManageAuthorizedMachines": "승인된 삭제 머신 관리",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "다른 기기에서 대화를 삭제할 수 있는 권한이 부여된 머신 ID 목록입니다. Google Drive 기록에서 선택하려면 [승인된 머신 관리](command:antigravity-storage-manager.syncManageAuthorizedMachines) 명령을 사용하십시오.",
-    "antigravity.config.useMetadataCache": "대화 상태 배지에 캐시된 메타데이터 사용 (더 빠름, Google Drive 요청 감소)"
+    "antigravity.config.useMetadataCache": "대화 상태 배지에 캐시된 메타데이터 사용 (더 빠름, Google Drive 요청 감소)",
+    "antigravity.command.triggerBackup": "지금 백업 만들기"
 }

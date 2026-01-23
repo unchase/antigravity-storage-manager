@@ -1,4 +1,6 @@
 {
+    "Cycle": "Ciclo",
+    "left": "restante",
     "h": "h",
     "m": "min",
     "Sync already in progress": "Sincronización ya en curso",
@@ -352,6 +354,10 @@
     "Uploading": "Subiendo",
     "Downloading": "Descargando",
     "Failed to get conversation title": "Error al obtener el título de la conversación",
-    "Cycle": "Ciclo",
-    "left": "restante"
+    "Support on Patreon": "Apoyar en Patreon",
+    "Buy Me a Coffee": "Cómprame un café",
+    "Started at {0}": "Iniciado a las {0}",
+    "Created by {0} on {1}": "Creado por {0} el {1}",
+    "Data": "Datos",
+    "File not found locally.": "Archivo no encontrado localmente."
 }

@@ -30,5 +30,6 @@
     "antigravity.command.showQuota": "عرض حصة Antigravity",
     "antigravity.command.syncManageAuthorizedMachines": "إدارة أجهزة الحذف المعتمدة",
     "antigravity.config.authorizedRemoteDeleteMachineIds": "قائمة معرفات الأجهزة المصرح لها بحذف المحادثات من الأجهزة الأخرى. استخدم أمر [إدارة الأجهزة المعتمدة](command:antigravity-storage-manager.syncManageAuthorizedMachines) للاختيار من سجل Google Drive.",
-    "antigravity.config.useMetadataCache": "استخدم البيانات الوصفية المخزنة مؤقتًا لشارات حالة المحادثة (أسرع، يقلل من طلبات Google Drive)"
+    "antigravity.config.useMetadataCache": "استخدم البيانات الوصفية المخزنة مؤقتًا لشارات حالة المحادثة (أسرع، يقلل من طلبات Google Drive)",
+    "antigravity.command.triggerBackup": "إنشاء نسخة احتياطية الآن"
 }

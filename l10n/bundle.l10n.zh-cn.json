@@ -1,4 +1,6 @@
 {
+    "Cycle": "周期",
+    "left": "剩余",
     "h": "小时",
     "m": "分钟",
     "Sync already in progress": "同步已在进行中",
@@ -352,6 +354,10 @@
     "Uploading": "正在上传",
     "Downloading": "正在下载",
     "Failed to get conversation title": "获取会话标题失败",
-    "Cycle": "周期",
-    "left": "剩余"
+    "Support on Patreon": "在 Patreon 上支持",
+    "Buy Me a Coffee": "请我喝杯咖啡",
+    "Started at {0}": "开始于 {0}",
+    "Created by {0} on {1}": "由 {0} 创建于 {1}",
+    "Data": "数据",
+    "File not found locally.": "本地未找到文件。"
 }

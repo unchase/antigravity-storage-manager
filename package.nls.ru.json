@@ -3,6 +3,7 @@
     "antigravity.command.import": "Импорт диалогов",
     "antigravity.command.rename": "Переименовать диалог",
     "antigravity.command.backupAll": "Бэкап всех диалогов",
+    "antigravity.command.triggerBackup": "Создать бэкап сейчас",
     "antigravity.command.resolveConflicts": "Решение конфликтов синхронизации",
     "antigravity.command.syncSetup": "Настроить синхронизацию (Google Drive)",
     "antigravity.command.syncNow": "Синхронизировать сейчас",
