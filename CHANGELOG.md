@@ -5,6 +5,9 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.11] - 2026-01-24
+- Update images
+
 ## [0.7.10] - 2026-01-24
 ### Bug Fixes
 - **Sync Statistics Icons**: Fixed an issue where file icons in the Sync Statistics dashboard were not displaying correctly. Replaced dependency on external fonts with high-quality **inline SVG icons** (VS Code Seti style).
