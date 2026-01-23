@@ -199,7 +199,7 @@ export class QuotaManager {
                     tooltip: lm.t('Support on Patreon')
                 },
                 {
-                    iconPath: new vscode.ThemeIcon('gift'),
+                    iconPath: new vscode.ThemeIcon('coffee'),
                     tooltip: lm.t('Buy Me a Coffee')
                 },
                 {

@@ -2606,62 +2606,132 @@ export class SyncManager {
                 }
             }
 
-            const items: vscode.QuickPickItem[] = [];
-            const now = Date.now();
+            // ... (machines gathering logic is above, effectively reusing existing variables)
 
-            for (const [id, info] of machinesMap.entries()) {
-                const isAuth = currentAuthorized.includes(id);
-                const isCurrent = id === this.config.machineId;
+            interface MachineQuickPickItem extends vscode.QuickPickItem {
+                description: string; // machineId
+                info: { name: string, lastSync?: string, createdAt?: string };
+            }
 
-                // Status Logic
-                let statusIcon = '🔴'; // Default Offline
-                let statusText = lm.t('Offline');
-                let lastSyncText = '';
-                let durationText = '';
+            const quickPick = vscode.window.createQuickPick<MachineQuickPickItem>();
+            quickPick.title = lm.t('Manage Authorized Deletion Machines');
+            quickPick.placeholder = lm.t('Select machines authorized to delete conversations from others');
+            quickPick.canSelectMany = true;
 
-                if (info.lastSync) {
-                    const lastSyncTime = new Date(info.lastSync).getTime();
-                    const diff = now - lastSyncTime;
+            let sortMethod: 'status' | 'sync' | 'name' = 'status';
 
-                    // Online if sync < 10 mins ago
-                    if (diff < 10 * 60 * 1000) {
-                        statusIcon = '🟢';
-                        statusText = lm.t('Online');
+            const updateSortButton = () => {
+                let sortTooltip = lm.t('Status');
+                if (sortMethod === 'sync') sortTooltip = lm.t('Last Sync');
+                if (sortMethod === 'name') sortTooltip = lm.t('Name');
+
+                quickPick.buttons = [
+                    { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') },
+                    { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') },
+                    { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` }
+                ];
+            };
+
+            const updateItems = () => {
+                const items: MachineQuickPickItem[] = [];
+                const now = Date.now();
+                const machinesList = Array.from(machinesMap.entries());
+
+                const sorted = machinesList.sort(([, a], [, b]) => {
+                    // Helper to get status priority (Online = 1, Offline = 0)
+                    const getStatus = (info: { lastSync?: string }) => {
+                        if (!info.lastSync) return 0;
+                        const diff = now - new Date(info.lastSync).getTime();
+                        return diff < 10 * 60 * 1000 ? 1 : 0;
+                    };
+
+                    if (sortMethod === 'status') {
+                        const sA = getStatus(a);
+                        const sB = getStatus(b);
+                        if (sA !== sB) return sB - sA; // Online first
+                        // Tie-breaker: Last Sync
+                        return (new Date(b.lastSync || 0).getTime()) - (new Date(a.lastSync || 0).getTime());
+                    } else if (sortMethod === 'sync') {
+                        return (new Date(b.lastSync || 0).getTime()) - (new Date(a.lastSync || 0).getTime());
+                    } else { // name
+                        return a.name.localeCompare(b.name);
                     }
+                });
 
-                    // Format Date
-                    lastSyncText = `${lm.t('Last Sync')}: ${lm.formatDateTime(new Date(info.lastSync))}`;
+                for (const [id, info] of sorted) {
+                    const isAuth = currentAuthorized.includes(id);
+                    const isCurrent = id === this.config?.machineId;
 
-                    // Duration
-                    if (info.createdAt) {
-                        const startTime = new Date(info.createdAt).getTime();
-                        const durationMs = lastSyncTime - startTime;
-                        if (durationMs > 0) {
-                            durationText = ` | ${lm.t('Duration')}: ${formatDuration(durationMs)}`;
+                    // Status Logic
+                    let statusIcon = '🔴'; // Default Offline
+                    let statusText = lm.t('Offline');
+                    let lastSyncText = '';
+                    let durationText = '';
+
+                    if (info.lastSync) {
+                        const lastSyncTime = new Date(info.lastSync).getTime();
+                        const diff = now - lastSyncTime;
+
+                        // Online if sync < 10 mins ago
+                        if (diff < 10 * 60 * 1000) {
+                            statusIcon = '🟢';
+                            statusText = lm.t('Online');
+                        }
+
+                        // Format Date
+                        lastSyncText = `${lm.t('Last Sync')}: ${lm.formatDateTime(new Date(info.lastSync))}`;
+
+                        // Duration
+                        if (info.createdAt) {
+                            const startTime = new Date(info.createdAt).getTime();
+                            const durationMs = lastSyncTime - startTime;
+                            if (durationMs > 0) {
+                                durationText = ` | ${lm.t('Duration')}: ${formatDuration(durationMs)}`;
+                            }
                         }
                     }
+
+                    items.push({
+                        label: `${statusIcon} ${info.name}${isCurrent ? ` (${lm.t('This Machine')})` : ''}`,
+                        description: id,
+                        detail: `${statusText} | ${lastSyncText}${durationText}`,
+                        picked: isAuth,
+                        info: info
+                    });
                 }
 
-                items.push({
-                    label: `${statusIcon} ${info.name}${isCurrent ? ` (${lm.t('This Machine')})` : ''}`,
-                    description: id,
-                    detail: `${statusText} | ${lastSyncText}${durationText}`,
-                    picked: isAuth
-                });
-            }
+                quickPick.items = items;
+                quickPick.selectedItems = items.filter(i => i.picked);
+                updateSortButton();
+            };
 
-            // Show QuickPick
-            const selected = await vscode.window.showQuickPick(items, {
-                canPickMany: true,
-                placeHolder: lm.t('Select machines authorized to delete conversations from others'),
-                title: lm.t('Manage Authorized Deletion Machines')
+            updateItems();
+
+            quickPick.onDidTriggerButton(button => {
+                const tooltip = button.tooltip?.toString() || '';
+                if (tooltip.includes('Patreon')) {
+                    vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
+                } else if (tooltip.includes('Coffee')) {
+                    vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+                } else {
+                    // Sort button
+                    if (sortMethod === 'status') sortMethod = 'sync';
+                    else if (sortMethod === 'sync') sortMethod = 'name';
+                    else sortMethod = 'status';
+                    updateItems();
+                }
             });
 
-            if (selected) {
-                const newAuthorized = selected.map(i => i.description!);
+            quickPick.onDidAccept(async () => {
+                const selected = quickPick.selectedItems;
+                const newAuthorized = selected.map(i => i.description || ''); // Safety check
                 await config.update('sync.authorizedRemoteDeleteMachineIds', newAuthorized, vscode.ConfigurationTarget.Global);
                 vscode.window.showInformationMessage(lm.t('Authorized machines updated.'));
-            }
+                quickPick.hide();
+            });
+
+            quickPick.onDidHide(() => quickPick.dispose());
+            quickPick.show();
         } catch (error: any) {
             vscode.window.showErrorMessage(`${lm.t('Error')}: ${error.message}`);
         }

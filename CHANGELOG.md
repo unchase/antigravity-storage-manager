@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sync Dashboard Improvements**: Added display of total conversation size, user account info (email, plan), and compact quota usage indicators for the current device.
 - **Improved File Recognition**: Added proper icon mapping for additional file types (`.pb`, `.jsx`, `.tsx`, `.jpeg`) in the dashboard.
 - **Localization**: Added missing translations for "Quota Usage", "User", and "Plan" across all supported languages.
+- **Dialog Enhancements**: Added support/donate buttons to Export, Rename, and Device Management dialogs.
+- **Device Management**: Added intelligent sorting (Status, Last Sync, Name) to the "Manage Authorized Deletion Machines" list.
 - **Quota Source**: User email is now sourced directly from the Quota API (Google AI Studio) for accuracy, falling back to Google Drive account only if unavailable.
 - **Error Logging**: Localized error messages in `console.error` logs for better debugging in non-English locales.
 - **Code Quality**: Resolved `require()` import usage in crypto module to comply with strict linting rules.

@@ -460,10 +460,11 @@ export async function showEnhancedConversationQuickPick(
         if (currentSort === 'created') sortTooltip = lm.t('Sort by Created Date and Time');
         if (currentSort === 'name') sortTooltip = lm.t('Sort by Name');
 
-        quickPick.buttons = [{
-            iconPath: new vscode.ThemeIcon('list-ordered'),
-            tooltip: `${lm.t('Sort')}: ${sortTooltip}`
-        }];
+        quickPick.buttons = [
+            { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') },
+            { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') },
+            { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` }
+        ];
     };
 
     const updateItems = (preserveSelection = false) => {
@@ -479,12 +480,19 @@ export async function showEnhancedConversationQuickPick(
     updateItems();
 
     // Handle Button Click (Sort)
-    quickPick.onDidTriggerButton(_button => {
-        // Toggle sort
-        if (currentSort === 'modified') currentSort = 'created';
-        else if (currentSort === 'created') currentSort = 'name';
-        else currentSort = 'modified';
-        updateItems(true); // Preserve selection
+    quickPick.onDidTriggerButton(button => {
+        const tooltip = button.tooltip?.toString() || '';
+        if (tooltip.includes('Patreon')) {
+            vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
+        } else if (tooltip.includes('Coffee')) {
+            vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+        } else {
+            // Toggle sort
+            if (currentSort === 'modified') currentSort = 'created';
+            else if (currentSort === 'created') currentSort = 'name';
+            else currentSort = 'modified';
+            updateItems(true); // Preserve selection
+        }
     });
 
     return new Promise<ConversationItem[] | undefined>((resolve) => {
