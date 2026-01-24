@@ -37,5 +37,6 @@
     "antigravity.config.quota.warningThreshold": "경고(노란색) 할당량 수준의 백분율 임계값(0-100)입니다. 이 값 미만이면 노란색입니다.",
     "antigravity.config.quota.criticalThreshold": "심각(주황색) 할당량 수준의 백분율 임계값(0-100)입니다. 이 값 미만이면 주황색입니다.",
     "antigravity.config.quota.dangerThreshold": "위험(빨간색) 할당량 수준의 백분율 임계값(0-100)입니다. 이 값 미만이면 빨간색입니다.",
-    "antigravity.command.switchProfile": "Switch VS Code Profile"
+    "antigravity.command.switchProfile": "VS Code 프로필 전환",
+    "antigravity.config.sync.enableCompression": "Google Drive의 데이터 크기를 줄이기 위해 암호화 전 압축(Gzip) 활성화."
 }

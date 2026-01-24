@@ -37,5 +37,6 @@
     "antigravity.config.quota.warningThreshold": "Kota Uyarı (Sarı) seviyesi için yüzde eşiği (0-100). Bu değerin altındaki kota Sarıdır.",
     "antigravity.config.quota.criticalThreshold": "Kota Kritik (Turuncu) seviyesi için yüzde eşiği (0-100). Bu değerin altındaki kota Turuncudur.",
     "antigravity.config.quota.dangerThreshold": "Kota Tehlike (Kırmızı) seviyesi için yüzde eşiği (0-100). Bu değerin altındaki kota Kırmızıdır.",
-    "antigravity.command.switchProfile": "Switch VS Code Profile"
+    "antigravity.command.switchProfile": "VS Code Profilini Değiştir",
+    "antigravity.config.sync.enableCompression": "Google Drive verilerini küçültmek için şifrelemeden önce sıkıştırmayı (Gzip) etkinleştir."
 }

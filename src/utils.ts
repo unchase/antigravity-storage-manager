@@ -26,10 +26,14 @@ export function formatRelativeTime(dateInput: Date | string): string {
 
     if (days > 7) {
         return date.toLocaleDateString(lm.getLocale());
-    } else if (days > 0) {
+    } else if (days > 1) {
         return lm.t('{0} days ago', days);
-    } else if (hours > 0) {
+    } else if (days > 0) {
+        return lm.t('{0} day ago', days);
+    } else if (hours > 1) {
         return lm.t('{0} hours ago', hours);
+    } else if (hours > 0) {
+        return lm.t('{0} hour ago', hours);
     } else if (minutes > 1) {
         return lm.t('{0} mins ago', minutes);
     } else if (minutes > 0) {

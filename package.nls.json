@@ -37,5 +37,6 @@
     "antigravity.config.quota.dangerThreshold": "Percentage threshold for Danger (Red) quota level (0-100). Quota below this value is Red.",
     "antigravity.config.showCreditsBalance": "Show Antigravity credits balance in dashboard and status bar",
     "antigravity.config.quota.historyRetentionDays": "Number of days to keep quota history (1-30).",
-    "antigravity.command.switchProfile": "Switch VS Code Profile"
+    "antigravity.command.switchProfile": "Switch VS Code Profile",
+    "antigravity.config.sync.enableCompression": "Enable compression (Gzip) before encryption to reduce data size on Google Drive."
 }

@@ -5,7 +5,7 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.2] - 2026-01-24
+## [0.9.0] - 2026-01-25
 ### Profile Switcher
 - **New Command**: Added `Switch VS Code Profile` command to quickly open VS Code with a different profile.
 - **Profile Management**: Save, select, and remove profiles via QuickPick UI.
@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Profile Switcher**: `Switch Profile`, `Add New Profile`, `Remove Profile`, `Enter profile name`, etc.
 - **Translations**: Complete Russian and German translations for all new strings.
 
+### Proxy Support
+- **Proxy Configuration Helper**: New command `Antigravity: Apply Proxy Settings` (`antigravity-storage-manager.applyProxy`) allows applying Antigravity-specific proxy configuration (including authentication) to your current VS Code profile.
+- **Proxy Authentication**: Added support for username/password authentication in proxy URL via new `proxy.username` and `proxy.password` settings.
+- **Account Dashboard**: Active proxy URL is now displayed in the "Profile" section of the Account Information dashboard for better visibility.
+- **Strict SSL**: Configurable SSL verification (`proxy.strictSSL`) for proxy connections.
 
 ## [0.8.1] - 2026-01-24
 ### Quota & Account Dashboard

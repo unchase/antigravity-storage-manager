@@ -4,6 +4,16 @@ import { QuotaUsageTracker } from '../../../quota/quotaUsageTracker';
 import { QuotaSnapshot, ModelQuotaInfo } from '../../../quota/types';
 import { LocalizationManager } from '../../../l10n/localizationManager';
 
+// Mock vscode
+jest.mock('vscode', () => ({
+    workspace: {
+        getConfiguration: jest.fn(() => ({
+            get: jest.fn((key, defaultValue) => defaultValue)
+        })),
+        onDidChangeConfiguration: jest.fn(() => ({ dispose: jest.fn() }))
+    }
+}), { virtual: true });
+
 describe('QuotaUsageTracker Test Suite', () => {
     let context: vscode.ExtensionContext;
     let globalState: any;

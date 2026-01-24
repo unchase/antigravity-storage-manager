@@ -141,9 +141,15 @@ export class AccountInfoWebview {
     private static getHtmlContent(snapshot: QuotaSnapshot): string {
 
         const l = LocalizationManager.getInstance();
+        const config = vscode.workspace.getConfiguration('antigravity-storage-manager'); // Moved up
         const data = snapshot.rawUserStatus?.userStatus || snapshot.rawUserStatus || {};
         const planInfo = data.planStatus?.planInfo;
         const userTier = data.userTier;
+
+        // Proxy info
+        const proxyUrl = config.get<string>('proxy.url');
+        const proxyDisplay = proxyUrl ? proxyUrl : l.t('None');
+        const proxyLabel = l.t('Proxy');
 
         // Accounts HTML
         const accountsHtml = AccountInfoWebview.latestAccounts.map(acc => {
@@ -171,7 +177,7 @@ export class AccountInfoWebview {
         const promptPercent = promptCredits?.remainingPercentage ?? 0;
 
         // Model quotas
-        const pinnedIds = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string[]>('quota.pinnedModels') || [];
+        const pinnedIds = config.get<string[]>('quota.pinnedModels') || []; // Use config
         const models = [...(snapshot.models || [])].sort((a, b) => {
             const aPinned = pinnedIds.includes(a.modelId) || pinnedIds.includes(a.label);
             const bPinned = pinnedIds.includes(b.modelId) || pinnedIds.includes(b.label);
@@ -190,7 +196,6 @@ export class AccountInfoWebview {
             { id: 'mcp', name: l.t('MCP Servers'), enabled: planInfo?.defaultTeamConfig?.allowMcpServers },
         ];
 
-        const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
         const warningThreshold = config.get<number>('quota.thresholds.warning') ?? config.get<number>('quota.warningThreshold') ?? 50;
         const criticalThreshold = config.get<number>('quota.thresholds.critical') ?? config.get<number>('quota.criticalThreshold') ?? 30;
         const dangerThreshold = config.get<number>('quota.thresholds.danger') ?? config.get<number>('quota.dangerThreshold') ?? 0;
@@ -860,6 +865,10 @@ export class AccountInfoWebview {
             <div class="profile-box">
                 <span class="p-label">${l.t('Tier')}</span>
                 <span class="p-value">${userTier?.description || 'Free'}</span>
+            </div>
+            <div class="profile-box">
+                <span class="p-label">${proxyLabel}</span>
+                <span class="p-value">${proxyDisplay}</span>
             </div>
         </div>
 

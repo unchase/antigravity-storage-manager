@@ -313,6 +313,11 @@
                     "default": true,
                     "description": "%antigravity.config.suggestSolutions%"
                 },
+                "antigravity-storage-manager.sync.enableCompression": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%antigravity.config.sync.enableCompression%"
+                },
                 "antigravity-storage-manager.google.clientId": {
                     "type": "string",
                     "default": "",
@@ -419,6 +424,26 @@
                     "minimum": 1,
                     "maximum": 30,
                     "description": "%antigravity.config.quota.historyRetentionDays%"
+                },
+                "antigravity-storage-manager.proxy.url": {
+                    "type": "string",
+                    "default": "",
+                    "description": "%antigravity.config.proxy.url%"
+                },
+                "antigravity-storage-manager.proxy.strictSSL": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%antigravity.config.proxy.strictSSL%"
+                },
+                "antigravity-storage-manager.proxy.username": {
+                    "type": "string",
+                    "default": "",
+                    "description": "%antigravity.config.proxy.username%"
+                },
+                "antigravity-storage-manager.proxy.password": {
+                    "type": "string",
+                    "default": "",
+                    "description": "%antigravity.config.proxy.password%"
                 }
             }
         },

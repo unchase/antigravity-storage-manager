@@ -37,5 +37,6 @@
     "antigravity.config.quota.warningThreshold": "Procentuální práh pro úroveň varování (žlutá) kvóty (0-100). Kvóta pod touto hodnotou je žlutá.",
     "antigravity.config.quota.criticalThreshold": "Procentuální práh pro kritickou úroveň (oranžová) kvóty (0-100). Kvóta pod touto hodnotou je oranžová.",
     "antigravity.config.quota.dangerThreshold": "Procentuální práh pro úroveň nebezpečí (červená) kvóty (0-100). Kvóta pod touto hodnotou je červená.",
-    "antigravity.command.switchProfile": "Switch VS Code Profile"
+    "antigravity.command.switchProfile": "Přepnout profil VS Code",
+    "antigravity.config.sync.enableCompression": "Povolit kompresi (Gzip) před šifrováním pro snížení velikosti dat na Google Drive."
 }

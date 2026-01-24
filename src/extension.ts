@@ -426,6 +426,42 @@ export async function activate(context: vscode.ExtensionContext) {
                 profileManager = new ProfileManager(context);
             }
             await profileManager.showProfilePicker();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.applyProxy`, async () => {
+            const lm = LocalizationManager.getInstance();
+            const config = vscode.workspace.getConfiguration(EXT_NAME);
+            const proxyUrl = config.get<string>('proxy.url', '').trim();
+            const proxyUsername = config.get<string>('proxy.username', '').trim();
+            const proxyPassword = config.get<string>('proxy.password', '').trim();
+            const strictSSL = config.get<boolean>('proxy.strictSSL', true);
+
+            const target = vscode.ConfigurationTarget.Global;
+            const httpConfig = vscode.workspace.getConfiguration('http');
+
+            if (!proxyUrl) {
+                // Clear proxy settings
+                await httpConfig.update('proxy', undefined, target);
+                await httpConfig.update('proxyStrictSSL', undefined, target);
+                vscode.window.showInformationMessage(lm.t('Proxy settings cleared from VS Code global configuration.'));
+            } else {
+                // Construct URL with auth
+                let finalUrl = proxyUrl;
+                if (proxyUsername && proxyPassword) {
+                    try {
+                        const urlParts = new URL(proxyUrl);
+                        urlParts.username = proxyUsername;
+                        urlParts.password = proxyPassword;
+                        finalUrl = urlParts.toString();
+                    } catch {
+                        vscode.window.showErrorMessage(lm.t('Invalid Proxy URL format.'));
+                        return;
+                    }
+                }
+
+                await httpConfig.update('proxy', finalUrl, target);
+                await httpConfig.update('proxyStrictSSL', strictSSL, target);
+                vscode.window.showInformationMessage(lm.t('Applied proxy settings to VS Code: {0}', proxyUrl));
+            }
         })
     );
 

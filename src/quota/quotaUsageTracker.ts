@@ -58,15 +58,13 @@ export class QuotaUsageTracker {
         const cutoff = Date.now() - (this.historyRetentionDays * 24 * 60 * 60 * 1000);
         this.history.forEach((points, modelId) => {
             // Filter points older than cutoff
-            const validPoints = points.filter(p => p.timestamp >= cutoff);
+            let validPoints = points.filter(p => p.timestamp >= cutoff);
 
-            // Optimization: If we have too many points (e.g. > 500 for 7 days), maybe downsample?
-            // For now, let's just keep them. 1 point per minute = 1440 per day.
-            // That's too much for storage?
-            // Maybe we should only store if changed significantly or at minimum interval (e.g. 1 hour).
-            // But we want resolution.
-            // Let's enforce minimum interval of 15 minutes between points if value hasn't changed much?
-            // Actually, `track` method calls every minute. We should rate limit storage there.
+            // Enforce MAX_POINTS
+            if (validPoints.length > this.MAX_POINTS) {
+                // Keep the most recent ones
+                validPoints = validPoints.slice(validPoints.length - this.MAX_POINTS);
+            }
 
             this.history.set(modelId, validPoints);
         });
@@ -136,24 +134,36 @@ export class QuotaUsageTracker {
             }
         }
 
-        // If all points are older than 24h (shouldn't happen with pruning/tracking), use last few
-        // If we only have 1 point in last 24h, we need previous point to estimate speed?
-
         const recentPoints = points.slice(startIndex);
         if (recentPoints.length < 2) return null;
 
-        const newest = recentPoints[recentPoints.length - 1];
-        const oldest = recentPoints[0];
+        // Detect reset: if we find a point where usage < previous usage (significantly),
+        // we should only consider points AFTER the reset.
+        // Or, simpler: if the total usage diff is negative, try to find the reset point.
+
+        let validStart = 0;
+        for (let i = 1; i < recentPoints.length; i++) {
+            if (recentPoints[i].usage < recentPoints[i - 1].usage) {
+                // Drop detected (reset). Start estimation from this point.
+                validStart = i;
+            }
+        }
+
+        const usagePoints = recentPoints.slice(validStart);
+
+        if (usagePoints.length < 2) {
+            // Not enough data since reset
+            return null;
+        }
+
+        const newest = usagePoints[usagePoints.length - 1];
+        const oldest = usagePoints[0];
 
         const timeDiffHours = (newest.timestamp - oldest.timestamp) / (1000 * 60 * 60);
         if (timeDiffHours < 0.1) return null;
 
         const usageDiff = newest.usage - oldest.usage;
-
-        if (usageDiff < 0) {
-            // Reset detected
-            return null; // TODO: handle reset better
-        }
+        if (usageDiff < 0) return null; // Should not happen with logic above
 
         const speed = usageDiff / timeDiffHours; // % per hour
         return this.calcResult(speed, newest.usage);

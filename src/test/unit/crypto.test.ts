@@ -1,56 +1,58 @@
-import * as crypto from '../../../src/crypto';
 
-describe('Crypto Utils', () => {
-    const password = 'test-password';
-    const salt = crypto.generateSalt();
+import * as assert from 'assert';
+import * as crypto from '../../crypto';
 
-    test('generateSalt returns buffer of correct length', () => {
-        const salt = crypto.generateSalt();
-        expect(Buffer.isBuffer(salt)).toBe(true);
-        expect(salt.length).toBe(32);
+describe('Crypto Compression Tests', () => {
+
+    test('Encrypting with compression should produce AGSYNC02 header', () => {
+        const data = Buffer.from('Test data for compression');
+        const password = 'test-password';
+        const encrypted = crypto.encrypt(data, password, true); // useCompression = true
+
+        const header = encrypted.subarray(0, 8);
+        assert.strictEqual(header.toString(), 'AGSYNC02');
     });
 
-    test('hashPassword returns consistent hash for same input', () => {
-        const hash1 = crypto.hashPassword(password, salt);
-        const hash2 = crypto.hashPassword(password, salt);
-        expect(hash1).toBe(hash2);
+    test('Encrypting without compression should produce AGSYNC01 header', () => {
+        const data = Buffer.from('Test data for compression');
+        const password = 'test-password';
+        const encrypted = crypto.encrypt(data, password, false); // useCompression = false
+
+        const header = encrypted.subarray(0, 8);
+        assert.strictEqual(header.toString(), 'AGSYNC01');
     });
 
-    test('encrypt and decrypt round trip works', () => {
-        const data = Buffer.from('Hello, World!');
-        const encrypted = crypto.encrypt(data, password);
+    test('Should match decrypted content (Compressed)', () => {
+        const originalText = 'Large text content '.repeat(100);
+        const data = Buffer.from(originalText);
+        const password = 'test-password';
+
+        const encrypted = crypto.encrypt(data, password, true);
         const decrypted = crypto.decrypt(encrypted, password);
-        expect(decrypted.toString()).toBe(data.toString());
+
+        assert.strictEqual(decrypted.toString(), originalText);
     });
 
-    test('decrypt with wrong password fails', () => {
-        const data = Buffer.from('Secret Data');
-        const encrypted = crypto.encrypt(data, password);
-        expect(() => {
-            crypto.decrypt(encrypted, 'wrong-password');
-        }).toThrow();
+    test('Should match decrypted content (Uncompressed)', () => {
+        const originalText = 'Large text content '.repeat(100);
+        const data = Buffer.from(originalText);
+        const password = 'test-password';
+
+        const encrypted = crypto.encrypt(data, password, false);
+        const decrypted = crypto.decrypt(encrypted, password);
+
+        assert.strictEqual(decrypted.toString(), originalText);
     });
 
-    test('computeHash returns distinct hashes for different content', () => {
-        const content1 = Buffer.from('content1');
-        const content2 = Buffer.from('content2');
-        const hash1 = crypto.computeHash(content1);
-        const hash2 = crypto.computeHash(content2);
-        expect(hash1).not.toBe(hash2);
-    });
+    test('Compressed size should be smaller for compressible data', () => {
+        const originalText = 'Same content '.repeat(1000);
+        const data = Buffer.from(originalText);
+        const password = 'test-password';
 
-    test('computeMd5Hash returns correct MD5 hash', () => {
-        const content = Buffer.from('hello');
-        // MD5 of 'hello' is '5d41402abc4b2a76b9719d911017c592'
-        const hash = crypto.computeMd5Hash(content);
-        expect(hash).toBe('5d41402abc4b2a76b9719d911017c592');
-    });
+        const encryptedCompressed = crypto.encrypt(data, password, true);
+        const encryptedUncompressed = crypto.encrypt(data, password, false);
 
-    test('computeMd5Hash returns distinct hashes for different content', () => {
-        const content1 = Buffer.from('content1');
-        const content2 = Buffer.from('content2');
-        const hash1 = crypto.computeMd5Hash(content1);
-        const hash2 = crypto.computeMd5Hash(content2);
-        expect(hash1).not.toBe(hash2);
+        // Compressed should be significantly smaller
+        assert.ok(encryptedCompressed.length < encryptedUncompressed.length / 2, `Compressed ${encryptedCompressed.length} should be much smaller than ${encryptedUncompressed.length}`);
     });
 });

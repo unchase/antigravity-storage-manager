@@ -37,5 +37,6 @@
     "antigravity.config.quota.warningThreshold": "Umbral de porcentaje para el nivel de advertencia (amarillo) de cuota (0-100). La cuota por debajo de este valor es amarilla.",
     "antigravity.config.quota.criticalThreshold": "Umbral de porcentaje para el nivel crítico (naranja) de cuota (0-100). La cuota por debajo de este valor es naranja.",
     "antigravity.config.quota.dangerThreshold": "Umbral de porcentaje para el nivel de peligro (rojo) de cuota (0-100). La cuota por debajo de este valor es roja.",
-    "antigravity.command.switchProfile": "Switch VS Code Profile"
+    "antigravity.command.switchProfile": "Cambiar perfil de VS Code",
+    "antigravity.config.sync.enableCompression": "Habilitar compresión (Gzip) antes del cifrado para reducir el tamaño de los datos en Google Drive."
 }

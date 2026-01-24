@@ -443,5 +443,18 @@
     "No saved profiles": "No saved profiles",
     "Profile added: {0}": "Profile added: {0}",
     "Profile removed: {0}": "Profile removed: {0}",
-    "Select profile to remove": "Select profile to remove"
+    "Select profile to remove": "Select profile to remove",
+    "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.",
+    "You must grant the \"See, edit, create, and delete only the specific Google Drive files you use with this app\" permission to use this extension.": "You must grant the \"See, edit, create, and delete only the specific Google Drive files you use with this app\" permission to use this extension.",
+    "language_server process not found": "language_server process not found",
+    "PowerShell command failed; please check system permissions": "PowerShell command failed; please check system permissions",
+    "wmic/PowerShell command unavailable; please check the system environment": "wmic/PowerShell command unavailable; please check the system environment",
+    "Antigravity is running": "Antigravity is running",
+    "language_server_windows_x64.exe process is running": "language_server_windows_x64.exe process is running",
+    "The system has permission to run PowerShell and netstat commands": "The system has permission to run PowerShell and netstat commands",
+    "The system has permission to run wmic/PowerShell and netstat commands (auto-fallback supported)": "The system has permission to run wmic/PowerShell and netstat commands (auto-fallback supported)",
+    "Port detection command (lsof) is required but missing.": "Port detection command (lsof) is required but missing.",
+    "Port detection command (lsof/ss/netstat) is required but missing.": "Port detection command (lsof/ss/netstat) is required but missing.",
+    "Quota feature is disabled in settings.": "Quota feature is disabled in settings.",
+    "Fetching Antigravity quota...": "Fetching Antigravity quota..."
 }

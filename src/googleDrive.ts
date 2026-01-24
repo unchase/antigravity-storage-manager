@@ -15,6 +15,7 @@ export interface DriveFile {
     mimeType: string;
     modifiedTime: string;
     size?: string;
+    md5Checksum?: string;
 }
 
 export interface SyncManifest {
@@ -403,7 +404,8 @@ export class GoogleDriveService {
     async uploadConversationFile(
         conversationId: string,
         relativePath: string,
-        encryptedData: Buffer
+        encryptedData: Buffer,
+        originalMd5?: string
     ): Promise<string> {
         const convFolderId = await this.getOrCreateConversationFolder(conversationId);
 
@@ -416,7 +418,16 @@ export class GoogleDriveService {
         }
 
         const fileName = parts[parts.length - 1] + '.enc';
-        return this.uploadOrUpdateFile(fileName, encryptedData, parentId, 'application/octet-stream');
+
+        const appProperties = originalMd5 ? { originalMd5 } : undefined;
+
+        return this.uploadOrUpdateFile(
+            fileName,
+            encryptedData,
+            parentId,
+            'application/octet-stream',
+            appProperties
+        );
     }
 
     /**
@@ -485,7 +496,10 @@ export class GoogleDriveService {
     /**
      * List all files in a conversation folder (recursively)
      */
-    async listConversationFiles(conversationId: string): Promise<string[]> {
+    /**
+     * List all files in a conversation folder (recursively) with details
+     */
+    async listConversationFilesDetails(conversationId: string): Promise<Map<string, { id: string; md5: string; originalMd5?: string }>> {
         if (!this.conversationsFolderId) {
             await this.ensureSyncFolders();
         }
@@ -495,19 +509,19 @@ export class GoogleDriveService {
         const response = await this.drive.files.list({ q: query, fields: 'files(id)', spaces: 'drive' });
 
         if (!response.data.files || response.data.files.length === 0) {
-            return [];
+            return new Map();
         }
 
         const convFolderId = response.data.files[0].id!;
-        return this.listFilesRecursive(convFolderId, '');
+        return this.listFilesRecursiveDetails(convFolderId, '');
     }
 
-    private async listFilesRecursive(folderId: string, prefix: string): Promise<string[]> {
-        const files: string[] = [];
+    private async listFilesRecursiveDetails(folderId: string, prefix: string): Promise<Map<string, { id: string; md5: string; originalMd5?: string }>> {
+        const files = new Map<string, { id: string; md5: string; originalMd5?: string }>();
         const query = `'${folderId}' in parents and trashed = false`;
         const response = await this.drive.files.list({
             q: query,
-            fields: 'files(id, name, mimeType)',
+            fields: 'files(id, name, mimeType, md5Checksum, appProperties)',
             spaces: 'drive'
         });
 
@@ -516,15 +530,35 @@ export class GoogleDriveService {
             const path = prefix ? `${prefix}/${name}` : name;
 
             if (file.mimeType === 'application/vnd.google-apps.folder') {
-                const subFiles = await this.listFilesRecursive(file.id!, path);
-                files.push(...subFiles);
+                const subFiles = await this.listFilesRecursiveDetails(file.id!, path);
+                subFiles.forEach((val, key) => files.set(key, val));
             } else {
                 // Remove .enc extension for the relative path
-                files.push(path.replace(/\.enc$/, ''));
+                const relativePath = path.replace(/\.enc$/, '');
+                files.set(relativePath, {
+                    id: file.id!,
+                    md5: file.md5Checksum || '',
+                    originalMd5: file.appProperties?.originalMd5
+                });
             }
         }
 
         return files;
+    }
+
+    /**
+     * List all files in a conversation folder (recursively)
+     * @deprecated Use listConversationFilesDetails instead
+     */
+    async listConversationFiles(conversationId: string): Promise<string[]> {
+        const details = await this.listConversationFilesDetails(conversationId);
+        return Array.from(details.keys());
+    }
+
+    private async listFilesRecursive(folderId: string, prefix: string): Promise<string[]> {
+        // Keep for backward compatibility if needed, or redirect to new method logic
+        const details = await this.listFilesRecursiveDetails(folderId, prefix);
+        return Array.from(details.keys());
     }
 
     /**
@@ -548,7 +582,8 @@ export class GoogleDriveService {
         name: string,
         data: Buffer,
         parentId: string,
-        mimeType: string
+        mimeType: string,
+        appProperties?: { [key: string]: string }
     ): Promise<string> {
         // Check if file exists
         const query = `name = '${name}' and '${parentId}' in parents and trashed = false`;
@@ -561,8 +596,14 @@ export class GoogleDriveService {
         if (existing.data.files && existing.data.files.length > 0) {
             // Update existing file
             const fileId = existing.data.files[0].id!;
+            const requestBody: any = {};
+            if (appProperties) {
+                requestBody.appProperties = appProperties;
+            }
+
             await this.drive.files.update({
                 fileId: fileId,
+                requestBody: appProperties ? requestBody : undefined,
                 media: {
                     mimeType: mimeType,
                     body: bufferToStream(data)
@@ -571,11 +612,16 @@ export class GoogleDriveService {
             return fileId;
         } else {
             // Create new file
+            const requestBody: any = {
+                name: name,
+                parents: [parentId]
+            };
+            if (appProperties) {
+                requestBody.appProperties = appProperties;
+            }
+
             const response = await this.drive.files.create({
-                requestBody: {
-                    name: name,
-                    parents: [parentId]
-                },
+                requestBody: requestBody,
                 media: {
                     mimeType: mimeType,
                     body: bufferToStream(data)

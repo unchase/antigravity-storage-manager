@@ -37,5 +37,6 @@
     "antigravity.config.quota.warningThreshold": "配额警告（黄色）级别的百分比阈值 (0-100)。低于此值的配额为黄色。",
     "antigravity.config.quota.criticalThreshold": "配额严重（橙色）级别的百分比阈值 (0-100)。低于此值的配额为橙色。",
     "antigravity.config.quota.dangerThreshold": "配额危险（红色）级别的百分比阈值 (0-100)。低于此值的配额为红色。",
-    "antigravity.command.switchProfile": "Switch VS Code Profile"
+    "antigravity.command.switchProfile": "切换 VS Code 配置文件",
+    "antigravity.config.sync.enableCompression": "在加密前启用压缩 (Gzip) 以减少 Google Drive 上的数据大小。"
 }

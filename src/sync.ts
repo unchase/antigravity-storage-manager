@@ -159,7 +159,8 @@ export class SyncManager {
         };
 
         const manifestJson = JSON.stringify(manifest, null, 2);
-        const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
+        const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
+        const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!, useCompression);
 
         await this.driveService.ensureSyncFolders();
         await this.driveService.updateManifest(encrypted);
@@ -261,6 +262,13 @@ export class SyncManager {
                     throw new Error(lm.t('Could not retrieve remote manifest'));
                 }
 
+                // Get last known machine state (for 3-way merge detection)
+                const lastMachineState = await this.getMyMachineState();
+                const lastSyncedConversations = new Map<string, string>(); // id -> hash
+                if (lastMachineState && lastMachineState.conversationStates) {
+                    lastMachineState.conversationStates.forEach(s => lastSyncedConversations.set(s.id, s.localHash));
+                }
+
                 // Get local conversations
                 this.reportProgress(progress, lm.t('Scanning local conversations...'));
                 const localConversations = await this.getLocalConversationsAsync();
@@ -289,7 +297,7 @@ export class SyncManager {
                     const chunk = toSync.slice(i, i + chunkSize);
                     await Promise.all(chunk.map(convId => {
                         if (token?.isCancellationRequested) return Promise.reject(new vscode.CancellationError());
-                        return this.processSyncItem(convId, localConversations, remoteManifest, result, progress, token);
+                        return this.processSyncItem(convId, localConversations, remoteManifest, lastSyncedConversations, result, progress, token);
                     }));
                 }
 
@@ -352,6 +360,16 @@ export class SyncManager {
                     });
                 }
             }
+
+            // Conflict Notification
+            if (result.conflicts.length > 0) {
+                const conflictMsg = lm.t('Sync completed with {0} conflicts. Please resolve them.', result.conflicts.length);
+                vscode.window.showWarningMessage(conflictMsg, lm.t('Resolve Conflicts')).then(action => {
+                    if (action === lm.t('Resolve Conflicts')) {
+                        vscode.commands.executeCommand(`${EXT_NAME}.resolveConflicts`);
+                    }
+                });
+            }
         }
 
         return result;
@@ -392,7 +410,8 @@ export class SyncManager {
                 if (removedCount > 0) {
                     manifest.lastModified = new Date().toISOString();
                     const manifestJson = JSON.stringify(manifest, null, 2);
-                    const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
+                    const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
+                    const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!, useCompression);
                     await this.driveService.updateManifest(encrypted);
                     vscode.window.showInformationMessage(lm.t('Removed {0} missing conversation(s) from manifest.', removedCount));
                 }
@@ -437,14 +456,35 @@ export class SyncManager {
             const filesToUpload: string[] = [];
             const filesToDelete: string[] = [];
 
+            // Fetch actual remote files to check for existing uploads (optimization for interrupted syncs)
+            // This map contains { id, md5, originalMd5 }
+            const actualRemoteFiles = await this.driveService.listConversationFilesDetails(conversationId);
+            let skippedCount = 0;
+
             // Files that are new or changed locally
             for (const [relativePath, localInfo] of Object.entries(localData.fileHashes)) {
+                // Check manifest first (fast check)
                 const remoteInfo = remoteHashes[relativePath];
+                // Check actual drive state (slow check, but needed for resume)
+                const actualRemote = actualRemoteFiles.get(relativePath);
+
+                let shouldUpload = false;
+
                 if (!remoteInfo || remoteInfo.hash !== localInfo.hash) {
+                    // Manifest says it changed. But maybe we already uploaded it partially?
+                    if (actualRemote && actualRemote.originalMd5 === localInfo.hash) {
+                        // File exists on Drive and matches local content! Skip upload.
+                        console.log(`[Push] Skipping ${relativePath}: already on Drive with matching hash.`);
+                        skippedCount++;
+                    } else {
+                        shouldUpload = true;
+                    }
+                }
+
+                if (shouldUpload) {
                     console.log(`[Push] Will upload ${relativePath}:`);
                     console.log(`  Remote hash: ${remoteInfo ? remoteInfo.hash : 'MISSING'}`);
                     console.log(`  Local hash:  ${localInfo.hash}`);
-                    console.log(`  Remote size: ${remoteInfo ? remoteInfo.size : 'N/A'}, Local size: ${localInfo.size}`);
                     filesToUpload.push(relativePath);
                 }
             }
@@ -454,6 +494,10 @@ export class SyncManager {
                 if (!localData.fileHashes[remotePath]) {
                     filesToDelete.push(remotePath);
                 }
+            }
+
+            if (skippedCount > 0) {
+                this.reportProgress(progress, lm.t('Skipping {0} already uploaded files...', skippedCount));
             }
 
             // Upload changed files
@@ -471,9 +515,14 @@ export class SyncManager {
                 // Read and encrypt file
                 const fullPath = this.getFullPathForRelative(conversationId, relativePath);
                 const content = await fs.promises.readFile(fullPath);
-                const encrypted = crypto.encrypt(content, this.masterPassword!);
 
-                await this.driveService.uploadConversationFile(conversationId, relativePath, encrypted);
+                const useCompression = config.get<boolean>('sync.enableCompression', true);
+                const encrypted = crypto.encrypt(content, this.masterPassword!, useCompression);
+
+                // Get the local plaintext hash to save as metadata
+                const localHash = localData.fileHashes[relativePath].hash;
+
+                await this.driveService.uploadConversationFile(conversationId, relativePath, encrypted, localHash);
 
                 // Update hash cache to ensure consistency on next comparison
                 const fileHash = crypto.computeMd5Hash(content);
@@ -487,8 +536,8 @@ export class SyncManager {
                 await this.driveService.deleteConversationFile(conversationId, relativePath);
             }
 
-            // Only update manifest if we actually made changes
-            if (filesToUpload.length > 0 || filesToDelete.length > 0) {
+            // Only update manifest if we actually made changes (or found existing files that needed to be recorded)
+            if (filesToUpload.length > 0 || filesToDelete.length > 0 || skippedCount > 0) {
                 // Update manifest with new file hashes
                 await this.updateManifestEntryWithFileHashes(
                     conversationId,
@@ -991,7 +1040,8 @@ export class SyncManager {
                 manifest.lastModified = now;
 
                 const manifestJson = JSON.stringify(manifest, null, 2);
-                const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
+                const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
+                const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!, useCompression);
                 await this.driveService.updateManifest(encrypted);
             } catch (error: any) {
                 vscode.window.showErrorMessage(lm.t('Failed to update manifest for {0}: {1}', conversationId, error.message));
@@ -1071,7 +1121,8 @@ export class SyncManager {
 
                 console.log(`[Manifest] Updating for ${conversationId}: ${Object.keys(fileHashes).length} files, ${manifest.conversations.length} conversations total`);
                 const manifestJson = JSON.stringify(manifest, null, 2);
-                const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
+                const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
+                const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!, useCompression);
                 await this.driveService.updateManifest(encrypted);
                 console.log(`[Manifest] Saved (${manifestJson.length} bytes)`);
 
@@ -1114,12 +1165,31 @@ export class SyncManager {
             }))
         };
 
+        const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
         const encrypted = crypto.encrypt(
             Buffer.from(JSON.stringify(state)),
-            this.masterPassword!
+            this.masterPassword!,
+            useCompression
         );
 
         await this.driveService.updateMachineState(this.config.machineId, encrypted);
+    }
+
+    /**
+     * Get this machine's previous state from Drive
+     */
+    private async getMyMachineState(): Promise<MachineState | null> {
+        if (!this.config?.machineId) return null;
+        try {
+            const encrypted = await this.driveService.getMachineState(this.config.machineId);
+            if (!encrypted) return null;
+
+            const decrypted = crypto.decrypt(encrypted, this.masterPassword!);
+            return JSON.parse(decrypted.toString()) as MachineState;
+        } catch (e) {
+            console.warn('Failed to load machine state, falling back to basic sync:', e);
+            return null;
+        }
     }
 
     /**
@@ -1416,10 +1486,20 @@ export class SyncManager {
             this.autoSyncTimer = setInterval(async () => {
                 if (this.isReady() && !this.isSyncing) {
                     const result = await this.syncNow();
-                    if (result.pushed.length || result.pulled.length) {
+                    if (result.pushed.length || result.pulled.length || result.conflicts.length) {
                         const silent = vscode.workspace.getConfiguration(EXT_NAME).get('sync.silent', false);
-                        if (!silent) {
-                            const lm = LocalizationManager.getInstance();
+                        const lm = LocalizationManager.getInstance();
+
+                        if (result.conflicts.length > 0) {
+                            vscode.window.showWarningMessage(
+                                lm.t('Auto-sync: {0} conflicts detected. Run "Sync Now" to resolve.', result.conflicts.length),
+                                lm.t('Sync Now')
+                            ).then(selection => {
+                                if (selection === lm.t('Sync Now')) {
+                                    vscode.commands.executeCommand(`${EXT_NAME}.syncNow`);
+                                }
+                            });
+                        } else if (!silent) {
                             const message = [];
                             if (result.pushed.length) message.push(lm.t('{0} pushed', result.pushed.length));
                             if (result.pulled.length) message.push(lm.t('{0} pulled', result.pulled.length));
@@ -1900,6 +1980,7 @@ export class SyncManager {
         convId: string,
         localConversations: Array<{ id: string; title: string; lastModified: string; hash: string }>,
         remoteManifest: SyncManifest,
+        lastSyncedDatabase: Map<string, string>, // id -> lastSyncedHash
         result: SyncResult,
         progress?: vscode.Progress<{ message?: string; increment?: number }>,
         token?: vscode.CancellationToken
@@ -1910,6 +1991,7 @@ export class SyncManager {
         const local = localConversations.find(c => c.id === convId);
         const remote = remoteManifest.conversations.find(c => c.id === convId);
         const title = local?.title || remote?.title || convId;
+        const lastSyncedHash = lastSyncedDatabase.get(convId);
 
         // Auto-correct remote title if local exists and differs
         if (local && remote && local.title !== remote.title && local.title !== local.id) {
@@ -1926,6 +2008,16 @@ export class SyncManager {
 
         if (local && !remote) {
             // Local only - push to remote
+            // (Unless it was deleted remotely? If lastSyncedHash exists but remote doesn't, it implies remote deletion)
+            if (lastSyncedHash) {
+                // It was synced before, but now gone from remote. 
+                // This means another machine deleted it.
+                // Action: Delete locally? Or restore remote?
+                // Safest: Restore remote (Push) or ask user?
+                // Git logic: Upstream deleted. Local modified?
+                // Let's assume re-push for now, or maybe "Conflict: Remote Deleted".
+                // Simple logic: Push as new.
+            }
             try {
                 await this.pushConversation(convId, progress, token);
                 result.pushed.push(convId);
@@ -1935,6 +2027,7 @@ export class SyncManager {
             }
         } else if (!local && remote) {
             // Remote only - pull to local
+            // (Unless checked against lastSyncedHash? If we tracked deletions locally via a tombstone list, we'd know. But we don't.)
             try {
                 await this.pullConversation(convId, progress, token);
                 result.pulled.push(convId);
@@ -1943,48 +2036,59 @@ export class SyncManager {
                 result.errors.push(`Failed to pull ${convId}: ${error.message}`);
             }
         } else if (local && remote) {
-            // Both exist - check for conflicts
-            if (local.hash !== remote.hash) {
-                const localDate = new Date(local.lastModified);
-                const remoteDate = new Date(remote.lastModified);
+            // Both exist - check for changes
+            if (local.hash === remote.hash) {
+                // Synced
+                return;
+            }
 
-                if (remote.modifiedBy === this.config!.machineId) {
-                    // We modified it last, push
-                    try {
-                        await this.pushConversation(convId, progress, token);
-                        result.pushed.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
-                    }
-                } else if (localDate > remoteDate) {
-                    // Local is newer
-                    try {
-                        await this.pushConversation(convId, progress, token);
-                        result.pushed.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
-                    }
-                } else if (remoteDate > localDate) {
-                    // Remote is newer
-                    try {
-                        await this.pullConversation(convId, progress, token);
-                        result.pulled.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
-                    }
-                } else {
-                    // Same time but different content - conflict
-                    result.conflicts.push({
-                        conversationId: convId,
-                        localModified: local.lastModified,
-                        remoteModified: remote.lastModified,
-                        localHash: local.hash,
-                        remoteHash: remote.hash
-                    });
+            // 3-Way Merge Logic
+            const removeChanged = remote.hash !== lastSyncedHash;
+            const localChanged = local.hash !== lastSyncedHash;
+
+            if (!lastSyncedHash) {
+                // First sync for this item on this machine, but both exist. 
+                // Treat as conflict to be safe, unless we want to "Last Write Wins" fallback.
+                // Fallback to timestamp logic for "Adoption"
+                // const localDate = new Date(local.lastModified);
+                // const remoteDate = new Date(remote.lastModified);
+
+                // If one is significantly newer (e.g. > 1 min), adopt it?
+                // Better safe: Conflict.
+                result.conflicts.push({
+                    conversationId: convId,
+                    localModified: local.lastModified,
+                    remoteModified: remote.lastModified,
+                    localHash: local.hash,
+                    remoteHash: remote.hash
+                });
+            } else if (localChanged && !removeChanged) {
+                // Only local changed -> Push
+                try {
+                    await this.pushConversation(convId, progress, token);
+                    result.pushed.push(convId);
+                } catch (error: any) {
+                    if (error instanceof vscode.CancellationError) throw error;
+                    result.errors.push(`Failed to push ${convId}: ${error.message}`);
                 }
+            } else if (removeChanged && !localChanged) {
+                // Only remote changed -> Pull
+                try {
+                    await this.pullConversation(convId, progress, token);
+                    result.pulled.push(convId);
+                } catch (error: any) {
+                    if (error instanceof vscode.CancellationError) throw error;
+                    result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+                }
+            } else {
+                // Both changed (and hashes differ) -> Conflict
+                result.conflicts.push({
+                    conversationId: convId,
+                    localModified: local.lastModified,
+                    remoteModified: remote.lastModified,
+                    localHash: local.hash,
+                    remoteHash: remote.hash
+                });
             }
         }
     }

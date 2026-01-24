@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as os from 'os';
+import * as zlib from 'zlib';
 import { LocalizationManager } from './l10n/localizationManager';
 
 // Encryption configuration
@@ -10,6 +11,7 @@ const SALT_LENGTH = 32; // 256 bits
 const AUTH_TAG_LENGTH = 16; // 128 bits
 const PBKDF2_ITERATIONS = 100000;
 const HEADER = Buffer.from('AGSYNC01'); // 8 bytes version header
+const HEADER_V2 = Buffer.from('AGSYNC02'); // 8 bytes version header (Compressed)
 
 /**
  * File format:
@@ -50,7 +52,7 @@ export function generateIV(): Buffer {
  * Encrypts data using AES-256-GCM with password-based key derivation
  * Returns a buffer containing: header + salt + iv + authTag + encryptedData
  */
-export function encrypt(data: Buffer, password: string): Buffer {
+export function encrypt(data: Buffer, password: string, useCompression: boolean = true): Buffer {
     const salt = generateSalt();
     const iv = generateIV();
     const key = deriveKey(password, salt);
@@ -59,8 +61,21 @@ export function encrypt(data: Buffer, password: string): Buffer {
         authTagLength: AUTH_TAG_LENGTH
     });
 
+    let dataToEncrypt = data;
+    let header = HEADER;
+
+    if (useCompression) {
+        try {
+            dataToEncrypt = compress(data);
+            header = HEADER_V2;
+        } catch (e) {
+            console.error('Compression failed, falling back to uncompressed', e);
+            // Fallback to uncompressed
+        }
+    }
+
     const encrypted = Buffer.concat([
-        cipher.update(data),
+        cipher.update(dataToEncrypt),
         cipher.final()
     ]);
 
@@ -68,7 +83,7 @@ export function encrypt(data: Buffer, password: string): Buffer {
 
     // Combine all parts: header + salt + iv + authTag + encrypted
     return Buffer.concat([
-        HEADER,
+        header,
         salt,
         iv,
         authTag,
@@ -93,7 +108,7 @@ export function decrypt(encryptedData: Buffer, password: string): Buffer {
 
     // Validate header
     const header = encryptedData.subarray(0, headerOffset);
-    if (!header.equals(HEADER)) {
+    if (!header.equals(HEADER) && !header.equals(HEADER_V2)) {
         throw new Error('Invalid file format or unsupported version');
     }
 
@@ -117,6 +132,12 @@ export function decrypt(encryptedData: Buffer, password: string): Buffer {
             decipher.update(encrypted),
             decipher.final()
         ]);
+
+        // If version 2, decompress
+        if (header.equals(HEADER_V2)) {
+            return decompress(decrypted);
+        }
+
         return decrypted;
     } catch {
         const lm = LocalizationManager.getInstance();
@@ -129,7 +150,13 @@ export function decrypt(encryptedData: Buffer, password: string): Buffer {
  */
 export function encryptString(text: string, password: string): string {
     const data = Buffer.from(text, 'utf8');
-    const encrypted = encrypt(data, password);
+    // Don't compress short strings by default unless configured, but keeping logic internal.
+    // For strings (passwords etc) usually disabling compression is safer or just overhead.
+    // However, function signature didn't change, so it uses default useCompression=true inside encrypt.
+    // Let's force false for small strings or just let it be?
+    // Given usage for secrets, maybe false is better. but 'encrypt' default is true.
+    // Let's explicitly pass false for simple string encryption to avoid overhead on small details.
+    const encrypted = encrypt(data, password, false);
     return encrypted.toString('base64');
 }
 
@@ -154,6 +181,20 @@ export function computeHash(data: Buffer): string {
  */
 export function computeMd5Hash(data: Buffer): string {
     return crypto.createHash('md5').update(data).digest('hex');
+}
+
+/**
+ * Compress data using Gzip
+ */
+export function compress(data: Buffer): Buffer {
+    return zlib.gzipSync(data);
+}
+
+/**
+ * Decompress data using Gzip
+ */
+export function decompress(data: Buffer): Buffer {
+    return zlib.gunzipSync(data);
 }
 
 /**
