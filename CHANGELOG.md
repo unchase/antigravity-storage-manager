@@ -5,6 +5,13 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.13] - 2026-01-24
+### Localization & UX
+- **Smart Formatting**: Performance metrics (load times) > 1000ms are now automatically formatted in seconds (e.g., `1.5s`) for better readability.
+- **Unit Localization**: Added native localization for:
+    - **Time Units**: `ms`, `s` (milliseconds, seconds).
+    - **Storage Units**: `B`, `KB`, `MB`, `GB`, `TB` (e.g., `ГБ`, `МБ` for Russian, `Go`, `Mo` for French).
+
 ## [0.7.12] - 2026-01-24
 ### Quota & Dashboard
 - **Remote Quota Visibility**:

@@ -385,5 +385,10 @@
     "Failed to clean old backups: {0}": "Nie udało się wyczyścić starych kopii zapasowych: {0}",
     "Failed to get user info: {0}": "Nie udało się uzyskać informacji o użytkowniku: {0}",
     "Quota Usage": "Użycie limitu",
-    "User": "Użytkownik"
+    "User": "Użytkownik",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

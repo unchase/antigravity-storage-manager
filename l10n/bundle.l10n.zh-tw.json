@@ -385,5 +385,10 @@
     "Failed to clean old backups: {0}": "清理舊備份失敗: {0}",
     "Failed to get user info: {0}": "獲取用戶信息失敗: {0}",
     "Quota Usage": "配額使用情況",
-    "User": "使用者"
+    "User": "使用者",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

@@ -396,5 +396,10 @@
     "Quota feature is disabled in settings.": "Функция квот отключена в настройках.",
     "Fetching Antigravity quota...": "Получение квоты Antigravity...",
     "Quota Usage": "Использование квот",
-    "User": "Пользователь"
+    "User": "Пользователь",
+    "B": "Б",
+    "KB": "КБ",
+    "MB": "МБ",
+    "GB": "ГБ",
+    "TB": "ТБ"
 }

@@ -385,5 +385,10 @@
     "Failed to clean old backups: {0}": "Không thể dọn dẹp sao lưu cũ: {0}",
     "Failed to get user info: {0}": "Không thể lấy thông tin người dùng: {0}",
     "Quota Usage": "Sử dụng hạn ngạch",
-    "User": "Người dùng"
+    "User": "Người dùng",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

@@ -396,5 +396,10 @@
     "Quota feature is disabled in settings.": "ميزة الحصة معطلة في الإعدادات.",
     "Fetching Antigravity quota...": "جاري جلب حصة Antigravity...",
     "Quota Usage": "استخدام الحصة",
-    "User": "مستخدم"
+    "User": "مستخدم",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

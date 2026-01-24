@@ -385,5 +385,10 @@
     "Failed to clean old backups: {0}": "Eski yedekler temizlenemedi: {0}",
     "Failed to get user info: {0}": "Kullanıcı bilgisi alınamadı: {0}",
     "Quota Usage": "Kota Kullanımı",
-    "User": "Kullanıcı"
+    "User": "Kullanıcı",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

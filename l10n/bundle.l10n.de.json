@@ -396,5 +396,10 @@
     "Quota feature is disabled in settings.": "Quota-Funktion ist in den Einstellungen deaktiviert.",
     "Fetching Antigravity quota...": "Rufe Antigravity-Quota ab...",
     "Quota Usage": "Kontingentnutzung",
-    "User": "Benutzer"
+    "User": "Benutzer",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

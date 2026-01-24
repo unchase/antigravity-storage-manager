@@ -385,5 +385,10 @@
     "Failed to clean old backups: {0}": "Failed to clean old backups: {0}",
     "Failed to get user info: {0}": "Failed to get user info: {0}",
     "Quota Usage": "Quota Usage",
-    "User": "User"
+    "User": "User",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

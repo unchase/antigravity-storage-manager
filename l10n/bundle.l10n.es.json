@@ -396,5 +396,10 @@
     "Quota feature is disabled in settings.": "La función de cuota está desactivada en la configuración.",
     "Fetching Antigravity quota...": "Obteniendo cuota de Antigravity...",
     "Quota Usage": "Uso de cuota",
-    "User": "Usuario"
+    "User": "Usuario",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

@@ -385,5 +385,10 @@
     "Failed to clean old backups: {0}": "古いバックアップの削除に失敗: {0}",
     "Failed to get user info: {0}": "ユーザー情報の取得に失敗: {0}",
     "Quota Usage": "クォータ使用量",
-    "User": "ユーザー"
+    "User": "ユーザー",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

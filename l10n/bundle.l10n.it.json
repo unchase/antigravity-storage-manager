@@ -396,5 +396,10 @@
     "Quota feature is disabled in settings.": "La funzione quota è disabilitata nelle impostazioni.",
     "Fetching Antigravity quota...": "Recupero quota Antigravity...",
     "Quota Usage": "Utilizzo quota",
-    "User": "Utente"
+    "User": "Utente",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

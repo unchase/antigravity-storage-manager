@@ -385,5 +385,10 @@
     "Failed to clean old backups: {0}": "Falha ao limpar backups antigos: {0}",
     "Failed to get user info: {0}": "Falha ao obter informações do usuário: {0}",
     "Quota Usage": "Uso da cota",
-    "User": "Usuário"
+    "User": "Usuário",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }

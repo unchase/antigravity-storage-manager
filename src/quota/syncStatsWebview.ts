@@ -135,9 +135,9 @@ export class SyncStatsWebview {
         const formatBytes = (bytes: number) => {
             if (bytes === 0) return '0 B';
             const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const sizeUnits = [lm.t('B'), lm.t('KB'), lm.t('MB'), lm.t('GB'), lm.t('TB')];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizeUnits[i];
         };
 
         const syncedCount = data.localConversations.filter(l => data.remoteManifest.conversations.some(r => r.id === l.id)).length;
@@ -388,7 +388,7 @@ export class SyncStatsWebview {
                     </div>
                     <div class="card" style="animation-delay: 0.4s">
                         <div class="card-label">${lm.t('Performance')}</div>
-                        <div class="card-value">${data.loadTime}ms</div>
+                        <div class="card-value">${data.loadTime > 1000 ? (data.loadTime / 1000).toFixed(1) + lm.t('s') : data.loadTime + lm.t('ms')}</div>
                         <div class="card-subtitle">${lm.t('remote fetch latency')}</div>
                     </div>
                 </div>

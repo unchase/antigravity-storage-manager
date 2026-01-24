@@ -385,5 +385,10 @@
     "Failed to clean old backups: {0}": "오래된 백업 정리 실패: {0}",
     "Failed to get user info: {0}": "사용자 정보 가져오기 실패: {0}",
     "Quota Usage": "할당량 사용",
-    "User": "사용자"
+    "User": "사용자",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB",
+    "TB": "TB"
 }
