@@ -32,5 +32,8 @@
     "antigravity.config.authorizedRemoteDeleteMachineIds": "다른 기기에서 대화를 삭제할 수 있는 권한이 부여된 머신 ID 목록입니다. Google Drive 기록에서 선택하려면 [승인된 머신 관리](command:antigravity-storage-manager.syncManageAuthorizedMachines) 명령을 사용하십시오.",
     "antigravity.config.useMetadataCache": "대화 상태 배지에 캐시된 메타데이터 사용 (더 빠름, Google Drive 요청 감소)",
     "antigravity.command.triggerBackup": "지금 백업 만들기",
-    "antigravity.config.showCreditsBalance": "대시보드 및 상태 표시줄에 Antigravity 크레딧 잔액 표시"
+    "antigravity.config.showCreditsBalance": "대시보드 및 상태 표시줄에 Antigravity 크레딧 잔액 표시",
+    "antigravity.config.quota.warningThreshold": "경고(노란색) 할당량 수준의 백분율 임계값(0-100)입니다. 이 값 미만이면 노란색입니다.",
+    "antigravity.config.quota.criticalThreshold": "심각(주황색) 할당량 수준의 백분율 임계값(0-100)입니다. 이 값 미만이면 주황색입니다.",
+    "antigravity.config.quota.dangerThreshold": "위험(빨간색) 할당량 수준의 백분율 임계값(0-100)입니다. 이 값 미만이면 빨간색입니다."
 }

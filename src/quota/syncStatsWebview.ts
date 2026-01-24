@@ -397,7 +397,10 @@ export class SyncStatsWebview {
                 <div class="storage-section">
                     <div class="storage-icon">☁️</div>
                     <div class="storage-info">
-                        <div class="storage-title">${lm.t('Google Drive Storage')}</div>
+                        <div class="storage-title">
+                            ${lm.t('Google Drive Storage')}
+                            ${data.userEmail ? `<span style="font-size: 11px; opacity: 0.6; font-weight: 400; margin-left: 8px;">(${data.userEmail})</span>` : ''}
+                        </div>
                         <div class="storage-stats">
                             <span>${formatBytes(data.driveQuota.used)} ${lm.t('of')} ${formatBytes(data.driveQuota.limit)}</span>
                             <span>${((data.driveQuota.used / data.driveQuota.limit) * 100).toFixed(1)}%</span>

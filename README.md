@@ -1,7 +1,7 @@
 # Antigravity Storage Manager
 
 <p align="center">
-  <img src="banner.png" alt="Antigravity Storage Manager">
+  <img src="https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/banner.png" alt="Antigravity Storage Manager">
 </p>
 
 <p align="center">
@@ -41,7 +41,7 @@ If you find this extension useful, consider supporting the development:
 
 ## Features
 
-![Status Bar Menu](screenshots/status-menu.png)
+![Status Bar Menu](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/status-menu.png)
 
 - ☁️ **Google Drive Sync** — Automatically sync conversations between devices with end-to-end encryption.
 - ⚡ **Parallel Per-File Sync** — Fast differential sync with parallel processing and hash caching.
@@ -59,7 +59,7 @@ If you find this extension useful, consider supporting the development:
 
 ## Google Drive Synchronization (New!)
 
-![Sync Statistics Dashboard](screenshots/sync-dashboard.png)
+![Sync Statistics Dashboard](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/sync-dashboard.png)
 
 Keep your conversations synchronized across multiple machines using your Google Drive.
 
@@ -72,7 +72,7 @@ Keep your conversations synchronized across multiple machines using your Google 
 4. **Master Password**: Create or confirm your master password to encrypt your data.
 5. **Done!** Conversations will automatically sync in the background.
 
-👉 **[Detailed Setup Guide](SYNC_SETUP.md)**: Includes step-by-step instructions for configuring Google Cloud Console, adding test users, and troubleshooting.
+👉 **[Detailed Setup Guide](https://github.com/unchase/antigravity-storage-manager/blob/master/SYNC_SETUP.md)**: Includes step-by-step instructions for configuring Google Cloud Console, adding test users, and troubleshooting.
 
 ### Security
 - **Zero Knowledge**: All data is encrypted locally before being uploaded.
@@ -106,7 +106,7 @@ Keep your conversations synchronized across multiple machines using your Google 
 
 ## Account & Quota Dashboard (New!)
 
-![Quota Dashboard](images/quota-dashboard.png)
+![Quota Dashboard](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/quota-dashboard.png)
 
 *(Fig. 1: Quota Dashboard showing models sorted by Quota)*
 
@@ -128,14 +128,14 @@ Monitor your AI usage limits and remaining credits directly within VS Code.
 
 ### Status Bar & Settings
 
-![Quota Tooltip](images/quota-tooltip.png)
+![Quota Tooltip](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/quota-tooltip.png)
 
 *(Fig. 2: Rich Tooltip)*
 
 - Hover over the database icon in the status bar to see a rich tooltip with pinned model details.
 - Configure which models to pin in your User Settings.
 
-![Quota Settings](images/quota-settings.png)
+![Quota Settings](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/quota-settings.png)
 
 *(Fig. 3: Settings UI)*
 
@@ -143,7 +143,7 @@ Monitor your AI usage limits and remaining credits directly within VS Code.
 
 ## Google Account Data (Advanced)
 
-![Google Account Data](screenshots/google_account_data.png)
+![Google Account Data](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/google_account_data.png)
 
 *(Fig. 4: Raw Account Data view)*
 
@@ -162,19 +162,19 @@ For power users and troubleshooting, you can view the raw JSON data received fro
  
 The extension adds **AG Export**, **AG Import**, and **AG Sync** buttons to your VS Code status bar:
 
-![Status Bar Buttons](screenshots/status-bar-icons.png)
+![Status Bar Buttons](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/status-bar-icons.png)
 
 ### 2. Command Palette Integration
 
 All commands are available through the Command Palette (`Ctrl+Shift+P`). Just type "Antigravity Storage" to see all available actions.
 
-![Command Palette](screenshots/command-palette.png)
+![Command Palette](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/command-palette.png)
 
 ### 3. Multi-Select Export
 
 When exporting, you can select **multiple conversations at once** using the Space key.
 
-![Export Dialog](screenshots/export-dialog.png)
+![Export Dialog](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/export-dialog.png)
 
 ---
 

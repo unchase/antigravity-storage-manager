@@ -32,5 +32,8 @@
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Liste der Maschinen-IDs, die berechtigt sind, Konversationen von anderen Geräten zu löschen. Verwenden Sie den Befehl [Autorisierte Geräte verwalten](command:antigravity-storage-manager.syncManageAuthorizedMachines), um aus Ihrem Google Drive-Verlauf auszuwählen.",
     "antigravity.config.useMetadataCache": "Zwischengespeicherte Metadaten für Konversationsstatus-Badges verwenden (schneller, reduziert Google Drive-Anfragen)",
     "antigravity.command.triggerBackup": "Jetzt Backup erstellen",
-    "antigravity.config.showCreditsBalance": "Antigravity-Guthaben im Dashboard und in der Statusleiste anzeigen"
+    "antigravity.config.showCreditsBalance": "Antigravity-Guthaben im Dashboard und in der Statusleiste anzeigen",
+    "antigravity.config.quota.warningThreshold": "Prozentschwelle für Warnstufe (Gelb) der Quote (0-100). Quote unter diesem Wert ist Gelb.",
+    "antigravity.config.quota.criticalThreshold": "Prozentschwelle für kritische Stufe (Orange) der Quote (0-100). Quote unter diesem Wert ist Orange.",
+    "antigravity.config.quota.dangerThreshold": "Prozentschwelle für Gefahrenstufe (Rot) der Quote (0-100). Quote unter diesem Wert ist Rot."
 }

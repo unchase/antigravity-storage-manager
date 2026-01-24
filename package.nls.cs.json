@@ -32,5 +32,8 @@
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Seznam ID zařízení oprávněných mazat konverzace z jiných zařízení. Použijte příkaz [Spravovat autorizovaná zařízení](command:antigravity-storage-manager.syncManageAuthorizedMachines) pro výběr z historie Google Drive.",
     "antigravity.config.useMetadataCache": "Použít metadata v mezipaměti pro odznaky stavu konverzace (rychlejší, snižuje požadavky na Google Drive)",
     "antigravity.command.triggerBackup": "Vytvořit zálohu nyní",
-    "antigravity.config.showCreditsBalance": "Zobrazit zůstatek kreditů Antigravity na řídicím panelu a ve stavovém řádku"
+    "antigravity.config.showCreditsBalance": "Zobrazit zůstatek kreditů Antigravity na řídicím panelu a ve stavovém řádku",
+    "antigravity.config.quota.warningThreshold": "Procentuální práh pro úroveň varování (žlutá) kvóty (0-100). Kvóta pod touto hodnotou je žlutá.",
+    "antigravity.config.quota.criticalThreshold": "Procentuální práh pro kritickou úroveň (oranžová) kvóty (0-100). Kvóta pod touto hodnotou je oranžová.",
+    "antigravity.config.quota.dangerThreshold": "Procentuální práh pro úroveň nebezpečí (červená) kvóty (0-100). Kvóta pod touto hodnotou je červená."
 }

@@ -32,5 +32,8 @@
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Lista identyfikatorów maszyn upoważnionych do usuwania rozmów z innych urządzeń. Użyj polecenia [Zarządzaj autoryzowanymi urządzeniami](command:antigravity-storage-manager.syncManageAuthorizedMachines), aby wybrać z historii Google Drive.",
     "antigravity.config.useMetadataCache": "Użyj zapisanych w pamięci podręcznej metadanych dla odznak statusu rozmowy (szybciej, zmniejsza liczbę żądań do Google Drive)",
     "antigravity.command.triggerBackup": "Utwórz kopię zapasową teraz",
-    "antigravity.config.showCreditsBalance": "Pokaż saldo kredytów Antigravity w panelu i na pasku stanu"
+    "antigravity.config.showCreditsBalance": "Pokaż saldo kredytów Antigravity w panelu i na pasku stanu",
+    "antigravity.config.quota.warningThreshold": "Próg procentowy dla poziomu Ostrzeżenia (Żółty) limitu (0-100). Limit poniżej tej wartości jest żółty.",
+    "antigravity.config.quota.criticalThreshold": "Próg procentowy dla poziomu Krytycznego (Pomarańczowy) limitu (0-100). Limit poniżej tej wartości jest pomarańczowy.",
+    "antigravity.config.quota.dangerThreshold": "Próg procentowy dla poziomu Niebezpieczeństwa (Czerwony) limitu (0-100). Limit poniżej tej wartości jest czerwony."
 }

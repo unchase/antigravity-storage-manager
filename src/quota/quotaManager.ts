@@ -10,6 +10,7 @@ import { QuotaStatusBar } from './quotaStatusBar';
 import { drawProgressBar, formatResetTime, compareModels, formatDuration } from './utils';
 import { QuotaUsageTracker } from './quotaUsageTracker';
 import { AccountInfoWebview } from './accountInfoWebview';
+import { GoogleAuthProvider } from '../googleAuth';
 
 export class QuotaManager {
     private context: vscode.ExtensionContext;
@@ -17,14 +18,17 @@ export class QuotaManager {
     private quotaService: QuotaService | null = null;
     private statusBar: QuotaStatusBar;
     private usageTracker: QuotaUsageTracker;
+    private authProvider: GoogleAuthProvider; // New dependency
     private isEnabled: boolean = true;
     private pollingTimer: NodeJS.Timeout | undefined;
     private readonly POLLING_INTERVAL = 60 * 1000; // 1 minute
     private sortMethod: 'quota' | 'time' = 'quota';
     private lastNotifiedModels: Map<string, boolean> = new Map(); // modelId -> wasExhausted
+    private syncManager: any | null = null; // SyncManager type to be imported or use any to avoid cycle if needed. Ideally interface.
 
-    constructor(context: vscode.ExtensionContext) {
+    constructor(context: vscode.ExtensionContext, authProvider: GoogleAuthProvider) {
         this.context = context;
+        this.authProvider = authProvider;
         this.portDetector = new ProcessPortDetector();
         this.statusBar = new QuotaStatusBar();
         this.usageTracker = new QuotaUsageTracker(context);
@@ -39,12 +43,22 @@ export class QuotaManager {
                 const snapshot = this.statusBar.getLatestSnapshot();
                 if (snapshot) {
                     this.statusBar.update(snapshot);
-                    AccountInfoWebview.update(snapshot, this.usageTracker);
+                    this.updateWebview(snapshot);
                 }
             }
         });
 
+        // Listen for auth changes
+        this.authProvider.onDidChangeSessions(() => {
+            // Refresh data on account switch
+            this.fetchAndUpdate(true);
+        });
+
         this.updateEnabledState();
+    }
+
+    public setSyncManager(syncManager: any) {
+        this.syncManager = syncManager;
     }
 
     private updateEnabledState() {
@@ -77,6 +91,12 @@ export class QuotaManager {
         }
     }
 
+    private async updateWebview(snapshot: QuotaSnapshot) {
+        const accounts = await this.authProvider.getAccounts();
+        const currentAccountId = this.authProvider.getCurrentAccountId();
+        AccountInfoWebview.update(snapshot, this.usageTracker, accounts, currentAccountId);
+    }
+
     private async fetchAndUpdate(isInitial: boolean = false): Promise<QuotaSnapshot | null> {
         if (!this.isEnabled) return null;
 
@@ -86,14 +106,29 @@ export class QuotaManager {
 
         try {
             const snapshot = await this.getQuota();
+
+            // Fetch sync stats if available
+            if (this.syncManager) {
+                try {
+                    const syncStats = await this.syncManager.getSyncUsageStats();
+                    snapshot.syncStats = syncStats;
+                } catch (e) {
+                    console.error('Failed to get sync stats:', e);
+                }
+            }
+
             this.usageTracker.track(snapshot);
             this.checkAndNotifyResets(snapshot);
             this.statusBar.update(snapshot, undefined, this.usageTracker);
-            AccountInfoWebview.update(snapshot, this.usageTracker);
+
+            await this.updateWebview(snapshot);
+
             return snapshot;
-        } catch (error: any) {
-            const lm = LocalizationManager.getInstance();
-            vscode.window.showErrorMessage(lm.t('QuotaManager: Fetch failed ({0})', error.message));
+        } catch {
+            // const lm = LocalizationManager.getInstance();
+            // Don't spam notifications on auto-poll, but show on initial or manual
+            // Actually usually we just log or show indicator
+            // vscode.window.showErrorMessage(lm.t('QuotaManager: Fetch failed ({0})', error.message));
             if (isInitial) {
                 this.statusBar.showError('Fetch failed');
             }
@@ -139,7 +174,9 @@ export class QuotaManager {
         }
 
         if (snapshot) {
-            AccountInfoWebview.show(this.context, snapshot, this.usageTracker);
+            const accounts = await this.authProvider.getAccounts();
+            const currentAccountId = this.authProvider.getCurrentAccountId();
+            AccountInfoWebview.show(this.context, snapshot, this.usageTracker, accounts, currentAccountId);
         } else {
             const lm = LocalizationManager.getInstance();
             vscode.window.showErrorMessage(lm.t('No account data available.'));

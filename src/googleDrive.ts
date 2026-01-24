@@ -96,13 +96,24 @@ export class GoogleDriveService {
 
     constructor(authProvider: GoogleAuthProvider) {
         this.authProvider = authProvider;
-        // Drive client is now initialized on demand via getter
+        this.authProvider.onDidChangeSessions(() => {
+            console.log('GoogleDriveService: Session changed, resetting cache');
+            this.syncFolderId = null;
+            this.machinesFolderId = null;
+            this.conversationsFolderId = null;
+            this._drive = null; // Force client re-creation to pick up new tokens
+        });
     }
 
     private get drive(): drive_v3.Drive {
         const currentClient = this.authProvider.getOAuth2Client();
         if (!this._drive || this.lastAuthClient !== currentClient) {
             console.log('GoogleDriveService: Re-initializing drive client with new credentials');
+            // Reset cached folder IDs because they belong to the previous account
+            this.syncFolderId = null;
+            this.machinesFolderId = null;
+            this.conversationsFolderId = null;
+
             this._drive = google.drive({
                 version: 'v3',
                 auth: currentClient
@@ -140,29 +151,45 @@ export class GoogleDriveService {
             ? `name = '${name}' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false`
             : `name = '${name}' and mimeType = 'application/vnd.google-apps.folder' and '${parentId}' in parents and trashed = false`;
 
-        const response = await this.drive.files.list({
-            q: query,
-            fields: 'files(id, name)',
-            spaces: 'drive'
-        });
+        try {
+            const response = await this.drive.files.list({
+                q: query,
+                fields: 'files(id, name)'
+                // spaces: 'drive' // Removed to avoid potential scope conflicts
+            });
 
-        if (response.data.files && response.data.files.length > 0) {
-            return response.data.files[0].id!;
+            if (response.data.files && response.data.files.length > 0) {
+                console.log(`Found existing folder '${name}': ${response.data.files[0].id}`);
+                return response.data.files[0].id!;
+            }
+        } catch (error: any) {
+            console.error(`Error finding folder '${name}':`, error);
+            if (error.code === 403 || (error.message && error.message.includes('Insufficient Permission'))) {
+                throw new Error(LocalizationManager.getInstance().t('Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.'));
+            }
+            throw error;
         }
 
         // Create new folder
-        const folderMetadata: drive_v3.Schema$File = {
-            name: name,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [parentId]
-        };
+        try {
+            const folderMetadata: drive_v3.Schema$File = {
+                name: name,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [parentId]
+            };
 
-        const folder = await this.drive.files.create({
-            requestBody: folderMetadata,
-            fields: 'id'
-        });
+            const folder = await this.drive.files.create({
+                requestBody: folderMetadata,
+                fields: 'id'
+            });
 
-        return folder.data.id!;
+            return folder.data.id!;
+        } catch (error: any) {
+            if (error.code === 403 || (error.message && error.message.includes('Insufficient Permission'))) {
+                throw new Error(LocalizationManager.getInstance().t('Permission denied creating folder. Please re-authenticate.'));
+            }
+            throw error;
+        }
     }
 
     /**

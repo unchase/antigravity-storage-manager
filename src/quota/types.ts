@@ -30,6 +30,11 @@ export interface QuotaSnapshot {
     projectId?: string;
     error?: string;
     rawUserStatus?: any;
+    syncStats?: {
+        conversationCount: number;
+        totalSize: number;
+        lastModified?: string;
+    };
 }
 
 // API Response Types

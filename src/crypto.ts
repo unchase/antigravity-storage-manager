@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as os from 'os';
+import { LocalizationManager } from './l10n/localizationManager';
 
 // Encryption configuration
 const ALGORITHM = 'aes-256-gcm';
@@ -118,7 +119,8 @@ export function decrypt(encryptedData: Buffer, password: string): Buffer {
         ]);
         return decrypted;
     } catch {
-        throw new Error('Decryption failed: incorrect password or corrupted data');
+        const lm = LocalizationManager.getInstance();
+        throw new Error(lm.t('Decryption failed: incorrect password or corrupted data'));
     }
 }
 

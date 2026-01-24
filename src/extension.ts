@@ -44,9 +44,10 @@ export async function activate(context: vscode.ExtensionContext) {
     backupManager = new BackupManager(context, STORAGE_ROOT);
     backupManager.initialize();
 
-    // Initialize Quota Manager
-    quotaManager = new QuotaManager(context);
+    // Initialize QuotaManager with AuthProvider
+    quotaManager = new QuotaManager(context, authProvider);
     syncManager.setQuotaManager(quotaManager);
+    quotaManager.setSyncManager(syncManager); // Inject sync manager for stats
 
     // Register existing commands
     context.subscriptions.push(
@@ -72,7 +73,32 @@ export async function activate(context: vscode.ExtensionContext) {
                 });
             });
         }),
-        vscode.commands.registerCommand(`${EXT_NAME}.resolveConflicts`, () => resolveConflictsCommand(BRAIN_DIR, CONV_DIR))
+        vscode.commands.registerCommand(`${EXT_NAME}.resolveConflicts`, () => resolveConflictsCommand(BRAIN_DIR, CONV_DIR)),
+
+        // Account Management Commands
+        vscode.commands.registerCommand(`${EXT_NAME}.addAccount`, async () => {
+            try {
+                await authProvider.addAccount();
+            } catch (e: any) {
+                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to add account: {0}', e.message));
+            }
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.switchAccount`, async (accountId: string) => {
+            try {
+                await authProvider.switchAccount(accountId);
+                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Switched account successfully'));
+            } catch (e: any) {
+                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to switch account: {0}', e.message));
+            }
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.removeAccount`, async (accountId: string) => {
+            try {
+                await authProvider.removeAccount(accountId);
+                vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Account removed'));
+            } catch (e: any) {
+                vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to remove account: {0}', e.message));
+            }
+        })
     );
 
     // Register sync commands

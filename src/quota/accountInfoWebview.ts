@@ -3,20 +3,31 @@ import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaSnapshot } from './types';
 import { formatResetTime, formatDuration, getCycleDuration } from './utils';
 import { QuotaUsageTracker } from './quotaUsageTracker';
+import { StoredAccount } from '../googleAuth';
 
 export class AccountInfoWebview {
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static latestSnapshot: QuotaSnapshot | undefined;
     private static latestTracker: QuotaUsageTracker | undefined;
+    private static latestAccounts: StoredAccount[] = [];
+    private static latestCurrentAccountId: string | null = null;
     private static readonly viewType = 'accountInfo';
 
-    public static show(context: vscode.ExtensionContext, snapshot: QuotaSnapshot, tracker?: QuotaUsageTracker): void {
+    public static show(
+        context: vscode.ExtensionContext,
+        snapshot: QuotaSnapshot,
+        tracker?: QuotaUsageTracker,
+        accounts: StoredAccount[] = [],
+        currentAccountId: string | null = null
+    ): void {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
 
         AccountInfoWebview.latestSnapshot = snapshot;
         if (tracker) AccountInfoWebview.latestTracker = tracker;
+        AccountInfoWebview.latestAccounts = accounts;
+        AccountInfoWebview.latestCurrentAccountId = currentAccountId;
 
         // If we already have a panel, show it
         if (AccountInfoWebview.currentPanel) {
@@ -77,6 +88,24 @@ export class AccountInfoWebview {
                         config.update('quota.pinnedModels', pinned, vscode.ConfigurationTarget.Global);
                         return;
                     }
+                    case 'addAccount':
+                        vscode.commands.executeCommand('antigravity-storage-manager.addAccount');
+                        return;
+                    case 'switchAccount':
+                        vscode.commands.executeCommand('antigravity-storage-manager.switchAccount', message.accountId);
+                        return;
+                    case 'removeAccount':
+                        vscode.window.showWarningMessage(
+                            lm.t('Are you sure you want to remove account {0}?', message.email),
+                            { modal: true },
+                            lm.t('Remove'),
+                            lm.t('Cancel')
+                        ).then(selection => {
+                            if (selection === lm.t('Remove')) {
+                                vscode.commands.executeCommand('antigravity-storage-manager.removeAccount', message.accountId);
+                            }
+                        });
+                        return;
                 }
             },
             undefined,
@@ -93,9 +122,17 @@ export class AccountInfoWebview {
         );
     }
 
-    public static update(snapshot: QuotaSnapshot, tracker?: QuotaUsageTracker): void {
+    public static update(
+        snapshot: QuotaSnapshot,
+        tracker?: QuotaUsageTracker,
+        accounts?: StoredAccount[],
+        currentAccountId?: string | null
+    ): void {
         AccountInfoWebview.latestSnapshot = snapshot;
         if (tracker) AccountInfoWebview.latestTracker = tracker;
+        if (accounts) AccountInfoWebview.latestAccounts = accounts;
+        if (currentAccountId !== undefined) AccountInfoWebview.latestCurrentAccountId = currentAccountId;
+
         if (AccountInfoWebview.currentPanel) {
             AccountInfoWebview.currentPanel.webview.html = AccountInfoWebview.getHtmlContent(snapshot);
         }
@@ -107,6 +144,27 @@ export class AccountInfoWebview {
         const data = snapshot.rawUserStatus?.userStatus || snapshot.rawUserStatus || {};
         const planInfo = data.planStatus?.planInfo;
         const userTier = data.userTier;
+
+        // Accounts HTML
+        const accountsHtml = AccountInfoWebview.latestAccounts.map(acc => {
+            const isActive = acc.id === AccountInfoWebview.latestCurrentAccountId;
+            const activeBadge = isActive ? `<span class="account-badge active">${l.t('Active')}</span>` : '';
+            const actions = isActive
+                ? ''
+                : `<button class="icon-btn switch-btn" onclick="postCommand('switchAccount', {accountId: '${acc.id}'})" title="${l.t('Switch to {0}', acc.email)}">🔄</button>
+                   <button class="icon-btn remove-btn" onclick="postCommand('removeAccount', {accountId: '${acc.id}', email: '${acc.email}'})" title="${l.t('Remove Account')}">🗑️</button>`;
+
+            return `
+            <div class="account-row ${isActive ? 'active-row' : ''}">
+                <div class="account-info">
+                    <div class="account-name">${acc.name} ${activeBadge}</div>
+                    <div class="account-email">${acc.email}</div>
+                </div>
+                <div class="account-actions">
+                    ${actions}
+                </div>
+            </div>`;
+        }).join('');
 
         // Credits calculations
         const promptCredits = snapshot.promptCredits;
@@ -311,6 +369,102 @@ export class AccountInfoWebview {
             letter-spacing: 0.05em;
             margin-bottom: 16px;
             margin-top: 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .action-link {
+            text-decoration: none;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 12px;
+            text-transform: none;
+        }
+
+        /* Accounts List */
+         .accounts-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        .account-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            border: 1px solid transparent;
+        }
+
+        .account-row.active-row {
+            border-color: var(--success);
+            background: rgba(35, 134, 54, 0.05);
+        }
+
+        .account-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .account-name {
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .account-email {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        .account-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .account-badge.active {
+            background: var(--success);
+            color: white;
+        }
+
+        .account-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .icon-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-main);
+        }
+        
+        .remove-btn:hover {
+            color: var(--danger);
+            background: rgba(218, 54, 51, 0.1);
         }
 
         /* Profile Card */
@@ -606,6 +760,35 @@ export class AccountInfoWebview {
                 <button class="btn" onclick="viewRawJson()">${l.t('View Raw JSON')}</button>
             </div>
         </div>
+
+
+        <div class="section-title">
+            <span>${l.t('Google Drive Sync Accounts')}</span>
+            <span class="action-link" onclick="postCommand('addAccount')">+ ${l.t('Add Drive Account')}</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px; margin-top: -12px;">
+            ${l.t('Connect Google Drive to sync conversation history. This does NOT sign you into Antigravity Chat.')}
+        </div>
+        <div class="accounts-container">
+            ${accountsHtml}
+            
+            ${snapshot.syncStats ? `
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; gap: 24px; font-size: 12px; color: var(--text-dim);">
+                <div>
+                     <span style="font-weight: 600; color: var(--text-main);">${(snapshot.syncStats.totalSize / 1024 / 1024).toFixed(2)} MB</span> 
+                     ${l.t('Used')}
+                </div>
+                <div>
+                     <span style="font-weight: 600; color: var(--text-main);">${snapshot.syncStats.conversationCount}</span> 
+                     ${l.t('Conversations')}
+                </div>
+                ${snapshot.syncStats.lastModified ? `
+                <div style="margin-left: auto;">
+                     ${l.t('Last Update')}: <span style="font-weight: 600; color: var(--text-main);">${new Date(snapshot.syncStats.lastModified).toLocaleString()}</span>
+                </div>` : ''}
+            </div>` : ''}
+        </div>
+
 
         <div class="section-title">${l.t('Profile')}</div>
         <div class="profile-container">

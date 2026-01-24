@@ -32,5 +32,8 @@
     "antigravity.config.authorizedRemoteDeleteMachineIds": "他のデバイスから会話を削除する権限を持つマシンIDのリスト。Google Driveの履歴から選択するには、[許可されたマシンの管理](command:antigravity-storage-manager.syncManageAuthorizedMachines)コマンドを使用してください。",
     "antigravity.config.useMetadataCache": "会話ステータスバッジにキャッシュされたメタデータを使用する（高速化、Google Driveへのリクエスト削減）",
     "antigravity.command.triggerBackup": "今すぐバックアップを作成",
-    "antigravity.config.showCreditsBalance": "ダッシュボードとステータスバーにAntigravityクレジット残高を表示する"
+    "antigravity.config.showCreditsBalance": "ダッシュボードとステータスバーにAntigravityクレジット残高を表示する",
+    "antigravity.config.quota.warningThreshold": "クォータの警告（黄色）レベルのパーセンテージしきい値（0-100）。この値を下回ると黄色になります。",
+    "antigravity.config.quota.criticalThreshold": "クォータの危険（オレンジ色）レベルのパーセンテージしきい値（0-100）。この値を下回るとオレンジ色になります。",
+    "antigravity.config.quota.dangerThreshold": "クォータの危機（赤色）レベルのパーセンテージしきい値（0-100）。この値を下回ると赤色になります。"
 }

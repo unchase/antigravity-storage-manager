@@ -5,6 +5,20 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-01-24
+### Localization
+- **Decryption Errors**: Fixed hardcoded English error messages in the decryption module. "Failed to get/decrypt manifest" and "Decryption failed" are now fully localized across all 16 supported languages.
+- **Russian Translations**: Added missing translations for permission errors and decryption failures in the Russian bundle.
+
+### Account Dashboard
+- **Sync Usage Stats**:
+    - **Usage Metrics**: The "Google Drive Sync Accounts" card now displays total cloud storage used by synchronized conversations (in MB/GB) and the total number of synced dialogues.
+    - **Last Sync**: Added "Last Update" timestamp showing exactly when the remote manifest was last modified.
+- **Localization**: Added native translations for new stats terms ("Used", "Sync Usage", "Last Update") across all 16 supported languages.
+
+### Optimization
+- **Build Size**: Reduced extension package size by optimizing `esbuild.js` (minification, map exclusion) and refining `.vscodeignore` to exclude unnecessary development assets.
+
 ## [0.7.13] - 2026-01-24
 ### Localization & UX
 - **Smart Formatting**: Performance metrics (load times) > 1000ms are now automatically formatted in seconds (e.g., `1.5s`) for better readability.

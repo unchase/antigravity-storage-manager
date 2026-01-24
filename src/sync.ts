@@ -794,6 +794,39 @@ export class SyncManager {
     }
 
     /**
+     * Get sync usage statistics (local calculation based on cached manifest)
+     */
+    public async getSyncUsageStats(): Promise<{ conversationCount: number; totalSize: number; lastModified?: string }> {
+        // Ensure we have the latest manifest
+        const manifest = await this.getDecryptedManifest();
+        if (!manifest) {
+            return { conversationCount: 0, totalSize: 0 };
+        }
+
+        let totalSize = 0;
+        let conversationCount = 0;
+
+        for (const conv of manifest.conversations) {
+            conversationCount++;
+            // Use stored size if available, otherwise estimate or ignore
+            if (conv.size) {
+                totalSize += conv.size;
+            } else if (conv.fileHashes) {
+                // Sum up file sizes
+                for (const hashInfo of Object.values(conv.fileHashes)) {
+                    totalSize += hashInfo.size;
+                }
+            }
+        }
+
+        return {
+            conversationCount,
+            totalSize,
+            lastModified: manifest.lastModified
+        };
+    }
+
+    /**
      * Get sync status for all local conversations
      */
     /**
@@ -1752,6 +1785,8 @@ export class SyncManager {
             this.startAutoSync();
 
         } catch (error: any) {
+            console.error('Setup failed details:', error);
+            if (error.stack) console.error(error.stack);
             vscode.window.showErrorMessage(lm.t("Setup failed: {0}", error.message));
         }
     }

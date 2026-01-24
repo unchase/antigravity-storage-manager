@@ -32,5 +32,8 @@
     "antigravity.config.authorizedRemoteDeleteMachineIds": "Lista de IDs de máquinas autorizadas a excluir conversas de outros dispositivos. Use o comando [Gerenciar máquinas autorizadas](command:antigravity-storage-manager.syncManageAuthorizedMachines) para selecionar do seu histórico do Google Drive.",
     "antigravity.config.useMetadataCache": "Usar metadados em cache para emblemas de status de conversa (mais rápido, reduz solicitações ao Google Drive)",
     "antigravity.command.triggerBackup": "Criar backup agora",
-    "antigravity.config.showCreditsBalance": "Mostrar saldo de créditos do Antigravity no painel e na barra de status"
+    "antigravity.config.showCreditsBalance": "Mostrar saldo de créditos do Antigravity no painel e na barra de status",
+    "antigravity.config.quota.warningThreshold": "Limite percentual para o nível de Aviso (Amarelo) da cota (0-100). A cota abaixo deste valor é amarela.",
+    "antigravity.config.quota.criticalThreshold": "Limite percentual para o nível Crítico (Laranja) da cota (0-100). A cota abaixo deste valor é laranja.",
+    "antigravity.config.quota.dangerThreshold": "Limite percentual para o nível de Perigo (Vermelho) da cota (0-100). A cota abaixo deste valor é vermelha."
 }

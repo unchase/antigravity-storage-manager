@@ -6,3 +6,17 @@ node_modules/**
 tsconfig.json
 esbuild.js
 *.map
+*.js
+!dist/**
+*.ts
+*.txt
+*.json
+!package.json
+!package.nls*.json
+!l10n/**
+images/**
+screenshots/**
+CONTRIBUTING.md
+PATREON_DRAFT.md
+TODO.md
+banner.png

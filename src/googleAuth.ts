@@ -3,6 +3,7 @@ import * as http from 'http';
 import * as url from 'url';
 import { google } from 'googleapis';
 import { LocalizationManager } from './l10n/localizationManager';
+import * as crypto from 'crypto';
 
 // OAuth2 Configuration
 // 1. Create a project in Google Cloud Console
@@ -14,7 +15,9 @@ const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 
 // Scopes for Google Drive access
 const SCOPES = [
-    'https://www.googleapis.com/auth/drive.file' // Access only files created by this app
+    'https://www.googleapis.com/auth/drive.file', // Access only files created by this app
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile'
 ];
 
 const EXT_NAME = 'antigravity-storage-manager';
@@ -25,6 +28,13 @@ interface StoredTokens {
     expiryDate: number;
 }
 
+export interface StoredAccount {
+    id: string;
+    email: string;
+    name: string;
+    lastActive: number;
+}
+
 /**
  * Manages Google OAuth2 authentication for the extension
  */
@@ -33,6 +43,8 @@ export class GoogleAuthProvider {
     private context: vscode.ExtensionContext;
     private tokens: StoredTokens | null = null;
     private server: http.Server | null = null;
+    private currentAccountId: string | null = null;
+    private _onDidChangeSessions = new vscode.EventEmitter<void>();
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -97,23 +109,136 @@ export class GoogleAuthProvider {
      * Initialize the auth provider by loading stored tokens
      */
     async initialize(): Promise<void> {
-        const storedTokens = await this.context.secrets.get(`${EXT_NAME}.google.tokens`);
-        if (storedTokens) {
+        // Migration logic: check if there are legacy tokens but no accounts list
+        const legacyTokensStr = await this.context.secrets.get(`${EXT_NAME}.google.tokens`);
+        const accountsStr = await this.context.secrets.get(`${EXT_NAME}.google.accounts`);
+
+        if (legacyTokensStr && !accountsStr) {
+            console.log('GoogleAuthProvider: Migrating legacy tokens...');
             try {
-                this.tokens = JSON.parse(storedTokens);
-                if (this.tokens) {
-                    this.oauth2Client.setCredentials({
-                        access_token: this.tokens.accessToken,
-                        refresh_token: this.tokens.refreshToken,
-                        expiry_date: this.tokens.expiryDate
-                    });
+                const legacyTokens = JSON.parse(legacyTokensStr);
+                // Attempt to get user info to build account profile
+                this.tokens = legacyTokens;
+                this.oauth2Client.setCredentials({
+                    access_token: legacyTokens.accessToken,
+                    refresh_token: legacyTokens.refreshToken,
+                    expiry_date: legacyTokens.expiryDate
+                });
+
+                let userInfo = await this.getUserInfo();
+                if (!userInfo) {
+                    // Fallback
+                    userInfo = { email: 'Legacy User', name: 'Legacy User' };
                 }
-            } catch (e: any) {
-                const lm = LocalizationManager.getInstance();
-                vscode.window.showErrorMessage(lm.t('Failed to parse stored tokens: {0}', e.message));
-                this.tokens = null;
+
+                const accountId = this.generateAccountId(userInfo.email);
+                const account: StoredAccount = {
+                    id: accountId,
+                    email: userInfo.email,
+                    name: userInfo.name,
+                    lastActive: Date.now()
+                };
+
+                await this.saveAccountList([account]);
+                await this.setCurrentAccount(accountId);
+                await this.saveTokensForAccount(accountId, legacyTokens);
+
+                // Cleanup legacy key
+                await this.context.secrets.delete(`${EXT_NAME}.google.tokens`);
+
+                console.log('GoogleAuthProvider: Migration complete.');
+            } catch (e) {
+                console.error('Migration failed', e);
             }
         }
+
+        // Load current active account
+        this.currentAccountId = await this.context.secrets.get(`${EXT_NAME}.google.currentAccountId`) || null;
+        if (this.currentAccountId) {
+            await this.loadAccount(this.currentAccountId);
+        }
+    }
+
+    private generateAccountId(email: string): string {
+        return crypto.createHash('md5').update(email).digest('hex');
+    }
+
+    async getAccounts(): Promise<StoredAccount[]> {
+        const accountsStr = await this.context.secrets.get(`${EXT_NAME}.google.accounts`);
+        return accountsStr ? JSON.parse(accountsStr) : [];
+    }
+
+    private async saveAccountList(accounts: StoredAccount[]): Promise<void> {
+        await this.context.secrets.store(`${EXT_NAME}.google.accounts`, JSON.stringify(accounts));
+    }
+
+    private async saveTokensForAccount(accountId: string, tokens: StoredTokens): Promise<void> {
+        await this.context.secrets.store(`${EXT_NAME}.google.tokens.${accountId}`, JSON.stringify(tokens));
+    }
+
+    private async loadTokensForAccount(accountId: string): Promise<StoredTokens | null> {
+        const tokenStr = await this.context.secrets.get(`${EXT_NAME}.google.tokens.${accountId}`);
+        return tokenStr ? JSON.parse(tokenStr) : null;
+    }
+
+    /**
+     * Switch active account
+     */
+    async switchAccount(accountId: string): Promise<void> {
+        const accounts = await this.getAccounts();
+        const account = accounts.find(a => a.id === accountId);
+        if (!account) throw new Error('Account not found');
+
+        await this.loadAccount(accountId);
+
+        // Update last active
+        account.lastActive = Date.now();
+        await this.saveAccountList(accounts);
+
+        this._onDidChangeSessions.fire();
+    }
+
+    private async loadAccount(accountId: string): Promise<void> {
+        const tokens = await this.loadTokensForAccount(accountId);
+        if (tokens) {
+            this.tokens = tokens;
+            this.currentAccountId = accountId;
+            this.oauth2Client.setCredentials({
+                access_token: this.tokens.accessToken,
+                refresh_token: this.tokens.refreshToken,
+                expiry_date: this.tokens.expiryDate
+            });
+            await this.context.secrets.store(`${EXT_NAME}.google.currentAccountId`, accountId);
+        } else {
+            // Handle stale account entry?
+            this.tokens = null;
+            this.currentAccountId = null;
+        }
+    }
+
+    async removeAccount(accountId: string): Promise<void> {
+        let accounts = await this.getAccounts();
+        accounts = accounts.filter(a => a.id !== accountId);
+        await this.saveAccountList(accounts);
+        await this.context.secrets.delete(`${EXT_NAME}.google.tokens.${accountId}`);
+
+        if (this.currentAccountId === accountId) {
+            // If removed active account, switch to another or logout
+            if (accounts.length > 0) {
+                await this.switchAccount(accounts[0].id);
+            } else {
+                await this.signOut();
+            }
+        }
+        this._onDidChangeSessions.fire();
+    }
+
+    getCurrentAccountId(): string | null {
+        return this.currentAccountId;
+    }
+
+    get onDidChangeSessions(): vscode.Event<void> {
+        return this._onDidChangeSessions.event;
     }
 
     /**
@@ -188,6 +313,17 @@ export class GoogleAuthProvider {
      * Start the OAuth2 sign-in flow
      */
     async signIn(): Promise<void> {
+        await this.startAuthFlow();
+    }
+
+    /**
+     * Add a new account (same as sign in, but appends)
+     */
+    async addAccount(): Promise<void> {
+        await this.startAuthFlow(true);
+    }
+
+    private async startAuthFlow(isAdd: boolean = false): Promise<void> {
         const lm = LocalizationManager.getInstance();
         // Reload credentials just in case they were updated
         this.loadCredentials();
@@ -283,13 +419,49 @@ export class GoogleAuthProvider {
                             // Exchange code for tokens
                             const { tokens } = await this.oauth2Client.getToken(code);
                             this.oauth2Client.setCredentials(tokens);
+                            console.log('Scopes granted:', tokens.scope);
 
-                            this.tokens = {
+                            // Verify scopes
+                            if (tokens.scope && !tokens.scope.includes('drive.file')) {
+                                throw new Error(lm.t('You must grant the "See, edit, create, and delete only the specific Google Drive files you use with this app" permission to use this extension.'));
+                            }
+
+                            const tempTokens = {
                                 accessToken: tokens.access_token || '',
                                 refreshToken: tokens.refresh_token || '',
                                 expiryDate: tokens.expiry_date || 0
                             };
-                            await this.saveTokens(this.tokens);
+
+                            // Temporarily set tokens to fetch user info
+                            this.tokens = tempTokens;
+
+                            // Fetch User Info
+                            const userInfo = await this.getUserInfo();
+                            if (!userInfo) {
+                                throw new Error('Failed to retrieve user info');
+                            }
+
+                            // Create Account Record
+                            const accountId = this.generateAccountId(userInfo.email);
+                            const newAccount: StoredAccount = {
+                                id: accountId,
+                                email: userInfo.email,
+                                name: userInfo.name,
+                                lastActive: Date.now()
+                            };
+
+                            // Check if account already exists
+                            const existingAccounts = await this.getAccounts();
+                            if (!existingAccounts.find(a => a.id === accountId)) {
+                                existingAccounts.push(newAccount);
+                                await this.saveAccountList(existingAccounts);
+                            }
+
+                            // Save tokens specifically for this account
+                            await this.saveTokensForAccount(accountId, tempTokens);
+                            await this.setCurrentAccount(accountId);
+
+                            this._onDidChangeSessions.fire();
 
                             res.writeHead(200, { 'Content-Type': 'text/html' });
                             res.end(`
@@ -386,7 +558,7 @@ export class GoogleAuthProvider {
                 const authUrl = this.oauth2Client.generateAuthUrl({
                     access_type: 'offline',
                     scope: SCOPES,
-                    prompt: 'consent' // Force consent to get refresh token
+                    prompt: isAdd ? 'consent select_account' : 'consent' // Force consent to get refresh token, select_account if adding
                 });
 
                 // Open the browser for authentication
@@ -430,24 +602,40 @@ export class GoogleAuthProvider {
         });
     }
 
-    /**
-     * Sign out and clear stored tokens
-     */
-    async signOut(): Promise<void> {
-        this.tokens = null;
-        this.oauth2Client.revokeCredentials().catch(() => { });
-        await this.context.secrets.delete(`${EXT_NAME}.google.tokens`);
+    private async setCurrentAccount(accountId: string): Promise<void> {
+        this.currentAccountId = accountId;
+        await this.context.secrets.store(`${EXT_NAME}.google.currentAccountId`, accountId);
     }
 
     /**
-     * Save tokens to secure storage
+     * Sign out active account
+     */
+    async signOut(): Promise<void> {
+        if (this.currentAccountId) {
+            await this.removeAccount(this.currentAccountId);
+        } else {
+            // Fallback classic signout
+            this.tokens = null;
+            this.oauth2Client.revokeCredentials().catch(() => { });
+            await this.context.secrets.delete(`${EXT_NAME}.google.tokens`);
+            this._onDidChangeSessions.fire();
+        }
+    }
+
+    /**
+     * Save tokens to secure storage (current account)
      */
     private async saveTokens(tokens: StoredTokens): Promise<void> {
         this.tokens = tokens;
-        await this.context.secrets.store(
-            `${EXT_NAME}.google.tokens`,
-            JSON.stringify(tokens)
-        );
+        if (this.currentAccountId) {
+            await this.saveTokensForAccount(this.currentAccountId, tokens);
+        } else {
+            // Fallback for before-migration or edge cases
+            await this.context.secrets.store(
+                `${EXT_NAME}.google.tokens`,
+                JSON.stringify(tokens)
+            );
+        }
     }
 
     /**

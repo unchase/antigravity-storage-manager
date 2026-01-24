@@ -32,5 +32,8 @@
     "antigravity.config.authorizedRemoteDeleteMachineIds": "授权从其他设备删除对话的机器 ID 列表。使用 [管理授权设备](command:antigravity-storage-manager.syncManageAuthorizedMachines) 命令从 Google Drive 历史记录中选择。",
     "antigravity.config.useMetadataCache": "使用缓存的元数据作为对话状态徽章（更快，减少 Google Drive 请求）",
     "antigravity.command.triggerBackup": "立即创建备份",
-    "antigravity.config.showCreditsBalance": "在仪表板和状态栏中显示 Antigravity 积分余额"
+    "antigravity.config.showCreditsBalance": "在仪表板和状态栏中显示 Antigravity 积分余额",
+    "antigravity.config.quota.warningThreshold": "配额警告（黄色）级别的百分比阈值 (0-100)。低于此值的配额为黄色。",
+    "antigravity.config.quota.criticalThreshold": "配额严重（橙色）级别的百分比阈值 (0-100)。低于此值的配额为橙色。",
+    "antigravity.config.quota.dangerThreshold": "配额危险（红色）级别的百分比阈值 (0-100)。低于此值的配额为红色。"
 }
