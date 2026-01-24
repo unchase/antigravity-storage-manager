@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Account Dashboard**: Active proxy URL is now displayed in the "Profile" section of the Account Information dashboard for better visibility.
 - **Strict SSL**: Configurable SSL verification (`proxy.strictSSL`) for proxy connections.
 
+### Bug Fixes
+- **Startup Crash**: Fixed a critical issue where the extension would fail to activate with a "password argument must be of type string" error if sync was not fully configured.
+
 ## [0.8.1] - 2026-01-24
 ### Quota & Account Dashboard
 - **Visual Usage Graphs**: Added beautiful area charts to the Account Dashboard showing quota usage history for each model over time.

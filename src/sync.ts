@@ -857,6 +857,11 @@ export class SyncManager {
                 return null;
             }
 
+            if (!this.masterPassword) {
+                // Cannot decrypt without password
+                return null;
+            }
+
             const decrypted = crypto.decrypt(encrypted, this.masterPassword!);
 
             try {
