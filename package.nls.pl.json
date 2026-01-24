@@ -36,5 +36,6 @@
     "antigravity.config.quota.historyRetentionDays": "Liczba dni przechowywania historii kwot (1-30).",
     "antigravity.config.quota.warningThreshold": "Próg procentowy dla poziomu Ostrzeżenia (Żółty) limitu (0-100). Limit poniżej tej wartości jest żółty.",
     "antigravity.config.quota.criticalThreshold": "Próg procentowy dla poziomu Krytycznego (Pomarańczowy) limitu (0-100). Limit poniżej tej wartości jest pomarańczowy.",
-    "antigravity.config.quota.dangerThreshold": "Próg procentowy dla poziomu Niebezpieczeństwa (Czerwony) limitu (0-100). Limit poniżej tej wartości jest czerwony."
+    "antigravity.config.quota.dangerThreshold": "Próg procentowy dla poziomu Niebezpieczeństwa (Czerwony) limitu (0-100). Limit poniżej tej wartości jest czerwony.",
+    "antigravity.command.switchProfile": "Switch VS Code Profile"
 }

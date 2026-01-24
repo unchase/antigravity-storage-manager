@@ -36,5 +36,6 @@
     "antigravity.config.quota.historyRetentionDays": "Số ngày lưu giữ lịch sử hạn ngạch (1-30).",
     "antigravity.config.quota.warningThreshold": "Ngưỡng phần trăm cho mức Cảnh báo (Vàng) của hạn ngạch (0-100). Hạn ngạch dưới giá trị này là Màu vàng.",
     "antigravity.config.quota.criticalThreshold": "Ngưỡng phần trăm cho mức Nghiêm trọng (Cam) của hạn ngạch (0-100). Hạn ngạch dưới giá trị này là Màu cam.",
-    "antigravity.config.quota.dangerThreshold": "Ngưỡng phần trăm cho mức Nguy hiểm (Đỏ) của hạn ngạch (0-100). Hạn ngạch dưới giá trị này là Màu đỏ."
+    "antigravity.config.quota.dangerThreshold": "Ngưỡng phần trăm cho mức Nguy hiểm (Đỏ) của hạn ngạch (0-100). Hạn ngạch dưới giá trị này là Màu đỏ.",
+    "antigravity.command.switchProfile": "Switch VS Code Profile"
 }

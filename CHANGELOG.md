@@ -5,6 +5,19 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-01-24
+### Profile Switcher
+- **New Command**: Added `Switch VS Code Profile` command to quickly open VS Code with a different profile.
+- **Profile Management**: Save, select, and remove profiles via QuickPick UI.
+- **Multi-Account Support**: Easily switch between different Antigravity accounts by leveraging VS Code's profile system.
+
+### Localization
+- **Missing Strings Fixed**: Added 35+ missing localization keys for:
+  - **Diagnostics**: `Run Diagnostics`, `Clear Cache`, `Internet Connectivity`, `Authenticated`, `Not signed in`, etc.
+  - **Profile Switcher**: `Switch Profile`, `Add New Profile`, `Remove Profile`, `Enter profile name`, etc.
+- **Translations**: Complete Russian and German translations for all new strings.
+
+
 ## [0.8.1] - 2026-01-24
 ### Quota & Account Dashboard
 - **Visual Usage Graphs**: Added beautiful area charts to the Account Dashboard showing quota usage history for each model over time.

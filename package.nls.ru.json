@@ -36,5 +36,6 @@
     "antigravity.config.quota.historyRetentionDays": "Количество дней хранения истории квот (1-30).",
     "antigravity.config.quota.warningThreshold": "Процентный порог для уровня предупреждения (Желтый) квоты (0-100). Квота ниже этого значения становится желтой.",
     "antigravity.config.quota.criticalThreshold": "Процентный порог для критического уровня (Оранжевый) квоты (0-100). Квота ниже этого значения становится оранжевой.",
-    "antigravity.config.quota.dangerThreshold": "Процентный порог для уровня опасности (Красный) квоты (0-100). Квота ниже этого значения становится красной."
+    "antigravity.config.quota.dangerThreshold": "Процентный порог для уровня опасности (Красный) квоты (0-100). Квота ниже этого значения становится красной.",
+    "antigravity.command.switchProfile": "Сменить профиль VS Code"
 }

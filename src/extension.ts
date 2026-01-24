@@ -12,6 +12,7 @@ import { DiagnosticsManager } from './diagnostics/diagnosticsManager';
 import { LocalizationManager } from './l10n/localizationManager';
 import { BackupManager } from './backup';
 import { QuotaManager } from './quota/quotaManager';
+import { ProfileManager } from './profileManager';
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
@@ -27,6 +28,7 @@ let syncManager: SyncManager;
 let backupManager: BackupManager;
 let quotaManager: QuotaManager;
 let diagnosticsManager: DiagnosticsManager;
+let profileManager: ProfileManager;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log(`Congratulations, "${EXT_NAME}" is now active!`);
@@ -418,6 +420,12 @@ export async function activate(context: vscode.ExtensionContext) {
                 await syncManager.clearCache();
                 vscode.window.showInformationMessage(lm.t('Cache cleared successfully.'));
             });
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.switchProfile`, async () => {
+            if (!profileManager) {
+                profileManager = new ProfileManager(context);
+            }
+            await profileManager.showProfilePicker();
         })
     );
 

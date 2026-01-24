@@ -36,5 +36,6 @@
     "antigravity.config.quota.historyRetentionDays": "保留配額歷史記錄的天數 (1-30)。",
     "antigravity.config.quota.warningThreshold": "配額警告（黃色）級別的百分比閾值 (0-100)。低於此值的配額為黃色。",
     "antigravity.config.quota.criticalThreshold": "配額嚴重（橙色）級別的百分比閾值 (0-100)。低於此值的配額為橙色。",
-    "antigravity.config.quota.dangerThreshold": "配額危險（紅色）級別的百分比閾值 (0-100)。低於此值的配額為紅色。"
+    "antigravity.config.quota.dangerThreshold": "配額危險（紅色）級別的百分比閾值 (0-100)。低於此值的配額為紅色。",
+    "antigravity.command.switchProfile": "Switch VS Code Profile"
 }
