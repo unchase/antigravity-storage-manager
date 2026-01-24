@@ -471,12 +471,15 @@ export class SyncStatsWebview {
                                             <span style="float:right; opacity:0.5; font-weight:400; font-size:11px">${group.length} ${lm.t('sessions')}</span>
                                         </td>
                                     </tr>
-                                    ${isCurrentGroup && data.accountQuotaSnapshot && data.accountQuotaSnapshot.models ? (() => {
-                    const snapshot = data.accountQuotaSnapshot;
+                                    ${(() => {
+                    // Display quota if ANY machine in the group has it (prefer current if available, otherwise newest)
+                    // Note: group is array of machines.
+                    const quotaMachine = group.find(m => m.accountQuota) || (isCurrentGroup ? { accountQuota: data.accountQuotaSnapshot } : undefined);
+                    const snapshot = quotaMachine?.accountQuota;
+
                     if (!snapshot || !snapshot.models || snapshot.models.length === 0) return '';
-                    // Filter helpful models (e.g. pinned or active, or just all non-exhausted?)
-                    // Let's show top 4 relevant models to keep it compact
-                    const models = [...snapshot.models].sort((a, b) => (a.remainingPercentage || 0) - (b.remainingPercentage || 0));
+
+                    const models = [...snapshot.models].sort((a: any, b: any) => (a.remainingPercentage || 0) - (b.remainingPercentage || 0));
 
                     return `
                                     <tr class="quota-row ${groupId}" style="background: rgba(0,0,0,0.2);">
@@ -486,9 +489,10 @@ export class SyncStatsWebview {
                                                  ${data.userEmail ? `<div style="font-size: 10px; opacity: 0.6;">${lm.t('User')}: ${data.userEmail} ${snapshot.planName ? `• ${lm.t('Plan')}: ${snapshot.planName}` : ''}</div>` : ''}
                                             </div>
                                             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px 24px;">
-                                                ${models.map(m => {
+                                                ${models.map((m: any) => {
                         const pct = m.remainingPercentage || 0;
                         let color = 'var(--success)';
+                        // Use consistent threshold logic if possible, or simple fallback
                         if (pct < 5) color = 'var(--error)';
                         else if (pct < 30) color = 'var(--warning)';
 
@@ -510,7 +514,7 @@ export class SyncStatsWebview {
                                         </td>
                                     </tr>
                 `;
-                })() : ''}
+                })()}
                                     ${group.map(m => {
                     const isOnline = (now - new Date(m.lastSync).getTime()) < 600000;
                     return `

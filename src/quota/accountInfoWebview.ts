@@ -132,17 +132,22 @@ export class AccountInfoWebview {
             { id: 'mcp', name: l.t('MCP Servers'), enabled: planInfo?.defaultTeamConfig?.allowMcpServers },
         ];
 
+        const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
+        const warningThreshold = config.get<number>('quota.warningThreshold') ?? 50;
+        const criticalThreshold = config.get<number>('quota.criticalThreshold') ?? 30;
+        const dangerThreshold = config.get<number>('quota.dangerThreshold') ?? 0;
+
         const getStatusIcon = (pct: number, isExhausted: boolean): string => {
-            if (isExhausted || pct === 0) return '🔴';
-            if (pct < 30) return '🟠';
-            if (pct < 50) return '🟡';
+            if (isExhausted || pct <= dangerThreshold) return '🔴';
+            if (pct < criticalThreshold) return '🟠';
+            if (pct < warningThreshold) return '🟡';
             return '🟢';
         };
 
         const getProgressBarColor = (pct: number, isExhausted: boolean): string => {
-            if (isExhausted || pct === 0) return 'var(--danger)';
-            if (pct < 30) return 'var(--warning-dark)';
-            if (pct < 50) return 'var(--warning)';
+            if (isExhausted || pct <= dangerThreshold) return 'var(--danger)';
+            if (pct < criticalThreshold) return 'var(--warning-dark)';
+            if (pct < warningThreshold) return 'var(--warning)';
             return 'var(--success)';
         };
 

@@ -374,6 +374,27 @@
                     "default": true,
                     "description": "%antigravity.config.useMetadataCache%"
                 },
+                "antigravity-storage-manager.quota.warningThreshold": {
+                    "type": "number",
+                    "default": 50,
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "%antigravity.config.quota.warningThreshold%"
+                },
+                "antigravity-storage-manager.quota.criticalThreshold": {
+                    "type": "number",
+                    "default": 30,
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "%antigravity.config.quota.criticalThreshold%"
+                },
+                "antigravity-storage-manager.quota.dangerThreshold": {
+                    "type": "number",
+                    "default": 0,
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "%antigravity.config.quota.dangerThreshold%"
+                },
                 "antigravity-storage-manager.showCreditsBalance": {
                     "type": "boolean",
                     "default": false,

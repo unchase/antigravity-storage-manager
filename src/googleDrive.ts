@@ -3,6 +3,7 @@ import { google, drive_v3 } from 'googleapis';
 import { Readable } from 'stream';
 import { GoogleAuthProvider } from './googleAuth';
 import { LocalizationManager } from './l10n/localizationManager';
+import { QuotaSnapshot } from './quota/types';
 
 const SYNC_FOLDER_NAME = 'AntigravitySync';
 const MACHINES_FOLDER_NAME = 'machines';
@@ -67,6 +68,7 @@ export interface MachineState {
         used: number;
         limit: number;
     };
+    accountQuota?: QuotaSnapshot;
     conversationStates: {
         id: string;
         localHash: string;

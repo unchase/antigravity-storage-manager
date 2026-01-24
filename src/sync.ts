@@ -1030,6 +1030,7 @@ export class SyncManager {
 
         // Fetch Quota
         const quota = await this.driveService.getStorageInfo();
+        const accountQuota = this.quotaManager?.getLatestSnapshot();
         const conversations = await this.getLocalConversationsAsync();
 
         const state: MachineState = {
@@ -1040,6 +1041,7 @@ export class SyncManager {
             uploadCount: this.uploadCount,
             downloadCount: this.downloadCount,
             quota: quota || undefined,
+            accountQuota: accountQuota,
             conversationStates: conversations.map(c => ({
                 id: c.id,
                 localHash: c.hash,
@@ -2193,19 +2195,54 @@ export class SyncManager {
                     const machineId = file.name.replace('.json.enc', '');
 
                     try {
+                        // Check if this file corresponds to the current machine
                         if (machineId === this.config!.machineId) {
-                            return {
+                            const localMachine = {
                                 name: this.config!.machineName,
                                 id: machineId,
                                 fileId: 'current', // Not deletable
-                                lastSync: lastSync,
+                                lastSync: lastSync, // This is file modified time, might be old config.lastSync is better?
                                 isCurrent: true,
                                 syncCount: this.syncCount,
                                 uploadCount: this.uploadCount,
                                 downloadCount: this.downloadCount,
                                 quota: currentQuota || undefined,
+                                accountQuota: this.quotaManager?.getLatestSnapshot(),
                                 conversationStates: localConversations.map(c => ({ id: c.id }))
                             };
+
+                            // CHECK FOR REMOTE CONFLICT (Shared Session)
+                            // If the remote file has a different name, it means another machine is using this ID.
+                            try {
+                                const contentValues = await this.driveService.getMachineState(machineId);
+                                if (contentValues) {
+                                    const decrypted = crypto.decrypt(contentValues, this.masterPassword!);
+                                    const state: MachineState = JSON.parse(decrypted.toString());
+
+                                    // If names differ, or if the remote lastSync is significantly newer than our lastSync (implies concurrency), 
+                                    // treat it as a ghost/other device.
+                                    // Simplest check: Name difference.
+                                    if (state.machineName && state.machineName !== this.config!.machineName) {
+                                        const remoteGhost = {
+                                            name: state.machineName, // Shows the OTHER name
+                                            id: machineId,
+                                            fileId: file.id,
+                                            lastSync: state.lastSync,
+                                            isCurrent: false, // It's NOT us, even if ID matches
+                                            syncCount: state.syncCount || 0,
+                                            uploadCount: state.uploadCount || 0,
+                                            downloadCount: state.downloadCount || 0,
+                                            quota: state.quota,
+                                            conversationStates: state.conversationStates || []
+                                        };
+                                        return [localMachine, remoteGhost];
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Failed to check remote state for current machine ghosting', e);
+                            }
+
+                            return localMachine;
                         }
 
                         const contentValues = await this.driveService.getMachineState(machineId);
@@ -2227,6 +2264,7 @@ export class SyncManager {
                                 uploadCount: state.uploadCount || 0,
                                 downloadCount: state.downloadCount || 0,
                                 quota: quota,
+                                accountQuota: state.accountQuota,
                                 conversationStates: state.conversationStates || []
                             };
                         }
@@ -2243,6 +2281,7 @@ export class SyncManager {
                             uploadCount: 0,
                             downloadCount: 0,
                             quota: undefined,
+                            accountQuota: undefined,
                             conversationStates: []
                         };
                     }
@@ -2250,7 +2289,7 @@ export class SyncManager {
                 });
 
                 const machineResults = await Promise.all(machinePromises);
-                const machines = machineResults.filter(m => m !== null) as any[];
+                const machines = machineResults.flat().filter(m => m !== null) as any[];
 
                 // Ensure current machine is always present
                 if (!machines.some(m => m.isCurrent)) {
@@ -2264,6 +2303,7 @@ export class SyncManager {
                         uploadCount: this.uploadCount,
                         downloadCount: this.downloadCount,
                         quota: currentQuota || undefined,
+                        accountQuota: this.quotaManager?.getLatestSnapshot(),
                         conversationStates: localConversations.map(c => ({ id: c.id }))
                     });
                 }
