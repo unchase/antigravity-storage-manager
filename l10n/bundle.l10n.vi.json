@@ -456,5 +456,10 @@
     "Port detection command (lsof) is required but missing.": "Lệnh phát hiện cổng (lsof) là bắt buộc nhưng bị thiếu.",
     "Port detection command (lsof/ss/netstat) is required but missing.": "Lệnh phát hiện cổng (lsof/ss/netstat) là bắt buộc nhưng bị thiếu.",
     "Quota feature is disabled in settings.": "Tính năng hạn ngạch đã bị tắt trong cài đặt.",
-    "Fetching Antigravity quota...": "Đang lấy hạn ngạch Antigravity..."
+    "Fetching Antigravity quota...": "Đang lấy hạn ngạch Antigravity...",
+    "Proxy": "Proxy",
+    "None": "Không",
+    "Proxy settings cleared from VS Code global configuration.": "Đã xóa cài đặt proxy khỏi cấu hình toàn cầu của VS Code.",
+    "Invalid Proxy URL format.": "Định dạng URL proxy không hợp lệ.",
+    "Applied proxy settings to VS Code: {0}": "Đã áp dụng cài đặt proxy cho VS Code: {0}"
 }

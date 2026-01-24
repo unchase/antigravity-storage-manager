@@ -141,6 +141,23 @@ Monitor your AI usage limits and remaining credits directly within VS Code.
 
 ---
 
+## Proxy Configuration (New!)
+
+If you are behind a corporate proxy, you can configure Antigravity to route its internal requests through your proxy server.
+
+### Setup
+1. Open Settings (`Ctrl+,`).
+2. Search for `antigravity proxy`.
+3. Configure:
+    - **Proxy URL**: `http://my-proxy:8080`
+    - **Username/Password**: (Optional) For authenticated proxies.
+    - **Strict SSL**: Enable/disable certificate verification.
+4. Run command `Antigravity: Apply Proxy Settings` to apply these settings to your VS Code profile globally.
+
+> **Note**: This command updates the global `http.proxy` setting in VS Code to ensure the Antigravity Language Server respects your proxy configuration.
+
+---
+
 ## Google Account Data (Advanced)
 
 ![Google Account Data](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/google_account_data.png)

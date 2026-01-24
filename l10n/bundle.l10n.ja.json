@@ -456,5 +456,10 @@
     "Port detection command (lsof) is required but missing.": "ポート検出コマンド (lsof) が必要ですが、見つかりません。",
     "Port detection command (lsof/ss/netstat) is required but missing.": "ポート検出コマンド (lsof/ss/netstat) が必要ですが、見つかりません。",
     "Quota feature is disabled in settings.": "クォータ機能は設定で無効になっています。",
-    "Fetching Antigravity quota...": "Antigravity のクォータを取得中..."
+    "Fetching Antigravity quota...": "Antigravity のクォータを取得中...",
+    "Proxy": "プロキシ",
+    "None": "なし",
+    "Proxy settings cleared from VS Code global configuration.": "VS Codeのグローバル設定からプロキシ設定を消去しました。",
+    "Invalid Proxy URL format.": "無効なプロキシURL形式です。",
+    "Applied proxy settings to VS Code: {0}": "VS Codeにプロキシ設定を適用しました: {0}"
 }

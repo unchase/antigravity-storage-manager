@@ -456,5 +456,10 @@
     "Port detection command (lsof) is required but missing.": "포트 감지 명령(lsof)이 필요하지만 누락되었습니다.",
     "Port detection command (lsof/ss/netstat) is required but missing.": "포트 감지 명령(lsof/ss/netstat)이 필요하지만 누락되었습니다.",
     "Quota feature is disabled in settings.": "할당량 기능이 설정에서 비활성화되어 있습니다.",
-    "Fetching Antigravity quota...": "Antigravity 할당량 가져오는 중..."
+    "Fetching Antigravity quota...": "Antigravity 할당량 가져오는 중...",
+    "Proxy": "프록시",
+    "None": "없음",
+    "Proxy settings cleared from VS Code global configuration.": "VS Code 전역 구성에서 프록시 설정이 지워졌습니다。",
+    "Invalid Proxy URL format.": "잘못된 프록시 URL 형식입니다。",
+    "Applied proxy settings to VS Code: {0}": "VS Code에 프록시 설정 적용됨: {0}"
 }

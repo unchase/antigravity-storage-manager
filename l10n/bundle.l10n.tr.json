@@ -456,5 +456,10 @@
     "Port detection command (lsof) is required but missing.": "Port tespit komutu (lsof) gerekli ancak eksik.",
     "Port detection command (lsof/ss/netstat) is required but missing.": "Port tespit komutu (lsof/ss/netstat) gerekli ancak eksik.",
     "Quota feature is disabled in settings.": "Kota özelliği ayarlarda devre dışı bırakıldı.",
-    "Fetching Antigravity quota...": "Antigravity kotası alınıyor..."
+    "Fetching Antigravity quota...": "Antigravity kotası alınıyor...",
+    "Proxy": "Proxy",
+    "None": "Yok",
+    "Proxy settings cleared from VS Code global configuration.": "Proxy ayarları VS Code küresel yapılandırmasından temizlendi.",
+    "Invalid Proxy URL format.": "Geçersiz Proxy URL formatı.",
+    "Applied proxy settings to VS Code: {0}": "Proxy ayarları VS Code'a uygulandı: {0}"
 }

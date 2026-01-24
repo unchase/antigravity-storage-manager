@@ -38,5 +38,10 @@
     "antigravity.config.quota.criticalThreshold": "クォータの危険（オレンジ色）レベルのパーセンテージしきい値（0-100）。この値を下回るとオレンジ色になります。",
     "antigravity.config.quota.dangerThreshold": "クォータの危機（赤色）レベルのパーセンテージしきい値（0-100）。この値を下回ると赤色になります。",
     "antigravity.command.switchProfile": "VS Code プロファイルの切り替え",
-    "antigravity.config.sync.enableCompression": "Google ドライブ上のデータサイズを削減するため、暗号化の前に圧縮 (Gzip) を有効にする。"
+    "antigravity.config.sync.enableCompression": "Google ドライブ上のデータサイズを削減するため、暗号化の前に圧縮 (Gzip) を有効にする。",
+    "antigravity.command.applyProxy": "プロキシ設定を適用",
+    "antigravity.config.proxy.url": "プロキシサーバーのURL",
+    "antigravity.config.proxy.strictSSL": "プロキシの厳格なSSL確認を有効にする (デフォルト: true)",
+    "antigravity.config.proxy.username": "プロキシユーザー名 (任意)",
+    "antigravity.config.proxy.password": "プロキシパスワード (任意)"
 }

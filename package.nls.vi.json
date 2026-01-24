@@ -38,5 +38,10 @@
     "antigravity.config.quota.criticalThreshold": "Ngưỡng phần trăm cho mức Nghiêm trọng (Cam) của hạn ngạch (0-100). Hạn ngạch dưới giá trị này là Màu cam.",
     "antigravity.config.quota.dangerThreshold": "Ngưỡng phần trăm cho mức Nguy hiểm (Đỏ) của hạn ngạch (0-100). Hạn ngạch dưới giá trị này là Màu đỏ.",
     "antigravity.command.switchProfile": "Chuyển hồ sơ VS Code",
-    "antigravity.config.sync.enableCompression": "Bật nén (Gzip) trước khi mã hóa để giảm kích thước dữ liệu trên Google Drive."
+    "antigravity.config.sync.enableCompression": "Bật nén (Gzip) trước khi mã hóa để giảm kích thước dữ liệu trên Google Drive.",
+    "antigravity.command.applyProxy": "Áp dụng cài đặt Proxy",
+    "antigravity.config.proxy.url": "URL máy chủ Proxy",
+    "antigravity.config.proxy.strictSSL": "Bật SSL nghiêm ngặt cho Proxy (mặc định: true)",
+    "antigravity.config.proxy.username": "Tên người dùng Proxy (Tùy chọn)",
+    "antigravity.config.proxy.password": "Mật khẩu Proxy (Tùy chọn)"
 }

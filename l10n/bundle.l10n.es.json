@@ -456,5 +456,10 @@
     "Port detection command (lsof/ss/netstat) is required but missing.": "Se requiere el comando de detección de puertos (lsof/ss/netstat) pero falta.",
     "Quota feature is disabled in settings.": "La función de cuota está desactivada en la configuración.",
     "Fetching Antigravity quota...": "Obteniendo cuota de Antigravity...",
-    "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "Permiso denegado. Por favor elimine y vuelva a añadir esta cuenta, asegurándose de conceder el permiso de acceso a archivos."
+    "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "Permiso denegado. Por favor elimine y vuelva a añadir esta cuenta, asegurándose de conceder el permiso de acceso a archivos.",
+    "Proxy": "Proxy",
+    "None": "Ninguno",
+    "Proxy settings cleared from VS Code global configuration.": "Configuración de proxy borrada de la configuración global de VS Code.",
+    "Invalid Proxy URL format.": "Formato de URL de proxy inválido.",
+    "Applied proxy settings to VS Code: {0}": "Configuración de proxy aplicada a VS Code: {0}"
 }

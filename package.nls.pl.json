@@ -38,5 +38,10 @@
     "antigravity.config.quota.criticalThreshold": "Próg procentowy dla poziomu Krytycznego (Pomarańczowy) limitu (0-100). Limit poniżej tej wartości jest pomarańczowy.",
     "antigravity.config.quota.dangerThreshold": "Próg procentowy dla poziomu Niebezpieczeństwa (Czerwony) limitu (0-100). Limit poniżej tej wartości jest czerwony.",
     "antigravity.command.switchProfile": "Przełącz profil VS Code",
-    "antigravity.config.sync.enableCompression": "Włącz kompresję (Gzip) przed szyfrowaniem, aby zmniejszyć rozmiar danych na Google Drive."
+    "antigravity.config.sync.enableCompression": "Włącz kompresję (Gzip) przed szyfrowaniem, aby zmniejszyć rozmiar danych na Google Drive.",
+    "antigravity.command.applyProxy": "Zastosuj ustawienia proxy",
+    "antigravity.config.proxy.url": "Adres serwera proxy",
+    "antigravity.config.proxy.strictSSL": "Włącz ścisłe sprawdzanie SSL dla proxy (domyślnie: true)",
+    "antigravity.config.proxy.username": "Nazwa użytkownika proxy (Opcjonalne)",
+    "antigravity.config.proxy.password": "Hasło proxy (Opcjonalne)"
 }

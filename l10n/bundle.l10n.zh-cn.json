@@ -456,5 +456,10 @@
     "Port detection command (lsof) is required but missing.": "需要端口检测命令 (lsof) 但未找到。",
     "Port detection command (lsof/ss/netstat) is required but missing.": "需要端口检测命令 (lsof/ss/netstat) 但未找到。",
     "Quota feature is disabled in settings.": "配额功能已在设置中禁用。",
-    "Fetching Antigravity quota...": "正在获取 Antigravity 配额..."
+    "Fetching Antigravity quota...": "正在获取 Antigravity 配额...",
+    "Proxy": "代理",
+    "None": "无",
+    "Proxy settings cleared from VS Code global configuration.": "已从 VS Code 全局配置中清除代理设置。",
+    "Invalid Proxy URL format.": "无效的代理 URL 格式。",
+    "Applied proxy settings to VS Code: {0}": "已将代理设置应用于 VS Code: {0}"
 }

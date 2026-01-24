@@ -38,5 +38,10 @@
     "antigravity.config.quota.criticalThreshold": "Kota Kritik (Turuncu) seviyesi için yüzde eşiği (0-100). Bu değerin altındaki kota Turuncudur.",
     "antigravity.config.quota.dangerThreshold": "Kota Tehlike (Kırmızı) seviyesi için yüzde eşiği (0-100). Bu değerin altındaki kota Kırmızıdır.",
     "antigravity.command.switchProfile": "VS Code Profilini Değiştir",
-    "antigravity.config.sync.enableCompression": "Google Drive verilerini küçültmek için şifrelemeden önce sıkıştırmayı (Gzip) etkinleştir."
+    "antigravity.config.sync.enableCompression": "Google Drive verilerini küçültmek için şifrelemeden önce sıkıştırmayı (Gzip) etkinleştir.",
+    "antigravity.command.applyProxy": "Proxy Ayarlarını Uygula",
+    "antigravity.config.proxy.url": "Proxy Sunucu URL'si",
+    "antigravity.config.proxy.strictSSL": "Proxy için Katı SSL'i Etkinleştir (varsayılan: true)",
+    "antigravity.config.proxy.username": "Proxy Kullanıcı Adı (İsteğe Bağlı)",
+    "antigravity.config.proxy.password": "Proxy Parolası (İsteğe Bağlı)"
 }

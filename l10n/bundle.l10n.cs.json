@@ -456,5 +456,10 @@
     "Port detection command (lsof/ss/netstat) is required but missing.": "Příkaz pro detekci portů (lsof/ss/netstat) je vyžadován, ale chybí.",
     "Quota feature is disabled in settings.": "Funkce kvót je v nastavení zakázána.",
     "Fetching Antigravity quota...": "Získávání kvóty Antigravity...",
-    "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "Oprávnění odepřeno. Odeberte a znovu přidejte tento účet a ujistěte se, že jste udělili oprávnění k přístupu k souborům."
+    "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "Oprávnění odepřeno. Odeberte a znovu přidejte tento účet a ujistěte se, že jste udělili oprávnění k přístupu k souborům.",
+    "Proxy": "Proxy",
+    "None": "Žádné",
+    "Proxy settings cleared from VS Code global configuration.": "Nastavení proxy vymazáno z globální konfigurace VS Code.",
+    "Invalid Proxy URL format.": "Neplatný formát URL proxy.",
+    "Applied proxy settings to VS Code: {0}": "Nastavení proxy aplikováno na VS Code: {0}"
 }

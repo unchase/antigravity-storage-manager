@@ -38,5 +38,10 @@
     "antigravity.config.quota.criticalThreshold": "حد النسبة المئوية للمستوى الحرج (البرتقالي) للحصة (0-100). الحصة أقل من هذه القيمة تكون برتقالية.",
     "antigravity.config.quota.dangerThreshold": "حد النسبة المئوية لمستوى الخطر (الأحمر) للحصة (0-100). الحصة أقل من هذه القيمة تكون حمراء.",
     "antigravity.command.switchProfile": "تبديل ملف تعريف VS Code",
-    "antigravity.config.sync.enableCompression": "تمكين الضغط (Gzip) قبل التشفير لتقليل حجم البيانات على Google Drive."
+    "antigravity.config.sync.enableCompression": "تمكين الضغط (Gzip) قبل التشفير لتقليل حجم البيانات على Google Drive.",
+    "antigravity.command.applyProxy": "تطبيق إعدادات الوكيل",
+    "antigravity.config.proxy.url": "رابط خادم الوكيل",
+    "antigravity.config.proxy.strictSSL": "تفعيل SSL الصارم للوكيل (الافتراضي: true)",
+    "antigravity.config.proxy.username": "اسم مستخدم الوكيل (اختياري)",
+    "antigravity.config.proxy.password": "كلمة مرور الوكيل (اختياري)"
 }

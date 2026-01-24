@@ -456,5 +456,10 @@
     "Port detection command (lsof/ss/netstat) is required but missing.": "أمر الكشف عن المنفذ (lsof/ss/netstat) مطلوب ولكنه مفقود.",
     "Quota feature is disabled in settings.": "ميزة الحصة معطلة في الإعدادات.",
     "Fetching Antigravity quota...": "جاري جلب حصة Antigravity...",
-    "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "تم رفض الإذن. يرجى إزالة هذا الحساب وإضافته مرة أخرى، مع التأكد من منح إذن الوصول إلى الملف."
+    "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "تم رفض الإذن. يرجى إزالة هذا الحساب وإضافته مرة أخرى، مع التأكد من منح إذن الوصول إلى الملف.",
+    "Proxy": "الوكيل",
+    "None": "لا يوجد",
+    "Proxy settings cleared from VS Code global configuration.": "تم مسح إعدادات الوكيل من التكوين العام لـ VS Code.",
+    "Invalid Proxy URL format.": "تنسيق رابط الوكيل غير صالح.",
+    "Applied proxy settings to VS Code: {0}": "تم تطبيق إعدادات الوكيل على VS Code: {0}"
 }

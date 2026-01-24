@@ -38,5 +38,10 @@
     "antigravity.config.quota.criticalThreshold": "Prozentschwelle für kritische Stufe (Orange) der Quote (0-100). Quote unter diesem Wert ist Orange.",
     "antigravity.config.quota.dangerThreshold": "Prozentschwelle für Gefahrenstufe (Rot) der Quote (0-100). Quote unter diesem Wert ist Rot.",
     "antigravity.command.switchProfile": "VS Code Profil wechseln",
-    "antigravity.config.sync.enableCompression": "Komprimierung (Gzip) vor der Verschlüsselung aktivieren, um die Datengröße auf Google Drive zu reduzieren."
+    "antigravity.config.sync.enableCompression": "Komprimierung (Gzip) vor der Verschlüsselung aktivieren, um die Datengröße auf Google Drive zu reduzieren.",
+    "antigravity.command.applyProxy": "Proxy-Einstellungen anwenden",
+    "antigravity.config.proxy.url": "Proxy-Server-URL",
+    "antigravity.config.proxy.strictSSL": "Strenge SSL-Prüfung für Proxy aktivieren (Standard: true)",
+    "antigravity.config.proxy.username": "Proxy-Benutzername (Optional)",
+    "antigravity.config.proxy.password": "Proxy-Passwort (Optional)"
 }

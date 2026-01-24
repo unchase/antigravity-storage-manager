@@ -38,5 +38,10 @@
     "antigravity.config.quota.criticalThreshold": "Procentuální práh pro kritickou úroveň (oranžová) kvóty (0-100). Kvóta pod touto hodnotou je oranžová.",
     "antigravity.config.quota.dangerThreshold": "Procentuální práh pro úroveň nebezpečí (červená) kvóty (0-100). Kvóta pod touto hodnotou je červená.",
     "antigravity.command.switchProfile": "Přepnout profil VS Code",
-    "antigravity.config.sync.enableCompression": "Povolit kompresi (Gzip) před šifrováním pro snížení velikosti dat na Google Drive."
+    "antigravity.config.sync.enableCompression": "Povolit kompresi (Gzip) před šifrováním pro snížení velikosti dat na Google Drive.",
+    "antigravity.command.applyProxy": "Použít nastavení proxy",
+    "antigravity.config.proxy.url": "URL proxy serveru",
+    "antigravity.config.proxy.strictSSL": "Povolit striktní SSL pro proxy (výchozí: true)",
+    "antigravity.config.proxy.username": "Uživatelské jméno proxy (Volitelné)",
+    "antigravity.config.proxy.password": "Heslo proxy (Volitelné)"
 }

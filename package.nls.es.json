@@ -38,5 +38,10 @@
     "antigravity.config.quota.criticalThreshold": "Umbral de porcentaje para el nivel crítico (naranja) de cuota (0-100). La cuota por debajo de este valor es naranja.",
     "antigravity.config.quota.dangerThreshold": "Umbral de porcentaje para el nivel de peligro (rojo) de cuota (0-100). La cuota por debajo de este valor es roja.",
     "antigravity.command.switchProfile": "Cambiar perfil de VS Code",
-    "antigravity.config.sync.enableCompression": "Habilitar compresión (Gzip) antes del cifrado para reducir el tamaño de los datos en Google Drive."
+    "antigravity.config.sync.enableCompression": "Habilitar compresión (Gzip) antes del cifrado para reducir el tamaño de los datos en Google Drive.",
+    "antigravity.command.applyProxy": "Aplicar configuración de proxy",
+    "antigravity.config.proxy.url": "URL del servidor proxy",
+    "antigravity.config.proxy.strictSSL": "Habilitar SSL estricto para proxy (predeterminado: true)",
+    "antigravity.config.proxy.username": "Nombre de usuario del proxy (Opcional)",
+    "antigravity.config.proxy.password": "Contraseña del proxy (Opcional)"
 }

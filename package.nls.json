@@ -38,5 +38,10 @@
     "antigravity.config.showCreditsBalance": "Show Antigravity credits balance in dashboard and status bar",
     "antigravity.config.quota.historyRetentionDays": "Number of days to keep quota history (1-30).",
     "antigravity.command.switchProfile": "Switch VS Code Profile",
-    "antigravity.config.sync.enableCompression": "Enable compression (Gzip) before encryption to reduce data size on Google Drive."
+    "antigravity.config.sync.enableCompression": "Enable compression (Gzip) before encryption to reduce data size on Google Drive.",
+    "antigravity.command.applyProxy": "Apply Proxy Settings",
+    "antigravity.config.proxy.url": "Proxy Server URL",
+    "antigravity.config.proxy.strictSSL": "Enable Strict SSL for Proxy (default: true)",
+    "antigravity.config.proxy.username": "Proxy Username (Optional)",
+    "antigravity.config.proxy.password": "Proxy Password (Optional)"
 }

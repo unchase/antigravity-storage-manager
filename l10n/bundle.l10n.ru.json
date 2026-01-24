@@ -455,6 +455,11 @@
     "Port detection command (lsof/ss/netstat) is required but missing.": "Требуется команда обнаружения портов (lsof/ss/netstat), но она отсутствует.",
     "Quota feature is disabled in settings.": "Функция квот отключена в настройках.",
     "Fetching Antigravity quota...": "Получение квоты Antigravity...",
+    "Proxy": "Прокси",
+    "None": "Нет",
+    "Proxy settings cleared from VS Code global configuration.": "Настройки прокси очищены из глобальной конфигурации VS Code.",
+    "Invalid Proxy URL format.": "Некорректный формат URL прокси.",
+    "Applied proxy settings to VS Code: {0}": "Настройки прокси применены в VS Code: {0}",
     "You must grant the \"See, edit, create, and delete only the specific Google Drive files you use with this app\" permission to use this extension.": "Вы должны предоставить разрешение «Просматривать, переименовывать, создавать и удалять только те файлы на Google Диске, которые вы используете с этим приложением» для работы расширения.",
     "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "Доступ запрещен. Пожалуйста, удалите и снова добавьте этот аккаунт, убедившись, что вы предоставили разрешение на доступ к файлам."
 }
