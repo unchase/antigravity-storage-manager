@@ -33,6 +33,7 @@
     "antigravity.config.useMetadataCache": "Utiliser les métadonnées en cache pour les badges d'état (plus rapide, réduit les requêtes Google Drive)",
     "antigravity.command.triggerBackup": "Créer une sauvegarde maintenant",
     "antigravity.config.showCreditsBalance": "Afficher le solde de crédits Antigravity dans le tableau de bord et la barre d'état",
+    "antigravity.config.quota.historyRetentionDays": "Nombre de jours de conservation de l'historique des quotas (1-30).",
     "antigravity.config.quota.warningThreshold": "Seuil de pourcentage pour le niveau d'avertissement (jaune) du quota (0-100). Le quota inférieur à cette valeur est jaune.",
     "antigravity.config.quota.criticalThreshold": "Seuil de pourcentage pour le niveau critique (orange) du quota (0-100). Le quota inférieur à cette valeur est orange.",
     "antigravity.config.quota.dangerThreshold": "Seuil de pourcentage pour le niveau de danger (rouge) du quota (0-100). Le quota inférieur à cette valeur est rouge."

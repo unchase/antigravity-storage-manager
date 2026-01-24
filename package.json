@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Securely sync Antigravity Conversations with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.",
-    "version": "0.8.0",
+    "version": "0.8.1",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -374,21 +374,21 @@
                     "default": true,
                     "description": "%antigravity.config.useMetadataCache%"
                 },
-                "antigravity-storage-manager.quota.warningThreshold": {
+                "antigravity-storage-manager.quota.thresholds.warning": {
                     "type": "number",
                     "default": 50,
                     "minimum": 0,
                     "maximum": 100,
                     "description": "%antigravity.config.quota.warningThreshold%"
                 },
-                "antigravity-storage-manager.quota.criticalThreshold": {
+                "antigravity-storage-manager.quota.thresholds.critical": {
                     "type": "number",
                     "default": 30,
                     "minimum": 0,
                     "maximum": 100,
                     "description": "%antigravity.config.quota.criticalThreshold%"
                 },
-                "antigravity-storage-manager.quota.dangerThreshold": {
+                "antigravity-storage-manager.quota.thresholds.danger": {
                     "type": "number",
                     "default": 0,
                     "minimum": 0,
@@ -399,6 +399,13 @@
                     "type": "boolean",
                     "default": false,
                     "description": "%antigravity.config.showCreditsBalance%"
+                },
+                "antigravity-storage-manager.quota.historyRetentionDays": {
+                    "type": "number",
+                    "default": 7,
+                    "minimum": 1,
+                    "maximum": 30,
+                    "description": "%antigravity.config.quota.historyRetentionDays%"
                 }
             }
         },

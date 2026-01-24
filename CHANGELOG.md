@@ -5,6 +5,21 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-01-24
+### Quota & Account Dashboard
+- **Visual Usage Graphs**: Added beautiful area charts to the Account Dashboard showing quota usage history for each model over time.
+- **Configurable History**: Added `antigravity.config.quota.historyRetentionDays` setting (default: 7 days) to control how long usage data is kept.
+- **Grouped Thresholds**: Quota threshold settings (Warning, Critical, Danger) are now logically grouped in settings for better usability.
+
+### Diagnostics & Maintenance
+- **System Diagnostics**: New `Run Diagnostics` command checks internet connectivity, Google Drive authentication, and local quota service health.
+- **Cache Cleaning**: Added `Clear Cache` command to remove temporary files and reset internal metadata caches.
+- **Network Health**: Dashboard now utilizes diagnostics to report connection status.
+
+### Configuration
+- **Flexible Pinning**: Removed strict validation for `pinnedModels`, allowing users to pin new or custom model IDs without errors.
+- **Localization**: Added native translations for all new features (Diagnostics, Cache, History) across all 16 supported languages.
+
 ## [0.8.0] - 2026-01-24
 ### Localization
 - **Decryption Errors**: Fixed hardcoded English error messages in the decryption module. "Failed to get/decrypt manifest" and "Decryption failed" are now fully localized across all 16 supported languages.

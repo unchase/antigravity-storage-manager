@@ -14,12 +14,26 @@ interface ModelUsageHistory {
 export class QuotaUsageTracker {
     private context: vscode.ExtensionContext;
     private history: Map<string, UsagePoint[]> = new Map();
-    private readonly MAX_POINTS = 50; // Keep last 50 points
+    private readonly MAX_POINTS = 50; // Legacy fixed count
     private readonly STORAGE_KEY = 'quotaUsageHistory';
+    private historyRetentionDays: number = 7;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
+        this.updateConfig();
         this.loadHistory();
+
+        // Listen for config changes
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('antigravity-storage-manager.quota.historyRetentionDays')) {
+                this.updateConfig();
+            }
+        });
+    }
+
+    private updateConfig() {
+        const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
+        this.historyRetentionDays = config.get<number>('quota.historyRetentionDays', 7);
     }
 
     private loadHistory() {
@@ -27,6 +41,9 @@ export class QuotaUsageTracker {
         data.forEach(item => {
             this.history.set(item.modelId, item.points);
         });
+
+        // Prune on load
+        this.pruneHistory();
     }
 
     private saveHistory() {
@@ -37,78 +54,105 @@ export class QuotaUsageTracker {
         this.context.globalState.update(this.STORAGE_KEY, data);
     }
 
+    private pruneHistory() {
+        const cutoff = Date.now() - (this.historyRetentionDays * 24 * 60 * 60 * 1000);
+        this.history.forEach((points, modelId) => {
+            // Filter points older than cutoff
+            const validPoints = points.filter(p => p.timestamp >= cutoff);
+
+            // Optimization: If we have too many points (e.g. > 500 for 7 days), maybe downsample?
+            // For now, let's just keep them. 1 point per minute = 1440 per day.
+            // That's too much for storage?
+            // Maybe we should only store if changed significantly or at minimum interval (e.g. 1 hour).
+            // But we want resolution.
+            // Let's enforce minimum interval of 15 minutes between points if value hasn't changed much?
+            // Actually, `track` method calls every minute. We should rate limit storage there.
+
+            this.history.set(modelId, validPoints);
+        });
+    }
+
     public track(snapshot: QuotaSnapshot) {
         let changed = false;
         const now = Date.now();
+        const minInterval = 10 * 60 * 1000; // 10 minutes interval to save space
 
         snapshot.models.forEach(model => {
             if (model.remainingPercentage !== undefined) {
                 const points = this.history.get(model.modelId) || [];
+                const lastPoint = points.length > 0 ? points[points.length - 1] : null;
 
-                // Add new point
-                // Only add if it's different enough or enough time passed (e.g. 5 mins)
-                // to avoid noise. But for now, let's just add every successful fetch (1 min interval).
-                // Actually, if value hasn't changed, maybe skip to save space? 
-                // But we need time progression to calculate speed 0 if usage is 0.
+                // Add point if:
+                // 1. No points
+                // 2. Value changed significantly (> 0.1%)
+                // 3. Time elapsed > minInterval
 
-                points.push({ timestamp: now, usage: 100 - model.remainingPercentage });
+                const currentUsage = 100 - model.remainingPercentage;
 
-                // Prune old points (older than 24h?) or just by count
-                // Let's keep by count for simplicity first
-                if (points.length > this.MAX_POINTS) {
-                    points.shift();
+                let shouldAdd = false;
+                if (!lastPoint) {
+                    shouldAdd = true;
+                } else {
+                    const timeDiff = now - lastPoint.timestamp;
+                    const usageDiff = Math.abs(currentUsage - lastPoint.usage);
+
+                    if (usageDiff > 0.1 || timeDiff > minInterval) {
+                        shouldAdd = true;
+                    }
                 }
 
-                this.history.set(model.modelId, points);
-                changed = true;
+                if (shouldAdd) {
+                    points.push({ timestamp: now, usage: currentUsage });
+                    this.history.set(model.modelId, points);
+                    changed = true;
+                }
             }
         });
 
         if (changed) {
+            this.pruneHistory();
             this.saveHistory();
         }
+    }
+
+    public getHistory(modelId: string): UsagePoint[] {
+        return this.history.get(modelId) || [];
     }
 
     public getEstimation(modelId: string): { speedPerHour: number, estimatedTimeRemainingMs: number | null } | null {
         const points = this.history.get(modelId);
         if (!points || points.length < 2) return null;
 
-        // Calculate speed based on first and last point in the window
-        // Or linear regression for better accuracy?
-        // Let's do simple slope between oldest and newest in our window
-        const newest = points[points.length - 1];
-        const oldest = points[0];
+        // Calculate speed based on last 24h or available window
+        const now = Date.now();
+        const oneDayAgo = now - (24 * 60 * 60 * 1000);
+
+        let startIndex = 0;
+        // Find first point within last 24h
+        for (let i = 0; i < points.length; i++) {
+            if (points[i].timestamp >= oneDayAgo) {
+                startIndex = i;
+                break;
+            }
+        }
+
+        // If all points are older than 24h (shouldn't happen with pruning/tracking), use last few
+        // If we only have 1 point in last 24h, we need previous point to estimate speed?
+
+        const recentPoints = points.slice(startIndex);
+        if (recentPoints.length < 2) return null;
+
+        const newest = recentPoints[recentPoints.length - 1];
+        const oldest = recentPoints[0];
 
         const timeDiffHours = (newest.timestamp - oldest.timestamp) / (1000 * 60 * 60);
-        if (timeDiffHours < 0.1) return null; // Not enough time span
+        if (timeDiffHours < 0.1) return null;
 
-        const usageDiff = newest.usage - oldest.usage; // usage is consumed %, so it should increase
+        const usageDiff = newest.usage - oldest.usage;
 
-        // If usage decreased (reset happened), we need to handle that.
-        // Simple heuristic: if newest < oldest, reset happened.
-        // In that case, find the dip and calculate from there.
-        // For now, if reset detected, just return null or restart calculation from dip.
         if (usageDiff < 0) {
-            // Reset detected in window using simple check. 
-            // Let's find the reset point.
-            let resetIndex = -1;
-            for (let i = 1; i < points.length; i++) {
-                if (points[i].usage < points[i - 1].usage) {
-                    resetIndex = i;
-                }
-            }
-            if (resetIndex !== -1 && resetIndex < points.length - 1) {
-                // Use data after reset
-                const postResetOldest = points[resetIndex];
-                const postResetNewest = points[points.length - 1];
-                const prTimeDiff = (postResetNewest.timestamp - postResetOldest.timestamp) / (1000 * 60 * 60);
-                if (prTimeDiff < 0.05) return null;
-
-                const prUsageDiff = postResetNewest.usage - postResetOldest.usage;
-                const speed = prUsageDiff / prTimeDiff;
-                return this.calcResult(speed, newest.usage);
-            }
-            return null;
+            // Reset detected
+            return null; // TODO: handle reset better
         }
 
         const speed = usageDiff / timeDiffHours; // % per hour

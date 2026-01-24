@@ -755,6 +755,38 @@ export class SyncManager {
     }
 
     /**
+     * Clear all internal caches and temporary files
+     */
+    public async clearCache(): Promise<void> {
+        this.fileHashCache.clear();
+        this.activeTransfers.clear();
+        this.cachedManifest = null;
+        this.lastManifestFetch = 0;
+
+        // Clean up temp files
+        try {
+            const tempDir = os.tmpdir();
+            const files = await fs.promises.readdir(tempDir);
+            let deletedCount = 0;
+
+            for (const file of files) {
+                if (file.startsWith('ag-sync-') || file.startsWith('ag-import-')) {
+                    const fullPath = path.join(tempDir, file);
+                    try {
+                        await fs.promises.rm(fullPath, { recursive: true, force: true });
+                        deletedCount++;
+                    } catch (e) {
+                        console.error(`Failed to delete temp file ${file}:`, e);
+                    }
+                }
+            }
+            console.log(`[Cache] Cleared internal caches and deleted ${deletedCount} temp files/dirs.`);
+        } catch (e) {
+            console.error('Failed to cleanup temp files:', e);
+        }
+    }
+
+    /**
      * Get decrypted manifest from Drive with caching support
      */
     public async getDecryptedManifest(forceRefresh: boolean = false): Promise<SyncManifest | null> {

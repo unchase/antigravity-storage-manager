@@ -191,9 +191,9 @@ export class AccountInfoWebview {
         ];
 
         const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
-        const warningThreshold = config.get<number>('quota.warningThreshold') ?? 50;
-        const criticalThreshold = config.get<number>('quota.criticalThreshold') ?? 30;
-        const dangerThreshold = config.get<number>('quota.dangerThreshold') ?? 0;
+        const warningThreshold = config.get<number>('quota.thresholds.warning') ?? config.get<number>('quota.warningThreshold') ?? 50;
+        const criticalThreshold = config.get<number>('quota.thresholds.critical') ?? config.get<number>('quota.criticalThreshold') ?? 30;
+        const dangerThreshold = config.get<number>('quota.thresholds.danger') ?? config.get<number>('quota.dangerThreshold') ?? 0;
 
         const getStatusIcon = (pct: number, isExhausted: boolean): string => {
             if (isExhausted || pct <= dangerThreshold) return '🔴';
@@ -252,7 +252,6 @@ export class AccountInfoWebview {
                 <div class="model-row ${isPinned ? 'pinned-row' : ''}">
                     <div class="model-header">
                         <div style="display:flex; align-items:center; gap:8px;">
-                             <!-- Pin Button: Active (Pinned) vs Inactive (Add to Pinned) -->
                              ${isPinned
                     ? `<div class="pin-btn pinned" onclick="postCommand('togglePin', {modelId: '${model.modelId}'})" title="${l.t('Unpin')}">📌</div>`
                     : `<div class="pin-btn unpinned" onclick="postCommand('togglePin', {modelId: '${model.modelId}'})" title="${l.t('Pin')}">📍</div>`
@@ -275,6 +274,51 @@ export class AccountInfoWebview {
                         </div>
                     </div>
                     ${cycleInfo}
+                    ${(() => {
+                    // Chart Rendering Logic
+                    if (!AccountInfoWebview.latestTracker) return '';
+                    const history = AccountInfoWebview.latestTracker.getHistory(model.modelId);
+                    if (!history || history.length < 2) return '';
+
+                    const width = 200;
+                    const height = 40;
+                    const padding = 2;
+
+                    // Sort by time
+                    history.sort((a, b) => a.timestamp - b.timestamp);
+
+                    // Limit to last 7 days (or config) - though tracker already does pruning
+                    const minTime = history[0].timestamp;
+                    const maxTime = history[history.length - 1].timestamp;
+                    const timeRange = maxTime - minTime;
+
+                    if (timeRange <= 0) return ''; // No duration
+
+                    const points = history.map(p => {
+                        const x = padding + ((p.timestamp - minTime) / timeRange) * (width - 2 * padding);
+                        const y = height - padding - ((p.usage / 100) * (height - 2 * padding));
+                        return `${x},${y}`;
+                    }).join(' ');
+
+                    // Area path (close the loop)
+                    const firstPt = points.split(' ')[0];
+                    const lastPt = points.split(' ').pop();
+                    const areaPath = `${points} ${lastPt?.split(',')[0]},${height} ${firstPt?.split(',')[0]},${height}`;
+
+                    return `
+                        <div class="chart-container" title="${l.t('Usage History')}">
+                             <svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="grad-${model.modelId}" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" style="stop-color:${color};stop-opacity:0.3" />
+                                        <stop offset="100%" style="stop-color:${color};stop-opacity:0" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="${points}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                                <polygon points="${areaPath}" fill="url(#grad-${model.modelId})" />
+                             </svg>
+                        </div>`;
+                })()}
                 </div>
             `;
         }).join('');
@@ -738,13 +782,22 @@ export class AccountInfoWebview {
             color: #3fb950;
         }
 
-        .feature-card.disabled {
-            opacity: 0.6;
-            border-left: 4px solid var(--danger);
-        }
         .feature-card.disabled .feature-badge {
             background: rgba(218, 54, 51, 0.15);
             color: #f85149;
+        }
+
+        .chart-container {
+            height: 48px;
+            width: 100%;
+            margin-top: 12px;
+            border-top: 1px dashed var(--border);
+            padding-top: 8px;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        .chart-container:hover {
+            opacity: 1;
         }
     </style>
 </head>

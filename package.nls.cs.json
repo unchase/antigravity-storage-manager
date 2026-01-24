@@ -33,6 +33,7 @@
     "antigravity.config.useMetadataCache": "Použít metadata v mezipaměti pro odznaky stavu konverzace (rychlejší, snižuje požadavky na Google Drive)",
     "antigravity.command.triggerBackup": "Vytvořit zálohu nyní",
     "antigravity.config.showCreditsBalance": "Zobrazit zůstatek kreditů Antigravity na řídicím panelu a ve stavovém řádku",
+    "antigravity.config.quota.historyRetentionDays": "Počet dní pro uchování historie kvót (1-30).",
     "antigravity.config.quota.warningThreshold": "Procentuální práh pro úroveň varování (žlutá) kvóty (0-100). Kvóta pod touto hodnotou je žlutá.",
     "antigravity.config.quota.criticalThreshold": "Procentuální práh pro kritickou úroveň (oranžová) kvóty (0-100). Kvóta pod touto hodnotou je oranžová.",
     "antigravity.config.quota.dangerThreshold": "Procentuální práh pro úroveň nebezpečí (červená) kvóty (0-100). Kvóta pod touto hodnotou je červená."

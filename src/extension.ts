@@ -8,9 +8,10 @@ import { GoogleAuthProvider } from './googleAuth';
 import { SyncManager } from './sync';
 import { getConversationsAsync, ConversationItem } from './utils';
 import { resolveConflictsCommand } from './conflicts';
+import { DiagnosticsManager } from './diagnostics/diagnosticsManager';
+import { LocalizationManager } from './l10n/localizationManager';
 import { BackupManager } from './backup';
 import { QuotaManager } from './quota/quotaManager';
-import { LocalizationManager } from './l10n/localizationManager';
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
@@ -25,6 +26,7 @@ let authProvider: GoogleAuthProvider;
 let syncManager: SyncManager;
 let backupManager: BackupManager;
 let quotaManager: QuotaManager;
+let diagnosticsManager: DiagnosticsManager;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log(`Congratulations, "${EXT_NAME}" is now active!`);
@@ -48,6 +50,9 @@ export async function activate(context: vscode.ExtensionContext) {
     quotaManager = new QuotaManager(context, authProvider);
     syncManager.setQuotaManager(quotaManager);
     quotaManager.setSyncManager(syncManager); // Inject sync manager for stats
+
+    // Initialize Diagnostics Manager
+    diagnosticsManager = new DiagnosticsManager(authProvider, quotaManager);
 
     // Register existing commands
     context.subscriptions.push(
@@ -186,7 +191,12 @@ export async function activate(context: vscode.ExtensionContext) {
             if (quotaManager.isFeatureEnabled()) {
                 items.splice(2, 0, { label: `$(dashboard) ${lm.t('Show Quota')}`, description: `${lm.t('View Antigravity quota usage')} ${getKeybindingLabel(`${EXT_NAME}.showQuota`)}`, command: `${EXT_NAME}.showQuota` });
                 items.splice(3, 0, { label: `$(account) ${lm.t('Google Account Data')}`, description: lm.t('View raw account data from Google'), command: `${EXT_NAME}.showAccountData` });
+                items.splice(4, 0, { label: `$(pulse) ${lm.t('Run Diagnostics')}`, description: lm.t('Check connection and system health'), command: `${EXT_NAME}.runDiagnostics` });
             }
+
+            // Advanced / Tools Section
+            items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+            items.push({ label: `$(trash) ${lm.t('Clear Cache')}`, description: lm.t('Clear temporary files and internal caches'), command: `${EXT_NAME}.clearCache` });
 
             // Post-process items to reflect auth state
             const processedItems = items.map(item => {
@@ -360,6 +370,54 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.showSyncStats`, async () => {
             await syncManager.showStatistics();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.runDiagnostics`, async () => {
+            const lm = LocalizationManager.getInstance();
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: lm.t('Running Diagnostics...'),
+                cancellable: false
+            }, async () => {
+                const results = await diagnosticsManager.runDiagnostics();
+
+                // Show output
+                const outputChannel = vscode.window.createOutputChannel("Antigravity Diagnostics");
+                outputChannel.clear();
+                outputChannel.appendLine("Antigravity Storage Manager - Diagnostics Report");
+                outputChannel.appendLine("================================================");
+                outputChannel.appendLine(`Time: ${new Date().toLocaleString()}`);
+                outputChannel.appendLine("");
+
+                let hasFailures = false;
+
+                results.forEach(r => {
+                    const icon = r.status === 'pass' ? '[PASS]' : r.status === 'warn' ? '[WARN]' : '[FAIL]';
+                    outputChannel.appendLine(`${icon} ${r.label}: ${r.message}`);
+                    if (r.details) {
+                        outputChannel.appendLine(`       Details: ${r.details}`);
+                    }
+                    if (r.status === 'fail') hasFailures = true;
+                });
+
+                outputChannel.show();
+
+                if (hasFailures) {
+                    vscode.window.showErrorMessage(lm.t('Diagnostics completed with errors. Check output channel for details.'));
+                } else {
+                    vscode.window.showInformationMessage(lm.t('Diagnostics passed successfully.'));
+                }
+            });
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.clearCache`, async () => {
+            const lm = LocalizationManager.getInstance();
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: lm.t('Clearing cache...'),
+                cancellable: false
+            }, async () => {
+                await syncManager.clearCache();
+                vscode.window.showInformationMessage(lm.t('Cache cleared successfully.'));
+            });
         })
     );
 

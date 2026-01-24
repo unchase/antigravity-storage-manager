@@ -33,6 +33,7 @@
     "antigravity.config.useMetadataCache": "استخدم البيانات الوصفية المخزنة مؤقتًا لشارات حالة المحادثة (أسرع، يقلل من طلبات Google Drive)",
     "antigravity.command.triggerBackup": "إنشاء نسخة احتياطية الآن",
     "antigravity.config.showCreditsBalance": "عرض رصيد ائتمانات Antigravity في لوحة المعلومات وشريط الحالة",
+    "antigravity.config.quota.historyRetentionDays": "عدد الأيام للاحتفاظ بسجل الحصص (1-30).",
     "antigravity.config.quota.warningThreshold": "Percentage threshold for Warning (Yellow) quota level (0-100). Quota below this value is Yellow.",
     "antigravity.config.quota.criticalThreshold": "Percentage threshold for Critical (Orange) quota level (0-100). Quota below this value is Orange.",
     "antigravity.config.quota.dangerThreshold": "Percentage threshold for Danger (Red) quota level (0-100). Quota below this value is Red."

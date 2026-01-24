@@ -33,6 +33,7 @@
     "antigravity.config.useMetadataCache": "Usar metadatos en caché para insignias de estado de conversación (más rápido, reduce solicitudes a Google Drive)",
     "antigravity.command.triggerBackup": "Crear copia de seguridad ahora",
     "antigravity.config.showCreditsBalance": "Mostrar el saldo de créditos de Antigravity en el panel y la barra de estado",
+    "antigravity.config.quota.historyRetentionDays": "Número de días para conservar el historial de cuotas (1-30).",
     "antigravity.config.quota.warningThreshold": "Umbral de porcentaje para el nivel de advertencia (amarillo) de cuota (0-100). La cuota por debajo de este valor es amarilla.",
     "antigravity.config.quota.criticalThreshold": "Umbral de porcentaje para el nivel crítico (naranja) de cuota (0-100). La cuota por debajo de este valor es naranja.",
     "antigravity.config.quota.dangerThreshold": "Umbral de porcentaje para el nivel de peligro (rojo) de cuota (0-100). La cuota por debajo de este valor es roja."
