@@ -461,5 +461,9 @@
     "None": "Ninguno",
     "Proxy settings cleared from VS Code global configuration.": "Configuración de proxy borrada de la configuración global de VS Code.",
     "Invalid Proxy URL format.": "Formato de URL de proxy inválido.",
-    "Applied proxy settings to VS Code: {0}": "Configuración de proxy aplicada a VS Code: {0}"
+    "Applied proxy settings to VS Code: {0}": "Configuración de proxy aplicada a VS Code: {0}",
+    "Configure Proxy": "Configurar proxy",
+    "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Introduzca la URL del proxy (ej. http://user:pass@host:port) o déjelo vacío para borrar",
+    "Apply Proxy Settings": "Aplicar configuración de proxy",
+    "Configure and apply proxy settings": "Configurar y aplicar configuración de proxy"
 }

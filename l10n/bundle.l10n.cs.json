@@ -461,5 +461,9 @@
     "None": "Žádné",
     "Proxy settings cleared from VS Code global configuration.": "Nastavení proxy vymazáno z globální konfigurace VS Code.",
     "Invalid Proxy URL format.": "Neplatný formát URL proxy.",
-    "Applied proxy settings to VS Code: {0}": "Nastavení proxy aplikováno na VS Code: {0}"
+    "Applied proxy settings to VS Code: {0}": "Nastavení proxy aplikováno na VS Code: {0}",
+    "Configure Proxy": "Konfigurovat proxy",
+    "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Zadejte URL proxy (např. http://user:pass@host:port) nebo nechte prázdné pro vymazání",
+    "Apply Proxy Settings": "Použít nastavení proxy",
+    "Configure and apply proxy settings": "Konfigurovat a použít nastavení proxy"
 }

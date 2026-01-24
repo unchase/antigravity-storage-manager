@@ -461,5 +461,9 @@
     "None": "لا يوجد",
     "Proxy settings cleared from VS Code global configuration.": "تم مسح إعدادات الوكيل من التكوين العام لـ VS Code.",
     "Invalid Proxy URL format.": "تنسيق رابط الوكيل غير صالح.",
-    "Applied proxy settings to VS Code: {0}": "تم تطبيق إعدادات الوكيل على VS Code: {0}"
+    "Applied proxy settings to VS Code: {0}": "تم تطبيق إعدادات الوكيل على VS Code: {0}",
+    "Configure Proxy": "تكوين الوكيل",
+    "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "أدخل عنوان URL للوكيل (مثلاً http://user:pass@host:port) أو اتركه فارغاً للمسح",
+    "Apply Proxy Settings": "تطبيق إعدادات الوكيل",
+    "Configure and apply proxy settings": "تكوين وتطبيق إعدادات الوكيل"
 }

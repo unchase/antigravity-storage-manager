@@ -461,5 +461,9 @@
     "None": "無",
     "Proxy settings cleared from VS Code global configuration.": "已從 VS Code 全域設定中清除代理設定。",
     "Invalid Proxy URL format.": "無效的代理 URL 格式。",
-    "Applied proxy settings to VS Code: {0}": "已將代理設定套用到 VS Code: {0}"
+    "Applied proxy settings to VS Code: {0}": "已將代理設定套用到 VS Code: {0}",
+    "Configure Proxy": "設定代理",
+    "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "輸入代理 URL（例如 http://user:pass@host:port）或留空以清除",
+    "Apply Proxy Settings": "套用代理設定",
+    "Configure and apply proxy settings": "設定並套用代理設定"
 }

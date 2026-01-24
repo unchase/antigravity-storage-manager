@@ -461,5 +461,9 @@
     "None": "없음",
     "Proxy settings cleared from VS Code global configuration.": "VS Code 전역 구성에서 프록시 설정이 지워졌습니다。",
     "Invalid Proxy URL format.": "잘못된 프록시 URL 형식입니다。",
-    "Applied proxy settings to VS Code: {0}": "VS Code에 프록시 설정 적용됨: {0}"
+    "Applied proxy settings to VS Code: {0}": "VS Code에 프록시 설정 적용됨: {0}",
+    "Configure Proxy": "프록시 구성",
+    "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "프록시 URL을 입력하세요(예: http://user:pass@host:port). 지우려면 비워 두세요.",
+    "Apply Proxy Settings": "프록시 설정 적용",
+    "Configure and apply proxy settings": "프록시 설정 구성 및 적용"
 }

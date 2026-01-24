@@ -461,5 +461,9 @@
     "None": "なし",
     "Proxy settings cleared from VS Code global configuration.": "VS Codeのグローバル設定からプロキシ設定を消去しました。",
     "Invalid Proxy URL format.": "無効なプロキシURL形式です。",
-    "Applied proxy settings to VS Code: {0}": "VS Codeにプロキシ設定を適用しました: {0}"
+    "Applied proxy settings to VS Code: {0}": "VS Codeにプロキシ設定を適用しました: {0}",
+    "Configure Proxy": "プロキシの構成",
+    "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "プロキシURLを入力してください（例: http://user:pass@host:port）。クリアするには空のままにしてください",
+    "Apply Proxy Settings": "プロキシ設定を適用",
+    "Configure and apply proxy settings": "プロキシ設定を構成して適用"
 }

@@ -461,5 +461,9 @@
     "None": "Không",
     "Proxy settings cleared from VS Code global configuration.": "Đã xóa cài đặt proxy khỏi cấu hình toàn cầu của VS Code.",
     "Invalid Proxy URL format.": "Định dạng URL proxy không hợp lệ.",
-    "Applied proxy settings to VS Code: {0}": "Đã áp dụng cài đặt proxy cho VS Code: {0}"
+    "Applied proxy settings to VS Code: {0}": "Đã áp dụng cài đặt proxy cho VS Code: {0}",
+    "Configure Proxy": "Cấu hình Proxy",
+    "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Nhập URL Proxy (vd: http://user:pass@host:port) hoặc để trống để xóa",
+    "Apply Proxy Settings": "Áp dụng cài đặt Proxy",
+    "Configure and apply proxy settings": "Cấu hình và áp dụng cài đặt proxy"
 }

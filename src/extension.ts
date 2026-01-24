@@ -198,6 +198,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
             // Advanced / Tools Section
             items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+            items.push({ label: `$(globe) ${lm.t('Apply Proxy Settings')}`, description: lm.t('Configure and apply proxy settings'), command: `${EXT_NAME}.applyProxy` });
             items.push({ label: `$(trash) ${lm.t('Clear Cache')}`, description: lm.t('Clear temporary files and internal caches'), command: `${EXT_NAME}.clearCache` });
 
             // Post-process items to reflect auth state
