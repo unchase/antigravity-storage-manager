@@ -5,7 +5,7 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.11] - 2026-01-24
+## [0.7.12] - 2026-01-24
 ### Quota & Dashboard
 - **Remote Quota Visibility**:
     - **Persistence**: Usage quotas (model requests, tokens, limits) are now securely synced to Google Drive.
