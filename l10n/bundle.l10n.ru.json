@@ -1,5 +1,4 @@
 {
-    "Cycle": "Цикл",
     "left": "осталось",
     "h": "ч",
     "m": "м",
@@ -464,5 +463,7 @@
     "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "Доступ запрещен. Пожалуйста, удалите и снова добавьте этот аккаунт, убедившись, что вы предоставили разрешение на доступ к файлам.",
     "Apply Proxy Settings": "Применить настройки прокси",
     "Configure and apply proxy settings": "Настроить и применить параметры прокси",
-    "Max Usage": "Макс. использование"
+    "Max Usage": "Макс. использование",
+    "Cycle": "Цикл",
+    "Star on GitHub": "Звезда на GitHub"
 }

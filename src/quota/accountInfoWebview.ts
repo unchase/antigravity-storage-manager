@@ -75,6 +75,9 @@ export class AccountInfoWebview {
                     case 'openCoffee':
                         vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
                         return;
+                    case 'openRepo':
+                        vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager'));
+                        return;
                     case 'togglePin': {
                         const modelId = message.modelId;
                         const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
@@ -813,6 +816,7 @@ export class AccountInfoWebview {
             <div class="header-btns">
                 <button class="btn" onclick="postCommand('openPatreon')" title="${l.t('Support on Patreon')}" style="padding: 6px 10px;">🧡</button>
                 <button class="btn" onclick="postCommand('openCoffee')" title="${l.t('Buy Me a Coffee')}" style="padding: 6px 10px;">☕</button>
+                <button class="btn" onclick="postCommand('openRepo')" title="${l.t('Star on GitHub')}" style="padding: 6px 10px;">⭐</button>
                 <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
                 <button class="btn" onclick="openPlan()">${l.t('Upgrade Plan')}</button>
                 <button class="btn" onclick="viewRawJson()">${l.t('View Raw JSON')}</button>

@@ -23,6 +23,7 @@ export interface SyncStatsData {
     loadTime: number;
     currentMachineId: string;
     driveQuota?: { used: number; limit: number };
+    driveEmail?: string;
     activeTransfers?: ActiveTransfer[];
     accountQuotaSnapshot?: QuotaSnapshot;
     userEmail?: string;
@@ -68,6 +69,8 @@ export class SyncStatsWebview {
                 vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
             } else if (message.command === 'openCoffee') {
                 vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+            } else if (message.command === 'openRepo') {
+                vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager'));
             } else {
                 onMessage(message);
             }
@@ -382,6 +385,7 @@ export class SyncStatsWebview {
                     <div class="header-actions">
                         <button class="btn" onclick="postCommand('openPatreon')" title="${lm.t('Support on Patreon')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">🧡</button>
                         <button class="btn" onclick="postCommand('openCoffee')" title="${lm.t('Buy Me a Coffee')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">☕</button>
+                        <button class="btn" onclick="postCommand('openRepo')" title="${lm.t('Star on GitHub')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">⭐</button>
                         <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
                         <span class="last-sync">${lm.t('Last Update')}: ${lm.formatDateTime(new Date())}</span>
                         <button class="btn" onclick="postCommand('refresh')">🔄 ${lm.t('Refresh')}</button>
@@ -419,7 +423,7 @@ export class SyncStatsWebview {
                     <div class="storage-info">
                         <div class="storage-title">
                             ${lm.t('Google Drive Storage')}
-                            ${data.userEmail ? `<span style="font-size: 11px; opacity: 0.6; font-weight: 400; margin-left: 8px;">(${data.userEmail})</span>` : ''}
+                            ${data.driveEmail ? `<span style="font-size: 11px; opacity: 0.6; font-weight: 400; margin-left: 8px;">(${data.driveEmail})</span>` : ''}
                         </div>
                         <div class="storage-stats">
                             <span>${formatBytes(data.driveQuota.used)} ${lm.t('of')} ${formatBytes(data.driveQuota.limit)}</span>

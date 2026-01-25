@@ -244,6 +244,10 @@ export class QuotaManager {
                     tooltip: lm.t('Buy Me a Coffee')
                 },
                 {
+                    iconPath: new vscode.ThemeIcon('star'),
+                    tooltip: lm.t('Star on GitHub')
+                },
+                {
                     iconPath: new vscode.ThemeIcon(this.sortMethod === 'quota' ? 'list-ordered' : 'clock'),
                     tooltip: `${lm.t('Sort')}: ${sortText}`
                 }
@@ -345,6 +349,8 @@ export class QuotaManager {
                 vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
             } else if (tooltip === lm.t('Buy Me a Coffee')) {
                 vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+            } else if (tooltip === lm.t('Star on GitHub')) {
+                vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager'));
             }
         });
 

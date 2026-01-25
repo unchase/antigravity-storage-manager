@@ -2148,6 +2148,7 @@ export class SyncManager {
             quickPick.buttons = [
                 { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') },
                 { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') },
+                { iconPath: new vscode.ThemeIcon('star'), tooltip: lm.t('Star on GitHub') },
                 { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` }
             ];
         };
@@ -2174,6 +2175,8 @@ export class SyncManager {
                 vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
             } else if (tooltip.includes('Coffee')) {
                 vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+            } else if (tooltip.includes('GitHub')) {
+                vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager'));
             } else {
                 // Sort button
                 if (currentSort === 'modified') currentSort = 'created';
@@ -2552,7 +2555,8 @@ export class SyncManager {
                         startTime: info.startTime
                     })),
                     accountQuotaSnapshot: quotaSnapshot || undefined,
-                    userEmail: quotaSnapshot?.userEmail || userInfo?.email,
+                    userEmail: quotaSnapshot?.userEmail, // Keep this for AI Studio account
+                    driveEmail: userInfo?.email, // Specific for Drive Storage
                     usageHistory: usageHistory.size > 0 ? usageHistory : undefined
                 };
 
@@ -2891,6 +2895,7 @@ export class SyncManager {
                 quickPick.buttons = [
                     { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') },
                     { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') },
+                    { iconPath: new vscode.ThemeIcon('star'), tooltip: lm.t('Star on GitHub') },
                     { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` }
                 ];
             };
@@ -2976,6 +2981,8 @@ export class SyncManager {
                     vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
                 } else if (tooltip.includes('Coffee')) {
                     vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+                } else if (tooltip.includes('GitHub')) {
+                    vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager'));
                 } else {
                     // Sort button
                     if (sortMethod === 'status') sortMethod = 'sync';

@@ -5,6 +5,20 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-01-26
+### Community & Support
+- **Complete GitHub Star Integration**: Added the "Star on GitHub" (⭐) button to all remaining UI touchpoints:
+    - **Sync QuickPick**: Title bar of the "Setup Sync" and conversation selection dialogs.
+    - **Quota Usage**: Title bar of the quota monitoring window.
+    - **Management Menus**: "Manage Authorized Machines" and "Export Conversations" dialogs.
+    - **Main Menu**: The main "Antigravity Storage Manager" command menu.
+    - **Auth Success**: The browser confirmation page after successful Google login.
+- **Localization**: Added native translations for "Star on GitHub" across all 16 supported languages.
+
+### Bug Fixes
+- **Sync Statistics**: Fixed an issue where the "Google Drive Storage" section displayed the AI Studio account email instead of the active Drive Sync account email.
+- **Localization**: Resolved a duplicate key issue in the Russian localization bundle.
+
 ## [0.9.2] - 2026-01-25
 ### Quota & Dashboard
 - **Redesigned Quota Cards**: Completely overhauled the quota display in the Sync Statistics dashboard.
