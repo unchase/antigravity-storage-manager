@@ -5,6 +5,12 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-01-26
+### Sync & Dashboard
+- **Conflict Resolution Enrichment**: The manual conflict resolution dialog now displays detailed file size and modification time comparisons for both versions, assisting in better decision-making.
+- **Quota History Alignment**: Quota usage history charts are now perfectly aligned across all models by filling in missing days with zero usage (standard 14-day window).
+- **Localization**: Added full native translations for the new conflict metadata strings across 14 additional languages (Arabic, Czech, German, Spanish, French, Italian, Japanese, Korean, Polish, Portuguese, Turkish, Vietnamese, Chinese Simplified, and Chinese Traditional).
+
 ## [0.9.3] - 2026-01-26
 ### Community & Support
 - **Complete GitHub Star Integration**: Added the "Star on GitHub" (⭐) button to all remaining UI touchpoints:

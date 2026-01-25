@@ -467,5 +467,9 @@
     "Configure and apply proxy settings": "設定並套用代理設定",
     "Max Usage": "最大使用量",
     "Cycle": "週期",
-    "Star on GitHub": "在 GitHub 上給星"
+    "Conflict detected.": "偵測到衝突。",
+    "Local: {0}, {1}": "本機: {0}, {1}",
+    "Remote: {0}, {1} (by {2})": "遠端: {0}, {1} (由 {2})",
+    "Hashes: L={0} / R={1}": "雜湊: L={0} / R={1}",
+    "Star on GitHub": "在 GitHub 上加星"
 }

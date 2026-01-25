@@ -612,13 +612,24 @@ export class SyncStatsWebview {
                                         dailyMap.set(d, Math.max(cur, p.usage));
                                     });
 
-                                    // Convert to sorted array (last 7 days max to avoid scrolling)
-                                    const sortedDays = Array.from(dailyMap.entries())
-                                        .map(([date, usage]) => ({ date, usage, ts: new Date(date).getTime() }))
-                                        .sort((a, b) => a.ts - b.ts);
+                                    // Generate last 14 days (including today) to ensure alignment across all models
+                                    const daysToShow = [];
+                                    const today = new Date();
+                                    // Reset time part to avoid issues? toLocaleDateString usually ignores time but good to be consistent
+                                    // Actually, we just need the date string key
 
-                                    // Take last 7 days
-                                    const daysToShow = sortedDays.slice(-14); // Show last 14 bars max
+                                    for (let i = 13; i >= 0; i--) {
+                                        const d = new Date(today);
+                                        d.setDate(today.getDate() - i);
+                                        const dateKey = d.toLocaleDateString();
+
+                                        const usage = dailyMap.get(dateKey) || 0;
+                                        daysToShow.push({
+                                            date: d.toISOString(),
+                                            usage: usage,
+                                            ts: d.getTime()
+                                        });
+                                    }
 
                                     if (daysToShow.length > 0) {
                                         // Draw bars

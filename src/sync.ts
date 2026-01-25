@@ -45,6 +45,10 @@ export interface SyncConflict {
     remoteModified: string;
     localHash: string;
     remoteHash: string;
+    localSize?: number;
+    remoteSize?: number;
+    remoteModifiedBy?: string;
+    remoteModifiedByName?: string;
 }
 
 type ConflictResolution = 'keepLocal' | 'keepRemote' | 'keepBoth';
@@ -1461,7 +1465,7 @@ export class SyncManager {
     /**
      * Get local conversations with metadata (Async)
      */
-    private async getLocalConversationsAsync(): Promise<Array<{ id: string; title: string; lastModified: string; hash: string }>> {
+    private async getLocalConversationsAsync(): Promise<Array<{ id: string; title: string; lastModified: string; hash: string; size: number }>> {
         // Reuse utils logic to ensure consistent title extraction
         const items = await getConversationsAsync(BRAIN_DIR);
 
@@ -1470,13 +1474,15 @@ export class SyncManager {
             const { overallHash, fileHashes, maxMtime } = await this.computeConversationFileHashesAsync(item.id);
             // Use the actual max mtime of files, falling back to the directory mtime if no files
             const lastModified = maxMtime > 0 ? new Date(maxMtime).toISOString() : item.lastModified.toISOString();
+            const size = Object.values(fileHashes).reduce((sum, f) => sum + f.size, 0);
 
             return {
                 id: item.id,
                 title: item.label, // Extracted title from utils
                 lastModified: lastModified,
                 hash: overallHash,
-                files: fileHashes
+                files: fileHashes,
+                size: size
             };
         }));
     }
@@ -1983,7 +1989,7 @@ export class SyncManager {
      */
     private async processSyncItem(
         convId: string,
-        localConversations: Array<{ id: string; title: string; lastModified: string; hash: string }>,
+        localConversations: Array<{ id: string; title: string; lastModified: string; hash: string; size: number }>,
         remoteManifest: SyncManifest,
         lastSyncedDatabase: Map<string, string>, // id -> lastSyncedHash
         result: SyncResult,
@@ -2060,12 +2066,17 @@ export class SyncManager {
 
                 // If one is significantly newer (e.g. > 1 min), adopt it?
                 // Better safe: Conflict.
+                const remoteMachine = remoteManifest.machines?.find(m => m.id === remote.modifiedBy);
                 result.conflicts.push({
                     conversationId: convId,
                     localModified: local.lastModified,
                     remoteModified: remote.lastModified,
                     localHash: local.hash,
-                    remoteHash: remote.hash
+                    remoteHash: remote.hash,
+                    localSize: local.size,
+                    remoteSize: remote.size,
+                    remoteModifiedBy: remote.modifiedBy,
+                    remoteModifiedByName: remoteMachine?.name || remote.createdByName
                 });
             } else if (localChanged && !removeChanged) {
                 // Only local changed -> Push
@@ -2087,12 +2098,19 @@ export class SyncManager {
                 }
             } else {
                 // Both changed (and hashes differ) -> Conflict
+                const remoteMachine = remoteManifest.machines?.find(m => m.id === remote.modifiedBy);
+                const remoteDate = remote.lastModified;
+
                 result.conflicts.push({
                     conversationId: convId,
                     localModified: local.lastModified,
-                    remoteModified: remote.lastModified,
+                    remoteModified: remoteDate,
                     localHash: local.hash,
-                    remoteHash: remote.hash
+                    remoteHash: remote.hash,
+                    localSize: local.size,
+                    remoteSize: remote.size,
+                    remoteModifiedBy: remote.modifiedBy,
+                    remoteModifiedByName: remoteMachine?.name || remote.createdByName
                 });
             }
         }

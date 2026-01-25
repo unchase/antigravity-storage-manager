@@ -467,5 +467,9 @@
     "Configure and apply proxy settings": "配置并应用代理设置",
     "Max Usage": "最大使用量",
     "Cycle": "周期",
+    "Conflict detected.": "检测到冲突。",
+    "Local: {0}, {1}": "本地: {0}, {1}",
+    "Remote: {0}, {1} (by {2})": "远程: {0}, {1} (由 {2})",
+    "Hashes: L={0} / R={1}": "哈希: L={0} / R={1}",
     "Star on GitHub": "在 GitHub 上加星"
 }

@@ -467,5 +467,9 @@
     "Configure and apply proxy settings": "프록시 설정 구성 및 적용",
     "Max Usage": "최대 사용량",
     "Cycle": "주기",
+    "Conflict detected.": "충돌이 감지되었습니다.",
+    "Local: {0}, {1}": "로컬: {0}, {1}",
+    "Remote: {0}, {1} (by {2})": "원격: {0}, {1} ({2}에 의해)",
+    "Hashes: L={0} / R={1}": "해시: L={0} / R={1}",
     "Star on GitHub": "GitHub 스타"
 }

@@ -466,6 +466,10 @@
     "Apply Proxy Settings": "Použít nastavení proxy",
     "Configure and apply proxy settings": "Konfigurovat a použít nastavení proxy",
     "Max Usage": "Maximální využití",
-    "Cycle": "Cyklus",
+    "Cycle": "Cyklu",
+    "Conflict detected.": "Zjištěn konflikt.",
+    "Local: {0}, {1}": "Místní: {0}, {1}",
+    "Remote: {0}, {1} (by {2})": "Vzdálený: {0}, {1} (od {2})",
+    "Hashes: L={0} / R={1}": "Hashe: L={0} / R={1}",
     "Star on GitHub": "Hvězda na GitHubu"
 }

@@ -6,7 +6,7 @@ import archiver from 'archiver';
 import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
 import { SyncManager } from './sync';
-import { getConversationsAsync, ConversationItem } from './utils';
+import { getConversationsAsync, ConversationItem, formatSize } from './utils';
 import { resolveConflictsCommand } from './conflicts';
 import { DiagnosticsManager } from './diagnostics/diagnosticsManager';
 import { LocalizationManager } from './l10n/localizationManager';
@@ -330,8 +330,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 // Handle conflicts
                 for (const conflict of result.conflicts) {
+                    const localDate = lm.formatDateTime(new Date(conflict.localModified));
+                    const remoteDate = lm.formatDateTime(new Date(conflict.remoteModified));
+                    const localSizeStr = formatSize(conflict.localSize);
+                    const remoteSizeStr = formatSize(conflict.remoteSize);
+
+                    const msg = [
+                        lm.t('Conflict detected.'),
+                        lm.t('Local: {0}, {1}', localDate, localSizeStr),
+                        lm.t('Remote: {0}, {1} (by {2})', remoteDate, remoteSizeStr, conflict.remoteModifiedByName || conflict.remoteModifiedBy || 'Unknown'),
+                        lm.t('Hashes: L={0} / R={1}', conflict.localHash.substring(0, 7), conflict.remoteHash.substring(0, 7))
+                    ].join('\n');
+
                     const choice = await vscode.window.showWarningMessage(
-                        lm.t('Conflict detected for conversation. Local and remote versions differ.'),
+                        msg,
                         { modal: true },
                         lm.t('Keep Local'),
                         lm.t('Keep Remote'),

@@ -467,5 +467,9 @@
     "Configure and apply proxy settings": "Proxy ayarlarını yapılandır ve uygula",
     "Max Usage": "Maks. Kullanım",
     "Cycle": "Döngü",
+    "Conflict detected.": "Çakışma algılandı.",
+    "Local: {0}, {1}": "Yerel: {0}, {1}",
+    "Remote: {0}, {1} (by {2})": "Uzak: {0}, {1} ({2} tarafından)",
+    "Hashes: L={0} / R={1}": "Karmalar: L={0} / R={1}",
     "Star on GitHub": "GitHub'da Yıldız"
 }

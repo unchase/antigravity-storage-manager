@@ -467,5 +467,9 @@
     "Configure and apply proxy settings": "Configurar e aplicar configurações de proxy",
     "Max Usage": "Uso máximo",
     "Cycle": "Ciclo",
+    "Conflict detected.": "Conflito detectado.",
+    "Local: {0}, {1}": "Local: {0}, {1}",
+    "Remote: {0}, {1} (by {2})": "Remoto: {0}, {1} (por {2})",
+    "Hashes: L={0} / R={1}": "Hashes: L={0} / R={1}",
     "Star on GitHub": "Estrela no GitHub"
 }

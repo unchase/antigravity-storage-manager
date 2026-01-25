@@ -467,5 +467,9 @@
     "Configure and apply proxy settings": "تكوين وتطبيق إعدادات الوكيل",
     "Max Usage": "أقصى استخدام",
     "Cycle": "دورة",
+    "Conflict detected.": "تم اكتشاف تعارض.",
+    "Local: {0}, {1}": "محلي: {0}، {1}",
+    "Remote: {0}, {1} (by {2})": "عن بعد: {0}، {1} (بواسطة {2})",
+    "Hashes: L={0} / R={1}": "الهاش: L={0} / R={1}",
     "Star on GitHub": "نجمة على GitHub"
 }

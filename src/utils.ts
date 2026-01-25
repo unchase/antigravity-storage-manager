@@ -176,3 +176,42 @@ export function formatDuration(ms: number): string {
 
     return parts.join(' ');
 }
+
+/**
+ * Format bytes to human readable string
+ */
+export function formatSize(bytes?: number): string {
+    if (bytes === undefined || bytes === null) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let size = bytes;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex++;
+    }
+    return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+/**
+ * Get total size of a directory recursively
+ */
+export function getDirectorySize(dirPath: string): number {
+    let total = 0;
+    if (!fs.existsSync(dirPath)) return 0;
+
+    try {
+        const files = fs.readdirSync(dirPath);
+        for (const file of files) {
+            const filePath = path.join(dirPath, file);
+            const stats = fs.statSync(filePath);
+            if (stats.isDirectory()) {
+                total += getDirectorySize(filePath);
+            } else {
+                total += stats.size;
+            }
+        }
+    } catch {
+        // ignore access errors
+    }
+    return total;
+}
