@@ -2409,6 +2409,7 @@ export class SyncManager {
                                             uploadCount: state.uploadCount || 0,
                                             downloadCount: state.downloadCount || 0,
                                             quota: state.quota,
+                                            accountQuota: state.accountQuota,
                                             conversationStates: state.conversationStates || []
                                         };
                                         return [localMachine, remoteGhost];
@@ -2484,9 +2485,54 @@ export class SyncManager {
                     });
                 }
 
+                // Merge machines from manifest (for shared session scenarios where one device overwrote the state file)
+                if (remoteManifest?.machines) {
+                    for (const manifestMachine of remoteManifest.machines) {
+                        // Check if this machine is already in the list (by id + name combination)
+                        const existsWithSameName = machines.some(m =>
+                            m.id === manifestMachine.id && m.name === manifestMachine.name
+                        );
+
+                        if (!existsWithSameName) {
+                            // Check if this machine shares the ID with current machine but has different name
+                            const isSameIdDifferentName = manifestMachine.id === this.config!.machineId &&
+                                manifestMachine.name !== this.config!.machineName;
+
+                            if (isSameIdDifferentName || !machines.some(m => m.id === manifestMachine.id)) {
+                                machines.push({
+                                    name: manifestMachine.name,
+                                    id: manifestMachine.id,
+                                    fileId: '', // No direct file for this entry
+                                    lastSync: manifestMachine.lastSync,
+                                    isCurrent: false,
+                                    syncCount: 0,
+                                    uploadCount: manifestMachine.uploadCount || 0,
+                                    downloadCount: manifestMachine.downloadCount || 0,
+                                    quota: undefined,
+                                    accountQuota: undefined, // Manifest doesn't store full quota snapshot
+                                    conversationStates: []
+                                });
+                            }
+                        }
+                    }
+                }
+
+
                 // Use Drive API (about.get) to avoid requiring userinfo.email scope, which triggers re-auth
                 const userInfo = await this.driveService?.getUserInfo().catch(() => null);
                 const quotaSnapshot = this.quotaManager?.getLatestSnapshot();
+
+                // Build usage history map for current device's models
+                const usageHistory = new Map<string, { timestamp: number; usage: number }[]>();
+                if (this.quotaManager && quotaSnapshot?.models) {
+                    const tracker = this.quotaManager.getUsageTracker();
+                    for (const model of quotaSnapshot.models) {
+                        const history = tracker.getHistory(model.modelId);
+                        if (history && history.length > 0) {
+                            usageHistory.set(model.modelId, history);
+                        }
+                    }
+                }
 
                 // Render final HTML using SyncStatsWebview
                 const statsData: SyncStatsData = {
@@ -2506,7 +2552,8 @@ export class SyncManager {
                         startTime: info.startTime
                     })),
                     accountQuotaSnapshot: quotaSnapshot || undefined,
-                    userEmail: quotaSnapshot?.userEmail || userInfo?.email
+                    userEmail: quotaSnapshot?.userEmail || userInfo?.email,
+                    usageHistory: usageHistory.size > 0 ? usageHistory : undefined
                 };
 
                 this.lastStatsData = statsData;

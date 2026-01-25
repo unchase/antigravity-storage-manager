@@ -187,6 +187,10 @@ export class QuotaManager {
         return this.statusBar.getLatestSnapshot();
     }
 
+    public getUsageTracker(): QuotaUsageTracker {
+        return this.usageTracker;
+    }
+
     public async getQuota(): Promise<QuotaSnapshot> {
         // 1. Detect process and port
         const processInfo = await this.portDetector.detectProcessInfo();

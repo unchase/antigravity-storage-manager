@@ -5,6 +5,20 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-01-25
+### Multi-Device Quota Display
+- **Cross-Device Visibility**: The Sync Statistics dashboard now displays quota usage, email, and plan info for **all** synced devices, not just the current one.
+- **Per-Device Quotas**: Each device in the "Devices & Active Sessions" list now shows its own quota bars, user email, and tariff if available.
+- **Enhanced Quota Cards**: Quota model cards now display:
+    - **Reset Time**: When each model's quota will reset
+    - **Cycle Bar**: Visual progress bar for Pro/Ultra/Thinking/Opus models showing cycle progress
+    - **Usage Stats**: Request count (e.g., "123/500") when available
+    - **Improved Styling**: Cards now have background, padding, and cleaner layout
+
+### Bug Fixes
+- **Shared Session Visibility**: Fixed an issue where devices sharing the same Session ID would only show one device when the other had synced last. Now all known devices are correctly displayed using manifest data as fallback.
+- **Quota Visibility**: Resolved an issue where "Ghost" devices (conflicting IDs) were missing their quota information in the Sync Statistics dashboard.
+
 ## [0.9.0] - 2026-01-25
 ### Profile Switcher
 - **New Command**: Added `Switch VS Code Profile` command to quickly open VS Code with a different profile.
