@@ -3,6 +3,7 @@ import { LocalizationManager } from '../l10n/localizationManager';
 import { SyncManifest } from '../googleDrive';
 import { getFileIconSvg } from './fileIcons';
 import { QuotaSnapshot } from './types';
+import { formatResetTime, formatDuration, getCycleDuration } from './utils';
 
 export interface ActiveTransfer {
     conversationId: string;
@@ -25,6 +26,7 @@ export interface SyncStatsData {
     activeTransfers?: ActiveTransfer[];
     accountQuotaSnapshot?: QuotaSnapshot;
     userEmail?: string;
+    usageHistory?: Map<string, { timestamp: number; usage: number }[]>; // modelId -> history points
 }
 
 export class SyncStatsWebview {
@@ -475,48 +477,141 @@ export class SyncStatsWebview {
                                         </td>
                                     </tr>
                                     ${(() => {
-                    // Display quota if ANY machine in the group has it (prefer current if available, otherwise newest)
-                    // Note: group is array of machines.
-                    const quotaMachine = group.find(m => m.accountQuota) || (isCurrentGroup ? { accountQuota: data.accountQuotaSnapshot } : undefined);
-                    const snapshot = quotaMachine?.accountQuota;
+                    // Display quota for ALL machines in the group that have it
+                    // Filter machines with valid quota
+                    const machinesWithQuota = group.filter(m => m.accountQuota && m.accountQuota.models && m.accountQuota.models.length > 0);
 
-                    if (!snapshot || !snapshot.models || snapshot.models.length === 0) return '';
+                    // If no machines have quota, return empty
+                    if (machinesWithQuota.length === 0) return '';
 
-                    const models = [...snapshot.models].sort((a: any, b: any) => (a.remainingPercentage || 0) - (b.remainingPercentage || 0));
+                    // Sort: Current machine first, then by last sync (newest first)
+                    machinesWithQuota.sort((a, b) => {
+                        if (a.isCurrent) return -1;
+                        if (b.isCurrent) return 1;
+                        return new Date(b.lastSync).getTime() - new Date(a.lastSync).getTime();
+                    });
 
-                    return `
+                    return machinesWithQuota.map(m => {
+                        const snapshot = m.accountQuota;
+                        const models = [...snapshot.models].sort((a: any, b: any) => (a.remainingPercentage || 0) - (b.remainingPercentage || 0));
+
+                        // Unique header info
+                        let quotaSourceLabel = lm.t('Quota Usage');
+                        if (machinesWithQuota.length > 1) {
+                            if (m.isCurrent) {
+                                quotaSourceLabel += ` (${lm.t('This Device')})`;
+                            } else {
+                                quotaSourceLabel += ` (${m.id.substring(0, 8)}...)`;
+                            }
+                        }
+
+                        return `
                                     <tr class="quota-row ${groupId}" style="background: rgba(0,0,0,0.2);">
                                         <td colspan="5" style="padding: 10px 16px 14px 44px;">
                                             <div style="display:flex; justify-content: space-between; align-items:flex-end; margin-bottom: 12px;">
-                                                 <div style="font-size: 10px; font-weight: 700; opacity: 0.5; text-transform:uppercase; letter-spacing:1px;">${lm.t('Quota Usage')}</div>
-                                                 ${data.userEmail ? `<div style="font-size: 10px; opacity: 0.6;">${lm.t('User')}: ${data.userEmail} ${snapshot.planName ? `• ${lm.t('Plan')}: ${snapshot.planName}` : ''}</div>` : ''}
+                                                 <div style="font-size: 10px; font-weight: 700; opacity: 0.5; text-transform:uppercase; letter-spacing:1px;">${quotaSourceLabel}</div>
+                                                 ${snapshot.userEmail || snapshot.planName ? `<div style="font-size: 10px; opacity: 0.6;">${snapshot.userEmail ? `${lm.t('User')}: ${snapshot.userEmail}` : ''}${snapshot.userEmail && snapshot.planName ? ' • ' : ''}${snapshot.planName ? `${lm.t('Plan')}: ${snapshot.planName}` : ''}</div>` : ''}
                                             </div>
-                                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px 24px;">
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px 24px;">
                                                 ${models.map((m: any) => {
-                        const pct = m.remainingPercentage || 0;
-                        let color = 'var(--success)';
-                        // Use consistent threshold logic if possible, or simple fallback
-                        if (pct < 5) color = 'var(--error)';
-                        else if (pct < 30) color = 'var(--warning)';
+                            const pct = m.remainingPercentage || 0;
+                            let color = 'var(--success)';
+                            if (pct < 5) color = 'var(--error)';
+                            else if (pct < 30) color = 'var(--warning)';
 
-                        const cleanLabel = m.label.replace('Gemini 1.5 ', '').replace('Gemini 3 ', '').replace('Claude 3.5 ', '').replace('Claude 3 ', '');
+                            const cleanLabel = m.label.replace('Gemini 1.5 ', '').replace('Gemini 3 ', '').replace('Claude 3.5 ', '').replace('Claude 3 ', '');
 
-                        return `
-                                                    <div style="display: flex; flex-direction: column;">
-                                                        <div style="display:flex; justify-content:space-between; font-size: 11px; margin-bottom: 3px;">
-                                                            <span style="opacity: 0.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${m.label}">${cleanLabel}</span>
-                                                            <span style="opacity: 0.7; font-feature-settings: 'tnum';">${pct.toFixed(0)}%</span>
-                                                        </div>
-                                                        <div style="height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
-                                                            <div style="height: 100%; width: ${pct}%; background: ${color}; transition: width 0.5s;"></div>
-                                                        </div>
-                                                    </div>
-                                                    `;
-                    }).join('')}
+                            // Reset time
+                            const resetTimeStr = m.resetTime ? formatResetTime(new Date(m.resetTime)) : '';
+
+                            // Cycle info for Pro/Ultra/Thinking/Opus
+                            let cycleHtml = '';
+                            const isHighTier = m.label.includes('Pro') || m.label.includes('Ultra') || m.label.includes('Thinking') || m.label.includes('Opus');
+                            if (isHighTier && m.timeUntilReset && m.timeUntilReset > 0) {
+                                const cycleDuration = getCycleDuration(m.label);
+                                const progress = Math.max(0, Math.min(1, 1 - (m.timeUntilReset / cycleDuration)));
+                                const progressPct = (progress * 100).toFixed(0);
+                                cycleHtml = `<div style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:9px; opacity:0.7;">
+                                <span>${lm.t('Cycle')}:</span>
+                                <div style="flex:1; height:2px; background:rgba(255,255,255,0.1); border-radius:1px; overflow:hidden;">
+                                    <div style="width:${progressPct}%; height:100%; background:var(--accent);"></div>
+                                </div>
+                                <span>(${formatDuration(m.timeUntilReset)})</span>
+                            </div>`;
+                            }
+
+                            // Stats (requests/tokens) - compact version
+                            let statsHtml = '';
+                            if (m.requestUsage !== undefined && m.requestLimit) {
+                                statsHtml += '<span title="' + lm.t('Requests') + '">' + m.requestUsage + '/' + m.requestLimit + '</span>';
+                            }
+
+                            // History chart (only for current group with usageHistory)
+                            let chartHtml = '';
+                            if (isCurrentGroup && data.usageHistory) {
+                                const history = data.usageHistory.get(m.modelId);
+                                if (history && history.length >= 2) {
+                                    const chartWidth = 180;
+                                    const chartHeight = 28;
+                                    const chartPadding = 2;
+
+                                    // Sort by time
+                                    const sortedHistory = [...history].sort((a, b) => a.timestamp - b.timestamp);
+
+                                    const minTime = sortedHistory[0].timestamp;
+                                    const maxTime = sortedHistory[sortedHistory.length - 1].timestamp;
+                                    const timeRange = maxTime - minTime;
+
+                                    if (timeRange > 0) {
+                                        const chartPoints = sortedHistory.map(p => {
+                                            const x = chartPadding + ((p.timestamp - minTime) / timeRange) * (chartWidth - 2 * chartPadding);
+                                            const y = chartHeight - chartPadding - ((p.usage / 100) * (chartHeight - 2 * chartPadding));
+                                            return x + ',' + y;
+                                        }).join(' ');
+
+                                        const firstPt = chartPoints.split(' ')[0];
+                                        const lastPt = chartPoints.split(' ').pop() || '';
+                                        const areaPath = chartPoints + ' ' + (lastPt.split(',')[0] || '0') + ',' + chartHeight + ' ' + (firstPt.split(',')[0] || '0') + ',' + chartHeight;
+
+                                        const gradientId = 'grad-sync-' + m.modelId.replace(/[^a-zA-Z0-9]/g, '');
+
+                                        chartHtml = '<div style="margin-top:6px; height:' + chartHeight + 'px; border-radius:4px; overflow:hidden; background:rgba(0,0,0,0.2);" title="' + lm.t('Usage History') + '">' +
+                                            '<svg width="100%" height="100%" viewBox="0 0 ' + chartWidth + ' ' + chartHeight + '" preserveAspectRatio="none">' +
+                                            '<defs>' +
+                                            '<linearGradient id="' + gradientId + '" x1="0%" y1="0%" x2="0%" y2="100%">' +
+                                            '<stop offset="0%" style="stop-color:' + color + ';stop-opacity:0.4" />' +
+                                            '<stop offset="100%" style="stop-color:' + color + ';stop-opacity:0.05" />' +
+                                            '</linearGradient>' +
+                                            '</defs>' +
+                                            '<polygon points="' + areaPath + '" fill="url(#' + gradientId + ')" />' +
+                                            '<polyline points="' + chartPoints + '" fill="none" stroke="' + color + '" stroke-width="1.5" vector-effect="non-scaling-stroke" />' +
+                                            '</svg>' +
+                                            '</div>';
+                                    }
+                                }
+                            }
+
+                            return '<div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); padding: 8px 10px; border-radius: 6px;">' +
+                                '<div style="display:flex; justify-content:space-between; align-items:center; font-size: 11px; margin-bottom: 4px;">' +
+                                '<span style="opacity: 0.9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:500;" title="' + m.label + '">' + cleanLabel + '</span>' +
+                                (resetTimeStr ? '<span style="font-size:9px; opacity:0.5; margin-left:6px;" title="' + lm.t('Resets') + '">' + resetTimeStr + '</span>' : '') +
+                                '</div>' +
+                                '<div style="display:flex; align-items:center; gap:8px;">' +
+                                '<div style="flex:1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">' +
+                                '<div style="height: 100%; width: ' + pct + '%; background: ' + color + '; transition: width 0.5s;"></div>' +
+                                '</div>' +
+                                '<span style="font-size:11px; font-weight:600; color:' + color + '; min-width:32px; text-align:right;">' + pct.toFixed(0) + '%</span>' +
+                                '</div>' +
+                                cycleHtml +
+                                (statsHtml ? '<div style="font-size:9px; opacity:0.5; margin-top:3px;">' + statsHtml + '</div>' : '') +
+                                chartHtml +
+                                '</div>';
+                        }).join('')}
                                             </div>
                                         </td>
                                     </tr>
                 `;
+                    }).join('');
                 })()}
                                     ${group.map(m => {
                     const isOnline = (now - new Date(m.lastSync).getTime()) < 600000;
@@ -542,7 +637,8 @@ export class SyncStatsWebview {
                                                 </td>
                                             </tr>
                                         `;
-                }).join('')}
+                }).join('')
+                }
                                 `;
         }).join('')}
                         </tbody>
