@@ -1,5 +1,4 @@
 {
-    "Cycle": "Cycle",
     "left": "left",
     "h": "h",
     "m": "m",
@@ -463,5 +462,7 @@
     "Invalid Proxy URL format.": "Invalid Proxy URL format.",
     "Applied proxy settings to VS Code: {0}": "Applied proxy settings to VS Code: {0}",
     "Apply Proxy Settings": "Apply Proxy Settings",
-    "Configure and apply proxy settings": "Configure and apply proxy settings"
+    "Configure and apply proxy settings": "Configure and apply proxy settings",
+    "Max Usage": "Max Usage",
+    "Cycle": "Cycle"
 }

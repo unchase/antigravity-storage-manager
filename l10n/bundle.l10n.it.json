@@ -1,5 +1,4 @@
 {
-    "Cycle": "Ciclo",
     "left": "rimasto",
     "h": "h",
     "m": "min",
@@ -465,5 +464,7 @@
     "Configure Proxy": "Configura proxy",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Inserisci URL proxy (es. http://user:pass@host:port) o lascia vuoto per cancellare",
     "Apply Proxy Settings": "Applica impostazioni proxy",
-    "Configure and apply proxy settings": "Configura e applica impostazioni proxy"
+    "Configure and apply proxy settings": "Configura e applica impostazioni proxy",
+    "Max Usage": "Utilizzo max.",
+    "Cycle": "Ciclo"
 }

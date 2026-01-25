@@ -1,5 +1,4 @@
 {
-    "Cycle": "사이클",
     "left": "남음",
     "h": "시간",
     "m": "분",
@@ -465,5 +464,7 @@
     "Configure Proxy": "프록시 구성",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "프록시 URL을 입력하세요(예: http://user:pass@host:port). 지우려면 비워 두세요.",
     "Apply Proxy Settings": "프록시 설정 적용",
-    "Configure and apply proxy settings": "프록시 설정 구성 및 적용"
+    "Configure and apply proxy settings": "프록시 설정 구성 및 적용",
+    "Max Usage": "최대 사용량",
+    "Cycle": "주기"
 }

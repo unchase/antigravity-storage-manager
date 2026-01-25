@@ -1,5 +1,4 @@
 {
-    "Cycle": "Döngü",
     "left": "kaldı",
     "h": "s",
     "m": "dk",
@@ -465,5 +464,7 @@
     "Configure Proxy": "Proxy Yapılandır",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Proxy URL'sini girin (örn. http://user:pass@host:port) veya temizlemek için boş bırakın",
     "Apply Proxy Settings": "Proxy Ayarlarını Uygula",
-    "Configure and apply proxy settings": "Proxy ayarlarını yapılandır ve uygula"
+    "Configure and apply proxy settings": "Proxy ayarlarını yapılandır ve uygula",
+    "Max Usage": "Maks. Kullanım",
+    "Cycle": "Döngü"
 }

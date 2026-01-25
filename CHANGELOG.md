@@ -5,6 +5,22 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-01-25
+### Quota & Dashboard
+- **Redesigned Quota Cards**: Completely overhauled the quota display in the Sync Statistics dashboard.
+    - **Circular Charts**: Replaced linear progress bars with elegant SVG donut charts for quota usage.
+    - **Daily History**: New bar chart visualization showing usage history aggregated by day used.
+    - **Premium Aesthetics**: Improved typography, spacing, and glassmorphism effects for a modern look.
+    - **Layout Fixes**: Resolved card overlap issues on smaller screens and refined "No detailed stats" display.
+
+### Quota & UI
+- **Pinned Model Icon**: Improved the placement of the pinned model icon (📌), moving it to the left of the model name for better visibility and alignment.
+- **Localization**: Added missing localization for "Max Usage" and "Cycle" across all 16 supported languages.
+
+### Bug Fixes
+- **Localization Duplicates**: Fixed an issue where duplicate "Cycle" keys caused lint warnings in localization bundles.
+- **Quota Scope**: Resolved a potential reference error (`isPinnedA` is not defined) in the quota display logic.
+
 ## [0.9.1] - 2026-01-25
 ### Multi-Device Quota Display
 - **Cross-Device Visibility**: The Sync Statistics dashboard now displays quota usage, email, and plan info for **all** synced devices, not just the current one.

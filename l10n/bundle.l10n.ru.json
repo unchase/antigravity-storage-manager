@@ -463,5 +463,6 @@
     "You must grant the \"See, edit, create, and delete only the specific Google Drive files you use with this app\" permission to use this extension.": "Вы должны предоставить разрешение «Просматривать, переименовывать, создавать и удалять только те файлы на Google Диске, которые вы используете с этим приложением» для работы расширения.",
     "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission.": "Доступ запрещен. Пожалуйста, удалите и снова добавьте этот аккаунт, убедившись, что вы предоставили разрешение на доступ к файлам.",
     "Apply Proxy Settings": "Применить настройки прокси",
-    "Configure and apply proxy settings": "Настроить и применить параметры прокси"
+    "Configure and apply proxy settings": "Настроить и применить параметры прокси",
+    "Max Usage": "Макс. использование"
 }

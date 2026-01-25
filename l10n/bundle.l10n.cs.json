@@ -1,5 +1,4 @@
 {
-    "Cycle": "Cyklus",
     "left": "zbývá",
     "h": "h",
     "m": "m",
@@ -465,5 +464,7 @@
     "Configure Proxy": "Konfigurovat proxy",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Zadejte URL proxy (např. http://user:pass@host:port) nebo nechte prázdné pro vymazání",
     "Apply Proxy Settings": "Použít nastavení proxy",
-    "Configure and apply proxy settings": "Konfigurovat a použít nastavení proxy"
+    "Configure and apply proxy settings": "Konfigurovat a použít nastavení proxy",
+    "Max Usage": "Maximální využití",
+    "Cycle": "Cyklus"
 }

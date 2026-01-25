@@ -1,5 +1,4 @@
 {
-    "Cycle": "Chu kỳ",
     "left": "còn lại",
     "h": "giờ",
     "m": "phút",
@@ -465,5 +464,7 @@
     "Configure Proxy": "Cấu hình Proxy",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Nhập URL Proxy (vd: http://user:pass@host:port) hoặc để trống để xóa",
     "Apply Proxy Settings": "Áp dụng cài đặt Proxy",
-    "Configure and apply proxy settings": "Cấu hình và áp dụng cài đặt proxy"
+    "Configure and apply proxy settings": "Cấu hình và áp dụng cài đặt proxy",
+    "Max Usage": "Sử dụng tối đa",
+    "Cycle": "Chu kỳ"
 }

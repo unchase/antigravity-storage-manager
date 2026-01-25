@@ -1,5 +1,4 @@
 {
-    "Cycle": "週期",
     "left": "剩餘",
     "h": "小時",
     "m": "分鐘",
@@ -465,5 +464,7 @@
     "Configure Proxy": "設定代理",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "輸入代理 URL（例如 http://user:pass@host:port）或留空以清除",
     "Apply Proxy Settings": "套用代理設定",
-    "Configure and apply proxy settings": "設定並套用代理設定"
+    "Configure and apply proxy settings": "設定並套用代理設定",
+    "Max Usage": "最大使用量",
+    "Cycle": "週期"
 }

@@ -213,8 +213,11 @@ export class SyncStatsWebview {
                     padding: 30px;
                     margin: 0;
                     line-height: 1.6;
+                    line-height: 1.6;
                     overflow-x: hidden;
                 }
+                
+                * { box-sizing: border-box; }
 
                 .container { max-width: 1200px; margin: 0 auto; }
 
@@ -355,6 +358,21 @@ export class SyncStatsWebview {
                 ::-webkit-scrollbar-track { background: transparent; }
                 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
                 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.1); }
+                
+                .custom-tooltip {
+                    position: fixed;
+                    display: none;
+                    background: var(--bg);
+                    border: 1px solid var(--border);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    z-index: 1000;
+                    pointer-events: none;
+                    font-size: 11px;
+                    min-width: 120px;
+                    color: var(--fg);
+                }
             </style>
         </head>
         <body>
@@ -512,8 +530,15 @@ export class SyncStatsWebview {
                                                  <div style="font-size: 10px; font-weight: 700; opacity: 0.5; text-transform:uppercase; letter-spacing:1px;">${quotaSourceLabel}</div>
                                                  ${snapshot.userEmail || snapshot.planName ? `<div style="font-size: 10px; opacity: 0.6;">${snapshot.userEmail ? `${lm.t('User')}: ${snapshot.userEmail}` : ''}${snapshot.userEmail && snapshot.planName ? ' • ' : ''}${snapshot.planName ? `${lm.t('Plan')}: ${snapshot.planName}` : ''}</div>` : ''}
                                             </div>
-                                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px 24px;">
-                                                ${models.map((m: any) => {
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">
+                                                ${models.sort((a: any, b: any) => {
+                            const pinned = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string[]>('quota.pinnedModels') || [];
+                            const isPinnedA = pinned.includes(a.label);
+                            const isPinnedB = pinned.includes(b.label);
+                            if (isPinnedA && !isPinnedB) return -1;
+                            if (!isPinnedA && isPinnedB) return 1;
+                            return 0;
+                        }).map((m: any) => {
                             const pct = m.remainingPercentage || 0;
                             let color = 'var(--success)';
                             if (pct < 5) color = 'var(--error)';
@@ -524,10 +549,36 @@ export class SyncStatsWebview {
                             // Reset time
                             const resetTimeStr = m.resetTime ? formatResetTime(new Date(m.resetTime)) : '';
 
-                            // Cycle info for Pro/Ultra/Thinking/Opus
+                            // Circular Chart & Stats
+                            const radius = 16; // viewBox radius
+                            const circumference = 2 * Math.PI * radius;
+                            const strokeDasharray = `${(pct / 100) * circumference} ${circumference}`;
+
+                            // Stats (requests/limits)
+                            let statsHtml = '';
+                            if (m.requestUsage !== undefined && m.requestLimit) {
+                                statsHtml += `<div title="${lm.t('Requests')}" style="display:flex; justify-content:space-between; margin-bottom:2px;">
+                                    <span style="opacity:0.5">${lm.t('Requests')}</span>
+                                    <span style="font-weight:600">${m.requestUsage}/${m.requestLimit}</span>
+                                </div>`;
+                            }
+                            if (m.tokenUsage !== undefined && m.tokenLimit) {
+                                // Shorten token numbers (e.g. 1.2M)
+                                const formatTokens = (n: number) => {
+                                    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+                                    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+                                    return n.toString();
+                                };
+                                statsHtml += `<div title="${lm.t('Tokens')}" style="display:flex; justify-content:space-between;">
+                                    <span style="opacity:0.5">${lm.t('Tokens')}</span>
+                                    <span style="font-weight:600">${formatTokens(m.tokenUsage)}/${formatTokens(m.tokenLimit)}</span>
+                                </div>`;
+                            }
+
+                            // Cycle info
                             let cycleHtml = '';
-                            const isHighTier = m.label.includes('Pro') || m.label.includes('Ultra') || m.label.includes('Thinking') || m.label.includes('Opus');
-                            if (isHighTier && m.timeUntilReset && m.timeUntilReset > 0) {
+                            // Show cycle for ANY model that has a valid reset time and positive timeUntilReset
+                            if (m.timeUntilReset && m.timeUntilReset > 0) {
                                 const cycleDuration = getCycleDuration(m.label);
                                 const progress = Math.max(0, Math.min(1, 1 - (m.timeUntilReset / cycleDuration)));
                                 const progressPct = (progress * 100).toFixed(0);
@@ -540,77 +591,128 @@ export class SyncStatsWebview {
                             </div>`;
                             }
 
-                            // Stats (requests/tokens) - compact version
-                            let statsHtml = '';
-                            if (m.requestUsage !== undefined && m.requestLimit) {
-                                statsHtml += '<span title="' + lm.t('Requests') + '">' + m.requestUsage + '/' + m.requestLimit + '</span>';
-                            }
 
-                            // History chart (only for current group with usageHistory)
+                            // History chart (Daily Bars)
                             let chartHtml = '';
                             if (isCurrentGroup && data.usageHistory) {
                                 const history = data.usageHistory.get(m.modelId);
-                                if (history && history.length >= 2) {
-                                    const chartWidth = 180;
-                                    const chartHeight = 28;
-                                    const chartPadding = 2;
+                                if (history && history.length > 0) {
+                                    const chartHeight = 30;
 
-                                    // Sort by time
-                                    const sortedHistory = [...history].sort((a, b) => a.timestamp - b.timestamp);
+                                    // Aggregate by day
+                                    const dailyMap = new Map<string, number>();
+                                    history.forEach(p => {
+                                        const d = new Date(p.timestamp).toLocaleDateString();
+                                        const cur = dailyMap.get(d) || 0;
+                                        // Use max usage seen that day as the "daily" value
+                                        dailyMap.set(d, Math.max(cur, p.usage));
+                                    });
 
-                                    const minTime = sortedHistory[0].timestamp;
-                                    const maxTime = sortedHistory[sortedHistory.length - 1].timestamp;
-                                    const timeRange = maxTime - minTime;
+                                    // Convert to sorted array (last 7 days max to avoid scrolling)
+                                    const sortedDays = Array.from(dailyMap.entries())
+                                        .map(([date, usage]) => ({ date, usage, ts: new Date(date).getTime() }))
+                                        .sort((a, b) => a.ts - b.ts);
 
-                                    if (timeRange > 0) {
-                                        const chartPoints = sortedHistory.map(p => {
-                                            const x = chartPadding + ((p.timestamp - minTime) / timeRange) * (chartWidth - 2 * chartPadding);
-                                            const y = chartHeight - chartPadding - ((p.usage / 100) * (chartHeight - 2 * chartPadding));
-                                            return x + ',' + y;
-                                        }).join(' ');
+                                    // Take last 7 days
+                                    const daysToShow = sortedDays.slice(-14); // Show last 14 bars max
 
-                                        const firstPt = chartPoints.split(' ')[0];
-                                        const lastPt = chartPoints.split(' ').pop() || '';
-                                        const areaPath = chartPoints + ' ' + (lastPt.split(',')[0] || '0') + ',' + chartHeight + ' ' + (firstPt.split(',')[0] || '0') + ',' + chartHeight;
+                                    if (daysToShow.length > 0) {
+                                        // Draw bars
 
-                                        const gradientId = 'grad-sync-' + m.modelId.replace(/[^a-zA-Z0-9]/g, '');
+                                        const bars = daysToShow.map((d) => {
+                                            // Usage 0-100
+                                            const h = Math.max(4, (d.usage / 100) * 100); // at least 4% height
+                                            // Color based on usage
+                                            let barColor = 'rgba(255,255,255,0.2)';
+                                            if (d.usage > 80) barColor = 'var(--error)';
+                                            else if (d.usage > 50) barColor = 'var(--warning)';
+                                            else if (d.usage > 0) barColor = 'var(--accent)';
 
-                                        chartHtml = '<div style="margin-top:6px; height:' + chartHeight + 'px; border-radius:4px; overflow:hidden; background:rgba(0,0,0,0.2);" title="' + lm.t('Usage History') + '">' +
-                                            '<svg width="100%" height="100%" viewBox="0 0 ' + chartWidth + ' ' + chartHeight + '" preserveAspectRatio="none">' +
-                                            '<defs>' +
-                                            '<linearGradient id="' + gradientId + '" x1="0%" y1="0%" x2="0%" y2="100%">' +
-                                            '<stop offset="0%" style="stop-color:' + color + ';stop-opacity:0.4" />' +
-                                            '<stop offset="100%" style="stop-color:' + color + ';stop-opacity:0.05" />' +
-                                            '</linearGradient>' +
-                                            '</defs>' +
-                                            '<polygon points="' + areaPath + '" fill="url(#' + gradientId + ')" />' +
-                                            '<polyline points="' + chartPoints + '" fill="none" stroke="' + color + '" stroke-width="1.5" vector-effect="non-scaling-stroke" />' +
-                                            '</svg>' +
-                                            '</div>';
+                                            // If it's today, highlight
+                                            const isToday = new Date().toDateString() === new Date(d.date).toDateString();
+                                            if (isToday) barColor = 'var(--fg)';
+
+                                            // Formatted date for tooltip
+                                            const dateObj = new Date(d.date);
+                                            const dateStr = dateObj.toLocaleDateString(lm.getLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
+
+                                            // Prepare extra stats for tooltip
+                                            const resetStr = m.resetTime ? formatResetTime(new Date(m.resetTime)) : '';
+                                            const reqStr = (m.requestUsage !== undefined && m.requestLimit) ? `${m.requestUsage}/${m.requestLimit}` : '';
+                                            const tokStr = (m.tokenUsage !== undefined && m.tokenLimit) ? (() => {
+                                                const format = (n: number) => {
+                                                    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+                                                    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+                                                    return n.toString();
+                                                };
+                                                return `${format(m.tokenUsage)}/${format(m.tokenLimit)}`;
+                                            })() : '';
+
+                                            return `<div 
+                                                onmouseenter="showTooltip(event, '${dateStr}', '${d.usage.toFixed(1)}', '${resetStr}', '${reqStr}', '${tokStr}')"
+                                                onmouseleave="hideTooltip()"
+                                                onmousemove="moveTooltip(event)"
+                                                style="
+                                                flex: 1;
+                                                height: ${h}%;
+                                                background: ${barColor};
+                                                border-radius: 2px 2px 0 0;
+                                                min-width: 4px;
+                                                opacity: ${isToday ? 1 : 0.7};
+                                                cursor: crosshair;
+                                             "></div>`;
+                                        }).join('');
+
+                                        chartHtml = `<div style="margin-top:auto;">
+                                            <div onclick="const el = this.nextElementSibling; const icon = this.querySelector('.arrow'); if(el.style.display==='none'){el.style.display='flex'; icon.style.transform='rotate(180deg)';}else{el.style.display='none'; icon.style.transform='rotate(0deg)';}" style="cursor:pointer; font-size:9px; opacity:0.4; margin-bottom:4px; text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:4px; user-select:none;">
+                                                <span>${lm.t('Usage History')}</span>
+                                                <span class="arrow" style="display:inline-block; transition:transform 0.2s; transform:rotate(180deg);">▼</span>
+                                            </div>
+                                            <div style="display:flex; align-items:flex-end; gap:2px; height:${chartHeight}px; padding-bottom:1px; border-bottom:1px solid rgba(255,255,255,0.1);">
+                                                ${bars}
+                                            </div>
+                                         </div>`;
                                     }
                                 }
                             }
 
-                            return '<div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); padding: 8px 10px; border-radius: 6px;">' +
-                                '<div style="display:flex; justify-content:space-between; align-items:center; font-size: 11px; margin-bottom: 4px;">' +
-                                '<span style="opacity: 0.9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:500;" title="' + m.label + '">' + cleanLabel + '</span>' +
-                                (resetTimeStr ? '<span style="font-size:9px; opacity:0.5; margin-left:6px;" title="' + lm.t('Resets') + '">' + resetTimeStr + '</span>' : '') +
-                                '</div>' +
-                                '<div style="display:flex; align-items:center; gap:8px;">' +
-                                '<div style="flex:1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">' +
-                                '<div style="height: 100%; width: ' + pct + '%; background: ' + color + '; transition: width 0.5s;"></div>' +
-                                '</div>' +
-                                '<span style="font-size:11px; font-weight:600; color:' + color + '; min-width:32px; text-align:right;">' + pct.toFixed(0) + '%</span>' +
-                                '</div>' +
-                                cycleHtml +
-                                (statsHtml ? '<div style="font-size:9px; opacity:0.5; margin-top:3px;">' + statsHtml + '</div>' : '') +
-                                chartHtml +
-                                '</div>';
-                        }).join('')}
-                                            </div>
-                                        </td>
-                                    </tr>
-                `;
+                            // Calculate pinned status in scope
+                            const pinned = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string[]>('quota.pinnedModels') || [];
+                            const isPinned = pinned.includes(m.label);
+
+                            return `<div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; box-sizing: border-box;">
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px;">
+                                    <div>
+                                        <div style="font-size: 13px; font-weight: 600; margin-bottom: 2px;" title="${m.label}">
+                                            ${isPinned ? '<span title="Pinned" style="font-size:10px; opacity:0.7; margin-right:4px;">📌</span>' : ''}${cleanLabel}
+                                        </div>
+                                        ${resetTimeStr ? `<div style="font-size:10px; opacity:0.5;">${lm.t('Resets')} ${resetTimeStr}</div>` : ''}
+                                    </div>
+                                    <div style="position:relative; width:48px; height:48px;">
+                                        <svg viewBox="0 0 36 36" style="width:100%; height:100%; transform: rotate(-90deg);">
+                                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3.5" />
+                                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="${color}" stroke-width="3.5" stroke-dasharray="${strokeDasharray}" stroke-linecap="round" />
+                                        </svg>
+                                        <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;">
+                                            ${pct.toFixed(0)}%
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 12px; font-size:10px;">
+                                    ${statsHtml}
+                                </div>
+
+                                ${cycleHtml}
+                                
+                                ${chartHtml}
+                            </div>`;
+                        }).join('')
+                            }
+                    </div>
+                </td>
+                </tr>
+                    `;
                     }).join('');
                 })()}
                                     ${group.map(m => {
@@ -777,6 +879,8 @@ export class SyncStatsWebview {
                     </table>
                 </div>
             </div>
+            
+            <div id="tooltip" class="custom-tooltip"></div>
 
             <script>
                 const vscode = acquireVsCodeApi();
@@ -801,6 +905,75 @@ export class SyncStatsWebview {
                     if (el) {
                         el.style.display = el.style.display === 'table-row' ? 'none' : 'table-row';
                     }
+                }
+                
+                // Tooltip logic
+                const tooltip = document.getElementById('tooltip');
+                
+                function showTooltip(event, date, usage, reset, req, tok) {
+                    if (!tooltip) return;
+                    tooltip.style.display = 'block';
+                    
+                    let content = '<div style="font-weight:600; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1)">' + date + '</div>';
+                    
+                    // Max Usage
+                    content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
+                               '<span style="opacity:0.7">${lm.t('Max Usage')}</span>' +
+                               '<span style="font-weight:600">' + usage + '%</span>' +
+                               '</div>';
+                    
+                    // Reset
+                    if (reset) {
+                        content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
+                                   '<span style="opacity:0.7">${lm.t('Resets')}</span>' +
+                                   '<span>' + reset + '</span>' +
+                                   '</div>';
+                    }
+                    
+                    // Requests
+                    if (req) {
+                        content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
+                                   '<span style="opacity:0.7">${lm.t('Requests')}</span>' +
+                                   '<span>' + req + '</span>' +
+                                   '</div>';
+                    }
+
+                    // Tokens
+                     if (tok) {
+                        content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px;">' +
+                                   '<span style="opacity:0.7">${lm.t('Tokens')}</span>' +
+                                   '<span>' + tok + '</span>' +
+                                   '</div>';
+                    }
+
+                    tooltip.innerHTML = content;
+                    moveTooltip(event);
+                }
+
+                function hideTooltip() {
+                     if (tooltip) tooltip.style.display = 'none';
+                }
+
+                function moveTooltip(e) {
+                    if (!tooltip) return;
+                    const x = e.clientX;
+                    const y = e.clientY;
+                    
+                    // Bounds check
+                    const rect = tooltip.getBoundingClientRect();
+                    let left = x + 10;
+                    let top = y + 10;
+                    
+                    if (left + rect.width > window.innerWidth) {
+                        left = x - rect.width - 10;
+                    }
+                     // Keep it visible at bottom (if too low, move up)
+                    if (top + rect.height > window.innerHeight) {
+                        top = y - rect.height - 10;
+                    }
+                    
+                    tooltip.style.left = left + 'px';
+                    tooltip.style.top = top + 'px';
                 }
             </script>
         </body>
