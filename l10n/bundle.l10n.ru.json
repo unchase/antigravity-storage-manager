@@ -475,5 +475,6 @@
     "Antigravity Backup Size": "Размер резервной копии Antigravity",
     "conversations": "диалогов",
     "uses {0} of Drive": "использует {0} от Диска",
-    "Different Device": "Другое устройство"
+    "Different Device": "Другое устройство",
+    "Source": "Источник"
 }

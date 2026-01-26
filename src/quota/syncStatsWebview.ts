@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { SyncManifest } from '../googleDrive';
-
+import { getFileIconSvg } from './fileIcons';
 import { QuotaSnapshot } from './types';
 import { formatResetTime, formatDuration, getCycleDuration, getModelAbbreviation } from './utils';
 
@@ -149,6 +149,40 @@ export class SyncStatsWebview {
         const localPct = data.localCount > 0 ? (syncedCount / data.localCount) * 100 : 0;
         const remotePct = data.remoteCount > 0 ? (syncedCount / data.remoteCount) * 100 : 0;
 
+        /*
+        // Use emoji icons for file types (reliable, no font loading required)
+        const getFileIcon = (filename: string): string => {
+            const ext = filename.split('.').pop()?.toLowerCase();
+            switch (ext) {
+                // Document files
+                case 'md': return '📝';
+                case 'txt': case 'log': return '📄';
+
+                // Data files
+                case 'json': return '📋';
+                case 'yaml': case 'yml': case 'toml': case 'ini': case 'conf': return '⚙️';
+                case 'pb': return '💾';
+                case 'resolved': return '✅';
+                case 'metadata': return '🏷️';
+
+                // Code files
+                case 'js': case 'ts': case 'jsx': case 'tsx': return '📜';
+                case 'py': case 'java': case 'c': case 'cpp': case 'h': case 'cs': case 'go': case 'rs': case 'php': return '📜';
+                case 'html': case 'css': case 'xml': case 'scss': case 'less': return '🌐';
+
+                // Media files
+                case 'jpg': case 'jpeg': case 'png': case 'gif': case 'svg': case 'webp': case 'bmp': case 'ico': return '🖼️';
+
+                // Archive files
+                case 'zip': case 'gz': case 'tar': case 'rar': case '7z': return '📦';
+
+                default: return '📄';
+            }
+        };
+        */
+
+
+
         const cspSource = SyncStatsWebview.currentPanel?.webview.cspSource || '';
 
         return `<!DOCTYPE html>
@@ -173,7 +207,6 @@ export class SyncStatsWebview {
                     --text-secondary: var(--vscode-descriptionForeground);
                     --link: var(--vscode-textLink-foreground);
                     --font: var(--vscode-font-family, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
-                    --accent-rgb: 0, 122, 204; /* Default blue-ish fallback if calc fails, mostly overridden by variable logic if we could inject it */
                 }
 
                 body {
@@ -182,6 +215,7 @@ export class SyncStatsWebview {
                     color: var(--fg);
                     padding: 30px;
                     margin: 0;
+                    line-height: 1.6;
                     line-height: 1.6;
                     overflow-x: hidden;
                 }
@@ -212,6 +246,7 @@ export class SyncStatsWebview {
                     gap: 24px;
                     margin-bottom: 40px;
                 }
+
 
                 .card {
                     background: var(--card-bg);
@@ -246,7 +281,7 @@ export class SyncStatsWebview {
                     gap: 30px;
                     animation: fadeIn 0.8s ease-out;
                 }
-                                .storage-icon { font-size: 40px; opacity: 0.8; }
+                .storage-icon { font-size: 40px; opacity: 0.8; }
                 .storage-info { flex-grow: 1; }
                 .storage-title { font-weight: 600; margin-bottom: 5px; }
                 .storage-stats { font-size: 13px; opacity: 0.7; display: flex; justify-content: space-between; margin-bottom: 8px; }
@@ -319,6 +354,7 @@ export class SyncStatsWebview {
                 .file-item:hover { background: rgba(255,255,255,0.05); }
                 .file-icon { width: 16px; height: 16px; margin-right: 8px; min-width: 16px; display: inline-flex; align-items: center; justify-content: center; }
                 .file-icon svg { width: 100%; height: 100%; display: block; }
+
                 .meta-info { font-size: 11px; opacity: 0.6; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
 
                 ::-webkit-scrollbar { width: 10px; }
@@ -460,9 +496,9 @@ export class SyncStatsWebview {
                 ${data.driveQuota ? `
                 ${(() => {
                     const totalSyncSize = data.remoteManifest.conversations.reduce((sum, c) => {
-                        let size = c.size || 0;
+                        let size = (c as any).size || 0;
                         if (!size && c.fileHashes) {
-                            size = Object.values(c.fileHashes).reduce((s, f) => s + f.size, 0);
+                            size = Object.values(c.fileHashes).reduce((s, f) => s + (f as any).size, 0);
                         }
                         return sum + size;
                     }, 0);
@@ -561,10 +597,14 @@ export class SyncStatsWebview {
                                         </td>
                                     </tr>
                                     ${(() => {
+                            // Display quota for ALL machines in the group that have it
+                            // Filter machines with valid quota
                             const machinesWithQuota = group.filter(m => m.accountQuota && m.accountQuota.models && m.accountQuota.models.length > 0);
+
+                            // If no machines have quota, return empty
                             if (machinesWithQuota.length === 0) return '';
 
-                            // Sort: Current machine first, then by last sync
+                            // Sort: Current machine first, then by last sync (newest first)
                             machinesWithQuota.sort((a, b) => {
                                 if (a.isCurrent) return -1;
                                 if (b.isCurrent) return 1;
@@ -575,10 +615,14 @@ export class SyncStatsWebview {
                                 const snapshot = m.accountQuota;
                                 const models = [...snapshot.models].sort((a: any, b: any) => (a.remainingPercentage || 0) - (b.remainingPercentage || 0));
 
+                                // Unique header info
                                 let quotaSourceLabel = lm.t('Quota Usage');
                                 if (machinesWithQuota.length > 1) {
-                                    if (m.isCurrent) quotaSourceLabel += ` (${lm.t('This Device')})`;
-                                    else quotaSourceLabel += ` (${m.id.substring(0, 8)}...)`;
+                                    if (m.isCurrent) {
+                                        quotaSourceLabel += ` (${lm.t('This Device')})`;
+                                    } else {
+                                        quotaSourceLabel += ` (${m.id.substring(0, 8)}...)`;
+                                    }
                                 }
 
                                 return `
@@ -744,7 +788,7 @@ export class SyncStatsWebview {
                                             }
 
                                             const groupLabel = isGroup ? g.name : cleanLabel(primary.label);
-                                            function cleanLabel(l: string) { return l.replace('Gemini 1.5 ', '').replace('Gemini 3 ', '').replace('Claude 3.5 ', '').replace('Claude 3 ', ''); }
+                                            function cleanLabel(l: string) { return l.replace('Gemini 1.5 ', '').replace('Gemini 3 Pro (Thinking)', 'Pro (High)').replace('Gemini 3 Pro', 'Pro (Medium)').replace('Gemini 3 Flash', 'Flash').replace('Claude 3.5 Sonnet (Thinking)', 'Claude Sonnet 4.5 (Thinking)').replace('Claude 3.5 Sonnet', 'Claude Sonnet 4.5').replace('Claude 3.5 Opus (Thinking)', 'Claude Opus 4.5 (Thinking)').replace('Claude 3.5 Opus', 'Claude Opus 4.5').replace('Claude 3 ', '').replace('GPT-OSS 120B', 'GPT-OSS 120B (Medium)'); }
 
                                             return `<div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); padding: 24px; border-radius: 16px; box-sizing: border-box; min-height: 240px; border: 1px solid rgba(255,255,255,0.02);">
                                                 
@@ -780,9 +824,9 @@ export class SyncStatsWebview {
                                         }).join('');
                                     })()}
                                     </div>
-                </td>
-                </tr>
-                    `;
+                                </td>
+                            </tr>
+                                `;
                             }).join('');
                         })()}
                                     ${group.map(m => {
@@ -816,62 +860,240 @@ export class SyncStatsWebview {
                         </tbody>
                     </table>
                 </div>
-            </div>
 
-            <div class="custom-tooltip" id="tooltip"></div>
+                <div class="section-title">${lm.t('Conversations')}</div>
+                <div class="data-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'title' ? 'sort-active' : ''}" onclick="postCommand('sort', {table:'conversations', col:'title'})">
+                                    ${lm.t('Content')} ${SyncStatsWebview.convsSort.col === 'title' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
+                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'status' ? 'sort-active' : ''}" style="width: 15%" onclick="postCommand('sort', {table:'conversations', col:'status'})">
+                                    ${lm.t('Status')} ${SyncStatsWebview.convsSort.col === 'status' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
+                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'modified' ? 'sort-active' : ''}" style="width: 20%" onclick="postCommand('sort', {table:'conversations', col:'modified'})">
+                                    ${lm.t('Modified')} ${SyncStatsWebview.convsSort.col === 'modified' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
+                                </th>
+                                <th style="width: 15%">${lm.t('Source')}</th>
+                                <th style="text-align:right; width: 10%">${lm.t('Actions')}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${(() => {
+                const allIds = new Set([
+                    ...data.localConversations.map(c => c.id),
+                    ...data.remoteManifest.conversations.map(c => c.id)
+                ]);
+
+                const convList = Array.from(allIds).map(id => {
+                    const local = data.localConversations.find(c => c.id === id);
+                    const remote = data.remoteManifest.conversations.find(c => c.id === id);
+                    const title = remote?.title || local?.title || id;
+
+                    let statusType = 0; // Synced
+                    if (!remote) statusType = 1; // Local Only
+                    else if (!local) statusType = 2; // Cloud Only
+
+                    return { id, local, remote, title, statusType };
+                });
+
+                // Sort conversations
+                const cSort = SyncStatsWebview.convsSort;
+                convList.sort((a, b) => {
+                    let valA: any, valB: any;
+                    switch (cSort.col) {
+                        case 'title': valA = a.title.toLowerCase(); valB = b.title.toLowerCase(); break;
+                        case 'status': valA = a.statusType; valB = b.statusType; break;
+                        case 'modified':
+                            valA = new Date(a.remote?.lastModified || a.local?.lastModified || 0).getTime();
+                            valB = new Date(b.remote?.lastModified || b.local?.lastModified || 0).getTime();
+                            break;
+                        default: valA = 0; valB = 0;
+                    }
+                    if (valA < valB) return cSort.dir === 'asc' ? -1 : 1;
+                    if (valA > valB) return cSort.dir === 'asc' ? 1 : -1;
+                    return 0;
+                });
+
+                return convList.map(({ id, local, remote, title, statusType }) => {
+                    let statusBadge = '';
+                    if (statusType === 0) statusBadge = `<span class="badge success">${lm.t('Synced')}</span>`;
+                    else if (statusType === 2) statusBadge = `<span class="badge warning">${lm.t('Cloud Only')}</span>`;
+                    else statusBadge = `<span class="badge accent">${lm.t('Local Only')}</span>`;
+
+                    const modDate = remote?.lastModified || local?.lastModified || '';
+                    const createdInfo = remote && remote.createdByName ? `${lm.t('Created by {0} on {1}', remote.createdByName, lm.formatDateTime(remote.createdAt || ''))}` : '';
+
+                    const machineId = remote?.modifiedBy || (remote as any)?.machineId;
+                    const sourceMachine = data.machines.find(m => m.id === machineId);
+                    const sourceName = sourceMachine ? sourceMachine.name : (machineId ? machineId.substring(0, 8) + '...' : lm.t('Unknown'));
+
+                    const files = local?.files || remote?.fileHashes;
+                    // For remote, fileHashes is object {path: info}, local files is object {path: info} too
+
+                    let totalSize = 0;
+                    if (files) {
+                        totalSize = Object.values(files).reduce((acc: number, f: any) => acc + (f.size || 0), 0);
+                    }
+
+                    let fileListHtml = '';
+                    if (files) {
+                        // Sort files by filename (basename)
+                        const fileEntries = Object.entries(files).sort((a, b) => {
+                            const nameA = a[0].split('/').pop()?.toLowerCase() || '';
+                            const nameB = b[0].split('/').pop()?.toLowerCase() || '';
+                            return nameA.localeCompare(nameB);
+                        });
+                        if (fileEntries.length > 0) {
+                            fileListHtml = fileEntries.map(([fPath, fInfo]) => {
+                                const size = (fInfo as any).size || 0;
+                                const icon = getFileIconSvg(fPath);
+                                return `<div class="file-item" onclick="event.stopPropagation(); postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})">
+                                        <div style="display:flex; align-items:center;">
+                                            <span class="file-icon">${icon}</span>
+                                            <span>${fPath.split('/').pop()}</span>
+                                            <span style="opacity:0.4; font-size:10px; margin-left:8px; font-family:monospace">${fPath}</span>
+                                        </div>
+                                        <div style="display:flex; align-items:center;">
+                                            <span style="opacity:0.5; font-family:monospace; margin-right: 10px;">${formatBytes(size)}</span>
+                                            <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversationFile', {id:'${id}', file:'${fPath}'})" title="${lm.t('Delete')}">🗑️</button>
+                                        </div>
+                                    </div>`;
+                            }).join('');
+                        }
+                    }
+
+                    return `
+                                        <tr onclick="toggleFiles('${id}')" style="cursor: pointer">
+                                            <td>
+                                                <div class="link" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})">${title}</div>
+                                                <div title="${id}" style="font-size:11px; opacity:0.5; font-family:monospace; display: inline-block;">
+                                                    ${id.substring(0, 8)}... <span style="margin-left:8px; opacity:0.8">💾 ${formatBytes(totalSize)}</span>
+                                                </div>
+                                                ${createdInfo ? `<div class="meta-info">👤 ${createdInfo}</div>` : ''}
+                                            </td>
+                                            <td>${statusBadge}</td>
+                                            <td>${modDate ? lm.formatDateTime(modDate) : '-'}</td>
+                                            <td><span title="${machineId}" style="cursor:help; border-bottom:1px dotted rgba(255,255,255,0.3)">${sourceName}</span></td>
+                                            <td style="text-align:right">
+                                                <button class="btn-icon" onclick="event.stopPropagation(); postCommand('renameConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Rename')}">✏️</button>
+                                                ${!remote ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pushConversation', {id:'${id}'})" title="${lm.t('Upload')}">⬆️</button>` : ''}
+                                                ${!local ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pullConversation', {id:'${id}'})" title="${lm.t('Download')}">⬇️</button>` : ''}
+                                                <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Delete')}">🗑️</button>
+                                            </td>
+                                        </tr>
+                                        ${fileListHtml ? `
+                                        <tr id="files-${id}" class="file-list-row">
+                                            <td colspan="5" style="padding: 0;">
+                                                <div class="file-list-wrapper">
+                                                    ${fileListHtml}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        ` : ''}
+                                    `;
+                }).join('');
+            })()}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="tooltip" class="custom-tooltip"></div>
 
             <script>
                 const vscode = acquireVsCodeApi();
-                
-                // Animation for cards
-                document.querySelectorAll('.card').forEach((card, i) => {
-                    card.style.animationDelay = (i * 0.1) + 's';
-                });
 
                 function postCommand(command, data = {}) {
                     vscode.postMessage({ command, ...data });
                 }
 
                 function toggleGroup(groupId) {
-                    document.querySelectorAll('.' + groupId).forEach(row => {
-                        if (row.classList.contains('quota-row')) {
-                            // Don't toggle quota rows implicitly? Or yes?
-                            // For now, toggle everything in group
-                        }
-                        // row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+                    const rows = document.querySelectorAll('.' + groupId);
+                    const header = event.currentTarget;
+                    const icon = document.getElementById('icon-' + groupId);
+                    
+                    header.classList.toggle('collapsed');
+                    rows.forEach(row => {
                         row.classList.toggle('collapsed-row');
                     });
-                    document.getElementById('icon-' + groupId).parentElement.parentElement.classList.toggle('collapsed');
                 }
-
+                
+                function toggleFiles(id) {
+                    const el = document.getElementById('files-' + id);
+                    if (el) {
+                        el.style.display = el.style.display === 'table-row' ? 'none' : 'table-row';
+                    }
+                }
+                
                 // Tooltip logic
                 const tooltip = document.getElementById('tooltip');
-                function showTooltip(e, date, usage, reset, req, limit) {
-                    let html = '<strong>' + date + '</strong><br/>';
-                    html += '${lm.t('Usage')}: ' + usage + '%';
-                    if (req) html += '<br/>${lm.t('Requests')}: ' + req;
-                    if (reset) html += '<br/><span style="opacity:0.6; font-size:10px">${lm.t('Resets')} ' + reset + '</span>';
-                    
-                    tooltip.innerHTML = html;
+                
+                function showTooltip(event, date, usage, reset, req, tok) {
+                    if (!tooltip) return;
                     tooltip.style.display = 'block';
-                    moveTooltip(e);
+                    
+                    let content = '<div style="font-weight:600; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1)">' + date + '</div>';
+                    
+                    // Max Usage
+                    content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
+                               '<span style="opacity:0.7">${lm.t('Max Usage')}</span>' +
+                               '<span style="font-weight:600">' + usage + '%</span>' +
+                               '</div>';
+                    
+                    // Reset
+                    if (reset) {
+                        content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
+                                   '<span style="opacity:0.7">${lm.t('Resets')}</span>' +
+                                   '<span>' + reset + '</span>' +
+                                   '</div>';
+                    }
+                    
+                    // Requests
+                    if (req) {
+                        content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
+                                   '<span style="opacity:0.7">${lm.t('Requests')}</span>' +
+                                   '<span>' + req + '</span>' +
+                                   '</div>';
+                    }
+
+                    // Tokens
+                     if (tok) {
+                        content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px;">' +
+                                   '<span style="opacity:0.7">${lm.t('Tokens')}</span>' +
+                                   '<span>' + tok + '</span>' +
+                                   '</div>';
+                    }
+
+                    tooltip.innerHTML = content;
+                    moveTooltip(event);
                 }
 
                 function hideTooltip() {
-                    tooltip.style.display = 'none';
+                     if (tooltip) tooltip.style.display = 'none';
                 }
 
                 function moveTooltip(e) {
-                    const x = e.clientX + 15;
-                    const y = e.clientY + 15;
+                    if (!tooltip) return;
+                    const x = e.clientX;
+                    const y = e.clientY;
                     
-                    // Boundary check
+                    // Bounds check
                     const rect = tooltip.getBoundingClientRect();
-                    const maxX = window.innerWidth - rect.width - 20;
-                    const maxY = window.innerHeight - rect.height - 20;
+                    let left = x + 10;
+                    let top = y + 10;
                     
-                    tooltip.style.left = Math.min(x, maxX) + 'px';
-                    tooltip.style.top = Math.min(y, maxY) + 'px';
+                    if (left + rect.width > window.innerWidth) {
+                        left = x - rect.width - 10;
+                    }
+                     // Keep it visible at bottom (if too low, move up)
+                    if (top + rect.height > window.innerHeight) {
+                        top = y - rect.height - 10;
+                    }
+                    
+                    tooltip.style.left = left + 'px';
+                    tooltip.style.top = top + 'px';
                 }
             </script>
         </body>

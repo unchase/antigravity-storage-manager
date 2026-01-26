@@ -477,5 +477,6 @@
     "Antigravity Backup Size": "Antigravity 백업 크기",
     "conversations": "대화",
     "uses {0} of Drive": "Drive의 {0} 사용",
-    "Different Device": "다른 기기"
+    "Different Device": "다른 기기",
+    "Source": "소스"
 }

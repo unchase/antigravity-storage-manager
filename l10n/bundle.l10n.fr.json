@@ -477,5 +477,6 @@
     "Antigravity Backup Size": "Taille de la sauvegarde Antigravity",
     "conversations": "conversations",
     "uses {0} of Drive": "utilise {0} de Drive",
-    "Different Device": "Appareil différent"
+    "Different Device": "Appareil différent",
+    "Source": "Source"
 }

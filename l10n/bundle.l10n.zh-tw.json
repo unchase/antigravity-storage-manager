@@ -477,5 +477,6 @@
     "Antigravity Backup Size": "Antigravity 備份大小",
     "conversations": "對話",
     "uses {0} of Drive": "使用 {0} 雲端硬碟空間",
-    "Different Device": "其他裝置"
+    "Different Device": "其他裝置",
+    "Source": "來源"
 }

@@ -5,6 +5,15 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] - 2026-01-27
+### Sync & Dashboard
+- **Google Drive Storage**: Enhanced the storage breakdown section to include the total size of your Antigravity backup and its percentage of used space.
+- **Quota Display**: Completely revamped the quota blocks with a modern grid layout, circular SVG charts, and grouped models for better readability.
+- **Localization**: Added native "Source" field translations across all 16 supported languages.
+
+### Bug Fixes
+- **Dashboard**: Fixed an issue where the conversation list was missing from the Sync Statistics view. Restored full visibility of synced files per device.
+
 ## [0.9.5] - 2026-01-26
 ### Sync & Dashboard
 - **Session Resumption**: Removed restriction preventing users from resuming a session if the machine name was changed. Now allows reconnecting to any existing session regardless of name mismatch, with appropriate UI feedback.
