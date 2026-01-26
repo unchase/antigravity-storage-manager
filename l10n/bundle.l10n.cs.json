@@ -471,5 +471,11 @@
     "Local: {0}, {1}": "Místní: {0}, {1}",
     "Remote: {0}, {1} (by {2})": "Vzdálený: {0}, {1} (od {2})",
     "Hashes: L={0} / R={1}": "Hashe: L={0} / R={1}",
-    "Star on GitHub": "Hvězda na GitHubu"
+    "Star on GitHub": "Hvězda na GitHubu",
+    "Unavailable (Different Device)": "Nedostupné (Jiné zařízení)",
+    "Cannot join a session from another device (\"{0}\"). Please select the current device session or create a new one.": "Nelze se připojit k relaci z jiného zařízení (\"{0}\"). Vyberte prosím relaci aktuálního zařízení nebo vytvořte novou.",
+    "Antigravity Backup Size": "Velikost zálohy Antigravity",
+    "conversations": "konverzace",
+    "uses {0} of Drive": "využívá {0} z Disku",
+    "Different Device": "Jiné zařízení"
 }

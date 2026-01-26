@@ -471,5 +471,11 @@
     "Local: {0}, {1}": "ローカル: {0}, {1}",
     "Remote: {0}, {1} (by {2})": "リモート: {0}, {1} ({2} による)",
     "Hashes: L={0} / R={1}": "ハッシュ: L={0} / R={1}",
-    "Star on GitHub": "GitHubでスター"
+    "Star on GitHub": "GitHubでスター",
+    "Unavailable (Different Device)": "利用不可 (別のデバイス)",
+    "Cannot join a session from another device (\"{0}\"). Please select the current device session or create a new one.": "別のデバイス (\"{0}\") のセッションに参加できません。現在のデバイスのセッションを選択するか、新しいセッションを作成してください。",
+    "Antigravity Backup Size": "Antigravity バックアップサイズ",
+    "conversations": "会話",
+    "uses {0} of Drive": "ドライブの {0} を使用",
+    "Different Device": "別のデバイス"
 }

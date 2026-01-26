@@ -471,5 +471,11 @@
     "Local: {0}, {1}": "Local: {0}, {1}",
     "Remote: {0}, {1} (by {2})": "Remoto: {0}, {1} (por {2})",
     "Hashes: L={0} / R={1}": "Hashes: L={0} / R={1}",
-    "Star on GitHub": "Estrela no GitHub"
+    "Star on GitHub": "Estrela no GitHub",
+    "Unavailable (Different Device)": "Indisponível (Outro dispositivo)",
+    "Cannot join a session from another device (\"{0}\"). Please select the current device session or create a new one.": "Não é possível entrar em uma sessão de outro dispositivo (\"{0}\"). Selecione a sessão do dispositivo atual ou crie uma nova.",
+    "Antigravity Backup Size": "Tamanho do backup Antigravity",
+    "conversations": "conversas",
+    "uses {0} of Drive": "usa {0} do Drive",
+    "Different Device": "Dispositivo diferente"
 }

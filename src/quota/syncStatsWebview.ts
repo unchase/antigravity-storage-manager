@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { SyncManifest } from '../googleDrive';
-import { getFileIconSvg } from './fileIcons';
+
 import { QuotaSnapshot } from './types';
-import { formatResetTime, formatDuration, getCycleDuration } from './utils';
+import { formatResetTime, formatDuration, getCycleDuration, getModelAbbreviation } from './utils';
 
 export interface ActiveTransfer {
     conversationId: string;
@@ -149,40 +149,6 @@ export class SyncStatsWebview {
         const localPct = data.localCount > 0 ? (syncedCount / data.localCount) * 100 : 0;
         const remotePct = data.remoteCount > 0 ? (syncedCount / data.remoteCount) * 100 : 0;
 
-        /*
-        // Use emoji icons for file types (reliable, no font loading required)
-        const getFileIcon = (filename: string): string => {
-            const ext = filename.split('.').pop()?.toLowerCase();
-            switch (ext) {
-                // Document files
-                case 'md': return '📝';
-                case 'txt': case 'log': return '📄';
-
-                // Data files
-                case 'json': return '📋';
-                case 'yaml': case 'yml': case 'toml': case 'ini': case 'conf': return '⚙️';
-                case 'pb': return '💾';
-                case 'resolved': return '✅';
-                case 'metadata': return '🏷️';
-
-                // Code files
-                case 'js': case 'ts': case 'jsx': case 'tsx': return '📜';
-                case 'py': case 'java': case 'c': case 'cpp': case 'h': case 'cs': case 'go': case 'rs': case 'php': return '📜';
-                case 'html': case 'css': case 'xml': case 'scss': case 'less': return '🌐';
-
-                // Media files
-                case 'jpg': case 'jpeg': case 'png': case 'gif': case 'svg': case 'webp': case 'bmp': case 'ico': return '🖼️';
-
-                // Archive files
-                case 'zip': case 'gz': case 'tar': case 'rar': case '7z': return '📦';
-
-                default: return '📄';
-            }
-        };
-        */
-
-
-
         const cspSource = SyncStatsWebview.currentPanel?.webview.cspSource || '';
 
         return `<!DOCTYPE html>
@@ -207,6 +173,7 @@ export class SyncStatsWebview {
                     --text-secondary: var(--vscode-descriptionForeground);
                     --link: var(--vscode-textLink-foreground);
                     --font: var(--vscode-font-family, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
+                    --accent-rgb: 0, 122, 204; /* Default blue-ish fallback if calc fails, mostly overridden by variable logic if we could inject it */
                 }
 
                 body {
@@ -215,7 +182,6 @@ export class SyncStatsWebview {
                     color: var(--fg);
                     padding: 30px;
                     margin: 0;
-                    line-height: 1.6;
                     line-height: 1.6;
                     overflow-x: hidden;
                 }
@@ -246,7 +212,6 @@ export class SyncStatsWebview {
                     gap: 24px;
                     margin-bottom: 40px;
                 }
-
 
                 .card {
                     background: var(--card-bg);
@@ -281,7 +246,7 @@ export class SyncStatsWebview {
                     gap: 30px;
                     animation: fadeIn 0.8s ease-out;
                 }
-                .storage-icon { font-size: 40px; opacity: 0.8; }
+                                .storage-icon { font-size: 40px; opacity: 0.8; }
                 .storage-info { flex-grow: 1; }
                 .storage-title { font-weight: 600; margin-bottom: 5px; }
                 .storage-stats { font-size: 13px; opacity: 0.7; display: flex; justify-content: space-between; margin-bottom: 8px; }
@@ -354,7 +319,6 @@ export class SyncStatsWebview {
                 .file-item:hover { background: rgba(255,255,255,0.05); }
                 .file-icon { width: 16px; height: 16px; margin-right: 8px; min-width: 16px; display: inline-flex; align-items: center; justify-content: center; }
                 .file-icon svg { width: 100%; height: 100%; display: block; }
-
                 .meta-info { font-size: 11px; opacity: 0.6; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
 
                 ::-webkit-scrollbar { width: 10px; }
@@ -375,6 +339,82 @@ export class SyncStatsWebview {
                     font-size: 11px;
                     min-width: 120px;
                     color: var(--fg);
+                }
+
+                /* Model Group Grid Layout */
+                .quota-group-header {
+                    font-size: 13px; 
+                    font-weight: 600; 
+                    color: var(--fg); 
+                    margin-bottom: 10px; 
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: space-between;
+                    opacity: 0.9;
+                }
+                
+                .models-grid {
+                    display: grid; 
+                    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); 
+                    gap: 8px; 
+                    margin-bottom: 16px;
+                }
+                
+                .model-card {
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.05);
+                    border-radius: 6px;
+                    padding: 8px 10px;
+                    font-size: 11px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    transition: all 0.2s;
+                    min-height: 34px;
+                    position: relative;
+                    line-height: 1.2;
+                }
+                
+                .model-card:hover { 
+                    background: rgba(255,255,255,0.08); 
+                    transform: translateY(-1px); 
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    z-index: 1;
+                }
+                
+                .model-card.pinned {
+                    background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.1), rgba(255,255,255,0.04));
+                    border-left: 2px solid var(--accent);
+                    padding-left: 8px;
+                }
+
+                .stats-row {
+                    display: flex; 
+                    align-items: center; 
+                    gap: 24px; 
+                    margin-bottom: 20px; 
+                    min-height: 64px;
+                }
+
+                .chart-circle {
+                    position: relative; 
+                    width: 72px; 
+                    height: 72px; 
+                    flex-shrink: 0;
+                }
+                
+                .chart-history {
+                    flex: 1; 
+                    display: flex; 
+                    flex-direction: column; 
+                    justify-content: flex-end; 
+                    height: 60px;
+                }
+                
+                .reset-info {
+                    font-size: 11px;
+                    opacity: 0.5;
+                    margin-bottom: 16px;
                 }
             </style>
         </head>
@@ -418,22 +458,44 @@ export class SyncStatsWebview {
                 </div>
 
                 ${data.driveQuota ? `
-                <div class="storage-section">
-                    <div class="storage-icon">☁️</div>
-                    <div class="storage-info">
-                        <div class="storage-title">
-                            ${lm.t('Google Drive Storage')}
-                            ${data.driveEmail ? `<span style="font-size: 11px; opacity: 0.6; font-weight: 400; margin-left: 8px;">(${data.driveEmail})</span>` : ''}
+                ${(() => {
+                    const totalSyncSize = data.remoteManifest.conversations.reduce((sum, c) => {
+                        let size = c.size || 0;
+                        if (!size && c.fileHashes) {
+                            size = Object.values(c.fileHashes).reduce((s, f) => s + f.size, 0);
+                        }
+                        return sum + size;
+                    }, 0);
+
+                    return `
+                    <div class="storage-section">
+                        <div class="storage-icon">☁️</div>
+                        <div class="storage-info">
+                            <div class="storage-title">
+                                ${lm.t('Google Drive Storage')}
+                                ${data.driveEmail ? `<span style="font-size: 11px; opacity: 0.6; font-weight: 400; margin-left: 8px;">(${data.driveEmail})</span>` : ''}
+                            </div>
+                            <div class="storage-stats">
+                                <span>${formatBytes(data.driveQuota.used)} ${lm.t('of')} ${formatBytes(data.driveQuota.limit)}</span>
+                                <span>${((data.driveQuota.used / data.driveQuota.limit) * 100).toFixed(1)}%</span>
+                            </div>
+                            <div class="storage-bar">
+                                <div class="storage-bar-fill" style="width: ${(data.driveQuota.used / data.driveQuota.limit) * 100}%"></div>
+                            </div>
+                            
+                            <!-- Sync Usage -->
+                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <div class="storage-title" style="font-size: 13px; opacity: 0.9;">
+                                    ${lm.t('Antigravity Backup Size')}
+                                </div>
+                                <div class="storage-stats">
+                                    <span>${formatBytes(totalSyncSize)} <span style="opacity:0.6">(${data.remoteManifest.conversations.length} ${lm.t('conversations')})</span></span>
+                                    <span style="opacity:0.6">${lm.t('uses {0} of Drive', ((totalSyncSize / data.driveQuota.used) * 100).toFixed(2) + '%')}</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="storage-stats">
-                            <span>${formatBytes(data.driveQuota.used)} ${lm.t('of')} ${formatBytes(data.driveQuota.limit)}</span>
-                            <span>${((data.driveQuota.used / data.driveQuota.limit) * 100).toFixed(1)}%</span>
-                        </div>
-                        <div class="storage-bar">
-                            <div class="storage-bar-fill" style="width: ${(data.driveQuota.used / data.driveQuota.limit) * 100}%"></div>
-                        </div>
-                    </div>
-                </div>
+                    </div>`;
+                })()}
                 ` : ''}
 
                 ${data.activeTransfers && data.activeTransfers.length > 0 ? `
@@ -442,8 +504,8 @@ export class SyncStatsWebview {
                     <table>
                         <tbody>
                             ${data.activeTransfers.map(t => {
-            const startTime = t.startTime ? new Date(t.startTime).toLocaleTimeString(lm.getLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-            return `
+                    const startTime = t.startTime ? new Date(t.startTime).toLocaleTimeString(lm.getLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+                    return `
                                 <tr>
                                     <td style="width: 40px; text-align: center;">
                                         <span class="pulse" style="font-size: 18px;">${t.type === 'upload' ? '⬆️' : '⬇️'}</span>
@@ -460,7 +522,7 @@ export class SyncStatsWebview {
                                     </td>
                                 </tr>
                                 `;
-        }).join('')}
+                }).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -488,9 +550,9 @@ export class SyncStatsWebview {
                         </thead>
                         <tbody>
                             ${Array.from(machineGroups.entries()).map(([name, group], gIdx) => {
-            const groupId = `group-${gIdx}`;
-            const isCurrentGroup = group.some(m => m.isCurrent);
-            return `
+                    const groupId = `group-${gIdx}`;
+                    const isCurrentGroup = group.some(m => m.isCurrent);
+                    return `
                                     <tr class="group-header" onclick="toggleGroup('${groupId}')">
                                         <td colspan="5">
                                             <span class="collapse-icon" id="icon-${groupId}">▼</span>
@@ -499,240 +561,233 @@ export class SyncStatsWebview {
                                         </td>
                                     </tr>
                                     ${(() => {
-                    // Display quota for ALL machines in the group that have it
-                    // Filter machines with valid quota
-                    const machinesWithQuota = group.filter(m => m.accountQuota && m.accountQuota.models && m.accountQuota.models.length > 0);
+                            const machinesWithQuota = group.filter(m => m.accountQuota && m.accountQuota.models && m.accountQuota.models.length > 0);
+                            if (machinesWithQuota.length === 0) return '';
 
-                    // If no machines have quota, return empty
-                    if (machinesWithQuota.length === 0) return '';
+                            // Sort: Current machine first, then by last sync
+                            machinesWithQuota.sort((a, b) => {
+                                if (a.isCurrent) return -1;
+                                if (b.isCurrent) return 1;
+                                return new Date(b.lastSync).getTime() - new Date(a.lastSync).getTime();
+                            });
 
-                    // Sort: Current machine first, then by last sync (newest first)
-                    machinesWithQuota.sort((a, b) => {
-                        if (a.isCurrent) return -1;
-                        if (b.isCurrent) return 1;
-                        return new Date(b.lastSync).getTime() - new Date(a.lastSync).getTime();
-                    });
+                            return machinesWithQuota.map(m => {
+                                const snapshot = m.accountQuota;
+                                const models = [...snapshot.models].sort((a: any, b: any) => (a.remainingPercentage || 0) - (b.remainingPercentage || 0));
 
-                    return machinesWithQuota.map(m => {
-                        const snapshot = m.accountQuota;
-                        const models = [...snapshot.models].sort((a: any, b: any) => (a.remainingPercentage || 0) - (b.remainingPercentage || 0));
-
-                        // Unique header info
-                        let quotaSourceLabel = lm.t('Quota Usage');
-                        if (machinesWithQuota.length > 1) {
-                            if (m.isCurrent) {
-                                quotaSourceLabel += ` (${lm.t('This Device')})`;
-                            } else {
-                                quotaSourceLabel += ` (${m.id.substring(0, 8)}...)`;
-                            }
-                        }
-
-                        return `
-                                    <tr class="quota-row ${groupId}" style="background: rgba(0,0,0,0.2);">
-                                        <td colspan="5" style="padding: 10px 16px 14px 44px;">
-                                            <div style="display:flex; justify-content: space-between; align-items:flex-end; margin-bottom: 12px;">
-                                                 <div style="font-size: 10px; font-weight: 700; opacity: 0.5; text-transform:uppercase; letter-spacing:1px;">${quotaSourceLabel}</div>
-                                                 ${snapshot.userEmail || snapshot.planName ? `<div style="font-size: 10px; opacity: 0.6;">${snapshot.userEmail ? `${lm.t('User')}: ${snapshot.userEmail}` : ''}${snapshot.userEmail && snapshot.planName ? ' • ' : ''}${snapshot.planName ? `${lm.t('Plan')}: ${snapshot.planName}` : ''}</div>` : ''}
-                                            </div>
-                                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">
-                                                ${models.sort((a: any, b: any) => {
-                            const pinned = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string[]>('quota.pinnedModels') || [];
-                            const isPinnedA = pinned.includes(a.label);
-                            const isPinnedB = pinned.includes(b.label);
-                            if (isPinnedA && !isPinnedB) return -1;
-                            if (!isPinnedA && isPinnedB) return 1;
-                            return 0;
-                        }).map((m: any) => {
-                            const pct = m.remainingPercentage || 0;
-                            let color = 'var(--success)';
-                            if (pct < 5) color = 'var(--error)';
-                            else if (pct < 30) color = 'var(--warning)';
-
-                            const cleanLabel = m.label.replace('Gemini 1.5 ', '').replace('Gemini 3 ', '').replace('Claude 3.5 ', '').replace('Claude 3 ', '');
-
-                            // Reset time
-                            const resetTimeStr = m.resetTime ? formatResetTime(new Date(m.resetTime)) : '';
-
-                            // Circular Chart & Stats
-                            const radius = 16; // viewBox radius
-                            const circumference = 2 * Math.PI * radius;
-                            const strokeDasharray = `${(pct / 100) * circumference} ${circumference}`;
-
-                            // Stats (requests/limits)
-                            let statsHtml = '';
-                            if (m.requestUsage !== undefined && m.requestLimit) {
-                                statsHtml += `<div title="${lm.t('Requests')}" style="display:flex; justify-content:space-between; margin-bottom:2px;">
-                                    <span style="opacity:0.5">${lm.t('Requests')}</span>
-                                    <span style="font-weight:600">${m.requestUsage}/${m.requestLimit}</span>
-                                </div>`;
-                            }
-                            if (m.tokenUsage !== undefined && m.tokenLimit) {
-                                // Shorten token numbers (e.g. 1.2M)
-                                const formatTokens = (n: number) => {
-                                    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-                                    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-                                    return n.toString();
-                                };
-                                statsHtml += `<div title="${lm.t('Tokens')}" style="display:flex; justify-content:space-between;">
-                                    <span style="opacity:0.5">${lm.t('Tokens')}</span>
-                                    <span style="font-weight:600">${formatTokens(m.tokenUsage)}/${formatTokens(m.tokenLimit)}</span>
-                                </div>`;
-                            }
-
-                            // Cycle info
-                            let cycleHtml = '';
-                            // Show cycle for ANY model that has a valid reset time and positive timeUntilReset
-                            if (m.timeUntilReset && m.timeUntilReset > 0) {
-                                const cycleDuration = getCycleDuration(m.label);
-                                const progress = Math.max(0, Math.min(1, 1 - (m.timeUntilReset / cycleDuration)));
-                                const progressPct = (progress * 100).toFixed(0);
-                                cycleHtml = `<div style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:9px; opacity:0.7;">
-                                <span>${lm.t('Cycle')}:</span>
-                                <div style="flex:1; height:2px; background:rgba(255,255,255,0.1); border-radius:1px; overflow:hidden;">
-                                    <div style="width:${progressPct}%; height:100%; background:var(--accent);"></div>
-                                </div>
-                                <span>(${formatDuration(m.timeUntilReset)})</span>
-                            </div>`;
-                            }
-
-
-                            // History chart (Daily Bars)
-                            let chartHtml = '';
-                            if (isCurrentGroup && data.usageHistory) {
-                                const history = data.usageHistory.get(m.modelId);
-                                if (history && history.length > 0) {
-                                    const chartHeight = 30;
-
-                                    // Aggregate by day
-                                    const dailyMap = new Map<string, number>();
-                                    history.forEach(p => {
-                                        const d = new Date(p.timestamp).toLocaleDateString();
-                                        const cur = dailyMap.get(d) || 0;
-                                        // Use max usage seen that day as the "daily" value
-                                        dailyMap.set(d, Math.max(cur, p.usage));
-                                    });
-
-                                    // Generate last 14 days (including today) to ensure alignment across all models
-                                    const daysToShow = [];
-                                    const today = new Date();
-                                    // Reset time part to avoid issues? toLocaleDateString usually ignores time but good to be consistent
-                                    // Actually, we just need the date string key
-
-                                    for (let i = 13; i >= 0; i--) {
-                                        const d = new Date(today);
-                                        d.setDate(today.getDate() - i);
-                                        const dateKey = d.toLocaleDateString();
-
-                                        const usage = dailyMap.get(dateKey) || 0;
-                                        daysToShow.push({
-                                            date: d.toISOString(),
-                                            usage: usage,
-                                            ts: d.getTime()
-                                        });
-                                    }
-
-                                    if (daysToShow.length > 0) {
-                                        // Draw bars
-
-                                        const bars = daysToShow.map((d) => {
-                                            // Usage 0-100
-                                            const h = Math.max(4, (d.usage / 100) * 100); // at least 4% height
-                                            // Color based on usage
-                                            let barColor = 'rgba(255,255,255,0.2)';
-                                            if (d.usage > 80) barColor = 'var(--error)';
-                                            else if (d.usage > 50) barColor = 'var(--warning)';
-                                            else if (d.usage > 0) barColor = 'var(--accent)';
-
-                                            // If it's today, highlight
-                                            const isToday = new Date().toDateString() === new Date(d.date).toDateString();
-                                            if (isToday) barColor = 'var(--fg)';
-
-                                            // Formatted date for tooltip
-                                            const dateObj = new Date(d.date);
-                                            const dateStr = dateObj.toLocaleDateString(lm.getLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
-
-                                            // Prepare extra stats for tooltip
-                                            const resetStr = m.resetTime ? formatResetTime(new Date(m.resetTime)) : '';
-                                            const reqStr = (m.requestUsage !== undefined && m.requestLimit) ? `${m.requestUsage}/${m.requestLimit}` : '';
-                                            const tokStr = (m.tokenUsage !== undefined && m.tokenLimit) ? (() => {
-                                                const format = (n: number) => {
-                                                    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-                                                    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-                                                    return n.toString();
-                                                };
-                                                return `${format(m.tokenUsage)}/${format(m.tokenLimit)}`;
-                                            })() : '';
-
-                                            return `<div 
-                                                onmouseenter="showTooltip(event, '${dateStr}', '${d.usage.toFixed(1)}', '${resetStr}', '${reqStr}', '${tokStr}')"
-                                                onmouseleave="hideTooltip()"
-                                                onmousemove="moveTooltip(event)"
-                                                style="
-                                                flex: 1;
-                                                height: ${h}%;
-                                                background: ${barColor};
-                                                border-radius: 2px 2px 0 0;
-                                                min-width: 4px;
-                                                opacity: ${isToday ? 1 : 0.7};
-                                                cursor: crosshair;
-                                             "></div>`;
-                                        }).join('');
-
-                                        chartHtml = `<div style="margin-top:auto;">
-                                            <div onclick="const el = this.nextElementSibling; const icon = this.querySelector('.arrow'); if(el.style.display==='none'){el.style.display='flex'; icon.style.transform='rotate(180deg)';}else{el.style.display='none'; icon.style.transform='rotate(0deg)';}" style="cursor:pointer; font-size:9px; opacity:0.4; margin-bottom:4px; text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:4px; user-select:none;">
-                                                <span>${lm.t('Usage History')}</span>
-                                                <span class="arrow" style="display:inline-block; transition:transform 0.2s; transform:rotate(180deg);">▼</span>
-                                            </div>
-                                            <div style="display:flex; align-items:flex-end; gap:2px; height:${chartHeight}px; padding-bottom:1px; border-bottom:1px solid rgba(255,255,255,0.1);">
-                                                ${bars}
-                                            </div>
-                                         </div>`;
-                                    }
+                                let quotaSourceLabel = lm.t('Quota Usage');
+                                if (machinesWithQuota.length > 1) {
+                                    if (m.isCurrent) quotaSourceLabel += ` (${lm.t('This Device')})`;
+                                    else quotaSourceLabel += ` (${m.id.substring(0, 8)}...)`;
                                 }
-                            }
 
-                            // Calculate pinned status in scope
-                            const pinned = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string[]>('quota.pinnedModels') || [];
-                            const isPinned = pinned.includes(m.label);
+                                return `
+                                    <tr class="quota-row ${groupId}" style="background: rgba(0,0,0,0.2);">
+                                        <td colspan="5" style="padding: 20px 24px;">
+                                            <div style="display:flex; justify-content: space-between; align-items:flex-end; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px;">
+                                                 <div style="font-size: 11px; font-weight: 700; opacity: 0.7; text-transform:uppercase; letter-spacing:1px;">${quotaSourceLabel}</div>
+                                                 ${snapshot.userEmail || snapshot.planName ? `<div style="font-size: 11px; opacity: 0.6;">${snapshot.userEmail ? `${lm.t('User')}: ${snapshot.userEmail}` : ''}${snapshot.userEmail && snapshot.planName ? ' • ' : ''}${snapshot.planName ? `${lm.t('Plan')}: ${snapshot.planName}` : ''}</div>` : ''}
+                                            </div>
+                                            
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px;">
+                                                ${(() => {
+                                        const pinned = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string[]>('quota.pinnedModels') || [];
 
-                            return `<div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; box-sizing: border-box;">
-                                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px;">
-                                    <div>
-                                        <div style="font-size: 13px; font-weight: 600; margin-bottom: 2px;" title="${m.label}">
-                                            ${isPinned ? '<span title="Pinned" style="font-size:10px; opacity:0.7; margin-right:4px;">📌</span>' : ''}${cleanLabel}
-                                        </div>
-                                        ${resetTimeStr ? `<div style="font-size:10px; opacity:0.5;">${lm.t('Resets')} ${resetTimeStr}</div>` : ''}
+                                        // Helper to check equality of critical data
+                                        const areModelsCompatible = (a: any, b: any) => {
+                                            const resetA = a.resetTime ? new Date(a.resetTime).getTime() : 0;
+                                            const resetB = b.resetTime ? new Date(b.resetTime).getTime() : 0;
+                                            return resetA === resetB;
+                                        };
+
+                                        // Prepare Groups
+                                        const groups: { name: string, models: any[], type: 'single' | 'group' }[] = [];
+                                        const processed = new Set<string>();
+
+                                        const definitions = [
+                                            { name: 'Gemini 3 Pro', match: (l: string) => l.includes('Gemini 3 Pro') },
+                                            { name: 'Gemini 3 Flash', match: (l: string) => l.includes('Gemini 3 Flash') },
+                                            { name: 'Claude & GPT-OSS', match: (l: string) => l.includes('Claude') || l.includes('GPT-OSS') }
+                                        ];
+
+                                        models.sort((a: any, b: any) => {
+                                            const isPinnedA = pinned.includes(a.label);
+                                            const isPinnedB = pinned.includes(b.label);
+                                            if (isPinnedA && !isPinnedB) return -1;
+                                            if (!isPinnedA && isPinnedB) return 1;
+                                            return (a.remainingPercentage || 0) - (b.remainingPercentage || 0);
+                                        });
+
+                                        for (const model of models) {
+                                            if (processed.has(model.modelId)) continue;
+                                            let groupFound = false;
+                                            for (const def of definitions) {
+                                                if (def.match(model.label)) {
+                                                    const groupModels = models.filter(m => !processed.has(m.modelId) && def.match(m.label));
+                                                    if (groupModels.length > 0 && groupModels.every(m => areModelsCompatible(m, model))) {
+                                                        if (groupModels.length > 1) {
+                                                            groups.push({ name: def.name, models: groupModels, type: 'group' });
+                                                        } else {
+                                                            groups.push({ name: model.label, models: [model], type: 'single' });
+                                                        }
+                                                        groupModels.forEach(m => processed.add(m.modelId));
+                                                        groupFound = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            if (!groupFound) {
+                                                groups.push({ name: model.label, models: [model], type: 'single' });
+                                                processed.add(model.modelId);
+                                            }
+                                        }
+
+                                        // Render
+                                        return groups.map(g => {
+                                            const primary = g.models[0];
+                                            const isGroup = g.type === 'group';
+                                            const pct = primary.remainingPercentage || 0;
+
+                                            let color = 'var(--success)';
+                                            if (pct < 5) color = 'var(--error)';
+                                            else if (pct < 30) color = 'var(--warning)';
+
+                                            const resetTimeStr = primary.resetTime ? formatResetTime(new Date(primary.resetTime)) : '';
+
+                                            // Circular Chart
+                                            const radius = 28;
+                                            const circumference = 2 * Math.PI * radius;
+                                            const strokeDasharray = `${(pct / 100) * circumference} ${circumference}`;
+
+                                            // Models Grid HTML
+                                            let modelsHtml = '';
+                                            const modelsList = isGroup ? g.models : [primary];
+
+                                            // Ensure small even number of items works well, but we rely on auto-fit
+                                            modelsHtml = modelsList.map(m => {
+                                                const isPinned = pinned.includes(m.label);
+                                                const subLabel = getModelAbbreviation(m.label);
+
+                                                return `<div class="model-card ${isPinned ? 'pinned' : ''}" title="${m.label}">
+                                                    ${isPinned ? '<div style="position:absolute; top:2px; right:2px; opacity:0.8; font-size:8px;">📌</div>' : ''}
+                                                    <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${subLabel}</div>
+                                                </div>`;
+                                            }).join('');
+
+
+                                            // History Chart
+                                            let chartHtml = '';
+                                            if (isCurrentGroup && data.usageHistory) {
+                                                const history = data.usageHistory.get(primary.modelId);
+                                                if (history && history.length > 0) {
+                                                    const dailyMap = new Map<string, number>();
+                                                    history.forEach(p => {
+                                                        const d = new Date(p.timestamp).toLocaleDateString();
+                                                        const cur = dailyMap.get(d) || 0;
+                                                        dailyMap.set(d, Math.max(cur, p.usage));
+                                                    });
+
+                                                    const daysToShow = [];
+                                                    const today = new Date();
+                                                    for (let i = 19; i >= 0; i--) {
+                                                        const d = new Date(today);
+                                                        d.setDate(today.getDate() - i);
+                                                        const dateKey = d.toLocaleDateString();
+                                                        const usage = dailyMap.get(dateKey) || 0;
+                                                        daysToShow.push({ date: d.toISOString(), usage, ts: d.getTime() });
+                                                    }
+
+                                                    if (daysToShow.length > 0) {
+                                                        const bars = daysToShow.map((d) => {
+                                                            const h = Math.max(10, (d.usage / 100) * 100);
+                                                            let barColor = 'rgba(255,255,255,0.1)';
+                                                            if (d.usage > 80) barColor = 'var(--error)';
+                                                            else if (d.usage > 50) barColor = 'var(--warning)';
+                                                            else if (d.usage > 0) barColor = 'rgba(var(--accent-rgb), 0.6)';
+
+                                                            const isToday = new Date().toDateString() === new Date(d.date).toDateString();
+                                                            if (isToday) barColor = 'var(--fg)';
+
+                                                            const dateStr = new Date(d.date).toLocaleDateString(lm.getLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
+                                                            const resetStr = primary.resetTime ? formatResetTime(new Date(primary.resetTime)) : '';
+
+                                                            return `<div 
+                                                                onmouseenter="showTooltip(event, '${dateStr}', '${d.usage.toFixed(1)}', '${resetStr}', '', '')"
+                                                                onmouseleave="hideTooltip()"
+                                                                onmousemove="moveTooltip(event)"
+                                                                style="flex:1; height:${h}%; background:${barColor}; border-radius:1px; min-width:3px; opacity:${isToday ? 1 : 0.6}; cursor:crosshair; transition: height 0.3s;"></div>`;
+                                                        }).join('');
+
+                                                        chartHtml = `
+                                                        <div style="width: 100%; height: 100%; display: flex; align-items: flex-end; gap: 3px; opacity: 0.9;">
+                                                            ${bars}
+                                                        </div>`;
+                                                    }
+                                                }
+                                            }
+
+                                            // Cycle (Bottom)
+                                            let cycleHtml = '';
+                                            if (primary.timeUntilReset && primary.timeUntilReset > 0) {
+                                                const cycleDuration = getCycleDuration(primary.label);
+                                                const progress = Math.max(0, Math.min(1, 1 - (primary.timeUntilReset / cycleDuration)));
+                                                const progressPct = (progress * 100).toFixed(0);
+                                                cycleHtml = `<div style="display:flex; align-items:center; gap:12px; font-size:10px; opacity:0.6; margin-top: 12px;">
+                                                                <span style="font-weight:600">${lm.t('Cycle')}:</span>
+                                                                <div style="flex:1; height:4px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
+                                                                    <div style="width:${progressPct}%; height:100%; background:var(--accent);"></div>
+                                                                </div>
+                                                                <span style="font-feature-settings:'tnum'; min-width:60px; text-align:right;">${formatDuration(primary.timeUntilReset)}</span>
+                                                            </div>`;
+                                            } else {
+                                                cycleHtml = `<div style="height: 14px;"></div>`;
+                                            }
+
+                                            const groupLabel = isGroup ? g.name : cleanLabel(primary.label);
+                                            function cleanLabel(l: string) { return l.replace('Gemini 1.5 ', '').replace('Gemini 3 ', '').replace('Claude 3.5 ', '').replace('Claude 3 ', ''); }
+
+                                            return `<div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); padding: 24px; border-radius: 16px; box-sizing: border-box; min-height: 240px; border: 1px solid rgba(255,255,255,0.02);">
+                                                
+                                                <div class="quota-group-header">
+                                                    <span>${groupLabel}</span>
+                                                </div>
+
+                                                <div class="models-grid">
+                                                    ${modelsHtml}
+                                                </div>
+
+                                                <div class="stats-row" style="margin-top: auto;">
+                                                    <div class="chart-circle">
+                                                        <svg viewBox="0 0 64 64" style="width:100%; height:100%; transform: rotate(-90deg);">
+                                                            <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="6" />
+                                                            <circle cx="32" cy="32" r="28" fill="none" stroke="${color}" stroke-width="6" stroke-dasharray="${strokeDasharray}" stroke-linecap="round" />
+                                                        </svg>
+                                                        <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
+                                                            ${pct.toFixed(0)}%
+                                                        </div>
+                                                        <div style="position:absolute; left:-4px; top:50%; width:4px; height:4px; background:var(--error); border-radius:50%; box-shadow:0 0 4px var(--error);"></div>
+                                                    </div>
+                                                    
+                                                    <div class="chart-history">
+                                                        ${chartHtml}
+                                                    </div>
+                                                </div>
+
+                                                ${resetTimeStr ? `<div class="reset-info">${lm.t('Resets')} ${resetTimeStr}</div>` : ''}
+
+                                                ${cycleHtml}
+                                            </div>`;
+                                        }).join('');
+                                    })()}
                                     </div>
-                                    <div style="position:relative; width:48px; height:48px;">
-                                        <svg viewBox="0 0 36 36" style="width:100%; height:100%; transform: rotate(-90deg);">
-                                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3.5" />
-                                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="${color}" stroke-width="3.5" stroke-dasharray="${strokeDasharray}" stroke-linecap="round" />
-                                        </svg>
-                                        <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;">
-                                            ${pct.toFixed(0)}%
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div style="margin-bottom: 12px; font-size:10px;">
-                                    ${statsHtml}
-                                </div>
-
-                                ${cycleHtml}
-                                
-                                ${chartHtml}
-                            </div>`;
-                        }).join('')
-                            }
-                    </div>
                 </td>
                 </tr>
                     `;
-                    }).join('');
-                })()}
+                            }).join('');
+                        })()}
                                     ${group.map(m => {
-                    const isOnline = (now - new Date(m.lastSync).getTime()) < 600000;
-                    return `
+                            const isOnline = (now - new Date(m.lastSync).getTime()) < 600000;
+                            return `
                                             <tr class="session-row ${groupId}" style="${m.isCurrent ? 'background: rgba(255,255,255,0.05)' : ''}">
                                                 <td style="padding-left: 32px">
                                                     <span class="status-dot ${isOnline ? 'pulse' : ''}" style="color: ${isOnline ? 'var(--success)' : 'var(--error)'}; background: currentColor"></span>
@@ -754,241 +809,69 @@ export class SyncStatsWebview {
                                                 </td>
                                             </tr>
                                         `;
-                }).join('')
-                }
-                                `;
-        }).join('')}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="section-title">${lm.t('Conversations')}</div>
-                <div class="data-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'title' ? 'sort-active' : ''}" onclick="postCommand('sort', {table:'conversations', col:'title'})">
-                                    ${lm.t('Content')} ${SyncStatsWebview.convsSort.col === 'title' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
-                                </th>
-                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'status' ? 'sort-active' : ''}" style="width: 15%" onclick="postCommand('sort', {table:'conversations', col:'status'})">
-                                    ${lm.t('Status')} ${SyncStatsWebview.convsSort.col === 'status' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
-                                </th>
-                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'modified' ? 'sort-active' : ''}" style="width: 25%" onclick="postCommand('sort', {table:'conversations', col:'modified'})">
-                                    ${lm.t('Modified')} ${SyncStatsWebview.convsSort.col === 'modified' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
-                                </th>
-                                <th style="text-align:right; width: 20%">${lm.t('Actions')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${(() => {
-                const allIds = new Set([
-                    ...data.localConversations.map(c => c.id),
-                    ...data.remoteManifest.conversations.map(c => c.id)
-                ]);
-
-                const convList = Array.from(allIds).map(id => {
-                    const local = data.localConversations.find(c => c.id === id);
-                    const remote = data.remoteManifest.conversations.find(c => c.id === id);
-                    const title = remote?.title || local?.title || id;
-
-                    let statusType = 0; // Synced
-                    if (!remote) statusType = 1; // Local Only
-                    else if (!local) statusType = 2; // Cloud Only
-
-                    return { id, local, remote, title, statusType };
-                });
-
-                // Sort conversations
-                const cSort = SyncStatsWebview.convsSort;
-                convList.sort((a, b) => {
-                    let valA: any, valB: any;
-                    switch (cSort.col) {
-                        case 'title': valA = a.title.toLowerCase(); valB = b.title.toLowerCase(); break;
-                        case 'status': valA = a.statusType; valB = b.statusType; break;
-                        case 'modified':
-                            valA = new Date(a.remote?.lastModified || a.local?.lastModified || 0).getTime();
-                            valB = new Date(b.remote?.lastModified || b.local?.lastModified || 0).getTime();
-                            break;
-                        default: valA = 0; valB = 0;
-                    }
-                    if (valA < valB) return cSort.dir === 'asc' ? -1 : 1;
-                    if (valA > valB) return cSort.dir === 'asc' ? 1 : -1;
-                    return 0;
-                });
-
-                return convList.map(({ id, local, remote, title, statusType }) => {
-                    let statusBadge = '';
-                    if (statusType === 0) statusBadge = `<span class="badge success">${lm.t('Synced')}</span>`;
-                    else if (statusType === 2) statusBadge = `<span class="badge warning">${lm.t('Cloud Only')}</span>`;
-                    else statusBadge = `<span class="badge accent">${lm.t('Local Only')}</span>`;
-
-                    const modDate = remote?.lastModified || local?.lastModified || '';
-                    const createdInfo = remote && remote.createdByName ? `${lm.t('Created by {0} on {1}', remote.createdByName, lm.formatDateTime(remote.createdAt || ''))}` : '';
-
-                    const files = local?.files || remote?.fileHashes;
-                    // For remote, fileHashes is object {path: info}, local files is object {path: info} too
-
-                    let totalSize = 0;
-                    if (files) {
-                        totalSize = Object.values(files).reduce((acc: number, f: any) => acc + (f.size || 0), 0);
-                    }
-
-                    let fileListHtml = '';
-                    if (files) {
-                        // Sort files by filename (basename)
-                        const fileEntries = Object.entries(files).sort((a, b) => {
-                            const nameA = a[0].split('/').pop()?.toLowerCase() || '';
-                            const nameB = b[0].split('/').pop()?.toLowerCase() || '';
-                            return nameA.localeCompare(nameB);
-                        });
-                        if (fileEntries.length > 0) {
-                            fileListHtml = fileEntries.map(([fPath, fInfo]) => {
-                                const size = (fInfo as any).size || 0;
-                                const icon = getFileIconSvg(fPath);
-                                return `<div class="file-item" onclick="event.stopPropagation(); postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})">
-                                        <div style="display:flex; align-items:center;">
-                                            <span class="file-icon">${icon}</span>
-                                            <span>${fPath.split('/').pop()}</span>
-                                            <span style="opacity:0.4; font-size:10px; margin-left:8px; font-family:monospace">${fPath}</span>
-                                        </div>
-                                        <div style="display:flex; align-items:center;">
-                                            <span style="opacity:0.5; font-family:monospace; margin-right: 10px;">${formatBytes(size)}</span>
-                                            <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversationFile', {id:'${id}', file:'${fPath}'})" title="${lm.t('Delete')}">🗑️</button>
-                                        </div>
-                                    </div>`;
-                            }).join('');
+                        }).join('')
                         }
-                    }
-
-                    return `
-                                        <tr onclick="toggleFiles('${id}')" style="cursor: pointer">
-                                            <td>
-                                                <div class="link" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})">${title}</div>
-                                                <div title="${id}" style="font-size:11px; opacity:0.5; font-family:monospace; display: inline-block;">
-                                                    ${id.substring(0, 8)}... <span style="margin-left:8px; opacity:0.8">💾 ${formatBytes(totalSize)}</span>
-                                                </div>
-                                                ${createdInfo ? `<div class="meta-info">👤 ${createdInfo}</div>` : ''}
-                                            </td>
-                                            <td>${statusBadge}</td>
-                                            <td>${modDate ? lm.formatDateTime(modDate) : '-'}</td>
-                                            <td style="text-align:right">
-                                                <button class="btn-icon" onclick="event.stopPropagation(); postCommand('renameConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Rename')}">✏️</button>
-                                                ${!remote ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pushConversation', {id:'${id}'})" title="${lm.t('Upload')}">⬆️</button>` : ''}
-                                                ${!local ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pullConversation', {id:'${id}'})" title="${lm.t('Download')}">⬇️</button>` : ''}
-                                                <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Delete')}">🗑️</button>
-                                            </td>
-                                        </tr>
-                                        ${fileListHtml ? `
-                                        <tr id="files-${id}" class="file-list-row">
-                                            <td colspan="4" style="padding: 0;">
-                                                <div class="file-list-wrapper">
-                                                    ${fileListHtml}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        ` : ''}
-                                    `;
-                }).join('');
-            })()}
+                                `;
+                }).join('')}
                         </tbody>
                     </table>
                 </div>
             </div>
-            
-            <div id="tooltip" class="custom-tooltip"></div>
+
+            <div class="custom-tooltip" id="tooltip"></div>
 
             <script>
                 const vscode = acquireVsCodeApi();
+                
+                // Animation for cards
+                document.querySelectorAll('.card').forEach((card, i) => {
+                    card.style.animationDelay = (i * 0.1) + 's';
+                });
 
                 function postCommand(command, data = {}) {
                     vscode.postMessage({ command, ...data });
                 }
 
                 function toggleGroup(groupId) {
-                    const rows = document.querySelectorAll('.' + groupId);
-                    const header = event.currentTarget;
-                    const icon = document.getElementById('icon-' + groupId);
-                    
-                    header.classList.toggle('collapsed');
-                    rows.forEach(row => {
+                    document.querySelectorAll('.' + groupId).forEach(row => {
+                        if (row.classList.contains('quota-row')) {
+                            // Don't toggle quota rows implicitly? Or yes?
+                            // For now, toggle everything in group
+                        }
+                        // row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
                         row.classList.toggle('collapsed-row');
                     });
+                    document.getElementById('icon-' + groupId).parentElement.parentElement.classList.toggle('collapsed');
                 }
-                
-                function toggleFiles(id) {
-                    const el = document.getElementById('files-' + id);
-                    if (el) {
-                        el.style.display = el.style.display === 'table-row' ? 'none' : 'table-row';
-                    }
-                }
-                
+
                 // Tooltip logic
                 const tooltip = document.getElementById('tooltip');
-                
-                function showTooltip(event, date, usage, reset, req, tok) {
-                    if (!tooltip) return;
+                function showTooltip(e, date, usage, reset, req, limit) {
+                    let html = '<strong>' + date + '</strong><br/>';
+                    html += '${lm.t('Usage')}: ' + usage + '%';
+                    if (req) html += '<br/>${lm.t('Requests')}: ' + req;
+                    if (reset) html += '<br/><span style="opacity:0.6; font-size:10px">${lm.t('Resets')} ' + reset + '</span>';
+                    
+                    tooltip.innerHTML = html;
                     tooltip.style.display = 'block';
-                    
-                    let content = '<div style="font-weight:600; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1)">' + date + '</div>';
-                    
-                    // Max Usage
-                    content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
-                               '<span style="opacity:0.7">${lm.t('Max Usage')}</span>' +
-                               '<span style="font-weight:600">' + usage + '%</span>' +
-                               '</div>';
-                    
-                    // Reset
-                    if (reset) {
-                        content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
-                                   '<span style="opacity:0.7">${lm.t('Resets')}</span>' +
-                                   '<span>' + reset + '</span>' +
-                                   '</div>';
-                    }
-                    
-                    // Requests
-                    if (req) {
-                        content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
-                                   '<span style="opacity:0.7">${lm.t('Requests')}</span>' +
-                                   '<span>' + req + '</span>' +
-                                   '</div>';
-                    }
-
-                    // Tokens
-                     if (tok) {
-                        content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px;">' +
-                                   '<span style="opacity:0.7">${lm.t('Tokens')}</span>' +
-                                   '<span>' + tok + '</span>' +
-                                   '</div>';
-                    }
-
-                    tooltip.innerHTML = content;
-                    moveTooltip(event);
+                    moveTooltip(e);
                 }
 
                 function hideTooltip() {
-                     if (tooltip) tooltip.style.display = 'none';
+                    tooltip.style.display = 'none';
                 }
 
                 function moveTooltip(e) {
-                    if (!tooltip) return;
-                    const x = e.clientX;
-                    const y = e.clientY;
+                    const x = e.clientX + 15;
+                    const y = e.clientY + 15;
                     
-                    // Bounds check
+                    // Boundary check
                     const rect = tooltip.getBoundingClientRect();
-                    let left = x + 10;
-                    let top = y + 10;
+                    const maxX = window.innerWidth - rect.width - 20;
+                    const maxY = window.innerHeight - rect.height - 20;
                     
-                    if (left + rect.width > window.innerWidth) {
-                        left = x - rect.width - 10;
-                    }
-                     // Keep it visible at bottom (if too low, move up)
-                    if (top + rect.height > window.innerHeight) {
-                        top = y - rect.height - 10;
-                    }
-                    
-                    tooltip.style.left = left + 'px';
-                    tooltip.style.top = top + 'px';
+                    tooltip.style.left = Math.min(x, maxX) + 'px';
+                    tooltip.style.top = Math.min(y, maxY) + 'px';
                 }
             </script>
         </body>

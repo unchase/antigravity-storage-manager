@@ -471,5 +471,11 @@
     "Local: {0}, {1}": "로컬: {0}, {1}",
     "Remote: {0}, {1} (by {2})": "원격: {0}, {1} ({2}에 의해)",
     "Hashes: L={0} / R={1}": "해시: L={0} / R={1}",
-    "Star on GitHub": "GitHub 스타"
+    "Star on GitHub": "GitHub 스타",
+    "Unavailable (Different Device)": "사용 불가 (다른 장치)",
+    "Cannot join a session from another device (\"{0}\"). Please select the current device session or create a new one.": "다른 장치(\"{0}\")의 세션에 참여할 수 없습니다. 현재 장치 세션을 선택하거나 새 세션을 만드십시오.",
+    "Antigravity Backup Size": "Antigravity 백업 크기",
+    "conversations": "대화",
+    "uses {0} of Drive": "Drive의 {0} 사용",
+    "Different Device": "다른 기기"
 }

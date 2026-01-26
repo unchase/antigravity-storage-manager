@@ -5,6 +5,14 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] - 2026-01-26
+### Sync & Dashboard
+- **Session Resumption**: Removed restriction preventing users from resuming a session if the machine name was changed. Now allows reconnecting to any existing session regardless of name mismatch, with appropriate UI feedback.
+
+### Localization
+- **Complete Coverage**: Achieved 100% translation coverage across all 16 supported languages.
+- **Refinement**: Fixed all remaining untranslated keys (including "Different Device" indicators and dashboard labels), ensuring a fully native experience for all users.
+
 ## [0.9.4] - 2026-01-26
 ### Sync & Dashboard
 - **Conflict Resolution Enrichment**: The manual conflict resolution dialog now displays detailed file size and modification time comparisons for both versions, assisting in better decision-making.

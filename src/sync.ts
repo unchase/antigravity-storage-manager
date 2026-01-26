@@ -11,6 +11,7 @@ import { LocalizationManager } from './l10n/localizationManager';
 import { getConversationsAsync, limitConcurrency, formatDuration, ConversationItem } from './utils';
 import { SyncStatsWebview, SyncStatsData } from './quota/syncStatsWebview';
 import { QuotaManager } from './quota/quotaManager';
+import { drawProgressBar } from './quota/utils';
 
 const EXT_NAME = 'antigravity-storage-manager';
 const STORAGE_ROOT = path.join(os.homedir(), '.gemini', 'antigravity');
@@ -365,15 +366,8 @@ export class SyncManager {
                 }
             }
 
-            // Conflict Notification
-            if (result.conflicts.length > 0) {
-                const conflictMsg = lm.t('Sync completed with {0} conflicts. Please resolve them.', result.conflicts.length);
-                vscode.window.showWarningMessage(conflictMsg, lm.t('Resolve Conflicts')).then(action => {
-                    if (action === lm.t('Resolve Conflicts')) {
-                        vscode.commands.executeCommand(`${EXT_NAME}.resolveConflicts`);
-                    }
-                });
-            }
+            // Conflict Notification handled by caller (extension.ts) which presents interactive resolution options
+
         }
 
         return result;
@@ -1290,11 +1284,8 @@ export class SyncManager {
                             const elapsed = totalTime - msUntilSync;
                             const progress = Math.min(1, Math.max(0, elapsed / totalTime));
 
-                            // Visual scale [████░░]
-                            const bars = 15;
-                            const filled = Math.round(progress * bars);
-                            const empty = bars - filled;
-                            const progressBar = '█'.repeat(filled) + '░'.repeat(empty);
+                            // Visual scale [■■■■□□]
+                            const progressBar = drawProgressBar(progress * 100, 15);
 
                             // Format remaining time
                             let timeText = '';
@@ -1670,9 +1661,13 @@ export class SyncManager {
                                 { label: lm.t('Existing Sessions'), kind: vscode.QuickPickItemKind.Separator, id: '' }
                             ];
 
+                            const currentHostname = os.hostname();
+
                             for (const m of sortedMachines) {
                                 if (m.id && m.name) {
                                     let detail = '';
+                                    const isSameDevice = m.name?.toLowerCase() === currentHostname.toLowerCase();
+
                                     if (m.lastSync && m.createdAt) {
                                         const start = new Date(m.createdAt).getTime();
                                         const end = new Date(m.lastSync).getTime();
@@ -1682,11 +1677,17 @@ export class SyncManager {
                                         }
                                     }
 
+                                    if (!isSameDevice) {
+                                        detail = detail ? `${detail} | ${lm.t('Different Device')}` : lm.t('Different Device');
+                                    }
+
                                     choices.push({
                                         label: `$(device-desktop) ${lm.t('Resume: {0}', m.name)}`,
                                         id: m.id,
                                         description: m.lastSync ? lm.t('Last active: {0}', lm.formatDateTime(m.lastSync)) : m.id,
-                                        detail: detail
+                                        detail: detail,
+                                        // Store availability in a custom property or check name in logic
+                                        // We can't disable items in VS Code API properly, so we rely on logic check
                                     });
                                 }
                             }
@@ -1726,8 +1727,19 @@ export class SyncManager {
                         selection = await new Promise<any>((resolve) => {
                             quickPick.onDidAccept(() => {
                                 const selected = quickPick.selectedItems[0];
-                                resolve(selected);
-                                quickPick.hide();
+                                if (selected) {
+                                    if (selected.id === 'new' || selected.id === '') {
+                                        // Allowed
+                                        resolve(selected);
+                                        quickPick.hide();
+                                    } else {
+                                        resolve(selected);
+                                        quickPick.hide();
+                                    }
+                                } else {
+                                    resolve(undefined);
+                                    quickPick.hide();
+                                }
                             });
                             quickPick.onDidHide(() => resolve(undefined));
                             quickPick.show();

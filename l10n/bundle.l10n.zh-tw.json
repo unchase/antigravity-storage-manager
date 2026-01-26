@@ -471,5 +471,11 @@
     "Local: {0}, {1}": "本機: {0}, {1}",
     "Remote: {0}, {1} (by {2})": "遠端: {0}, {1} (由 {2})",
     "Hashes: L={0} / R={1}": "雜湊: L={0} / R={1}",
-    "Star on GitHub": "在 GitHub 上加星"
+    "Star on GitHub": "在 GitHub 上加星",
+    "Unavailable (Different Device)": "無法使用 (其他裝置)",
+    "Cannot join a session from another device (\"{0}\"). Please select the current device session or create a new one.": "無法加入來自其他裝置 (\"{0}\") 的工作階段。請選擇目前裝置工作階段或建立一個新工作階段。",
+    "Antigravity Backup Size": "Antigravity 備份大小",
+    "conversations": "對話",
+    "uses {0} of Drive": "使用 {0} 雲端硬碟空間",
+    "Different Device": "其他裝置"
 }

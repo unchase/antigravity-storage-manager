@@ -471,5 +471,11 @@
     "Local: {0}, {1}": "محلي: {0}، {1}",
     "Remote: {0}, {1} (by {2})": "عن بعد: {0}، {1} (بواسطة {2})",
     "Hashes: L={0} / R={1}": "الهاش: L={0} / R={1}",
-    "Star on GitHub": "نجمة على GitHub"
+    "Star on GitHub": "نجمة على GitHub",
+    "Unavailable (Different Device)": "غير متوفر (جهاز آخر)",
+    "Cannot join a session from another device (\"{0}\"). Please select the current device session or create a new one.": "لا يمكن الانضمام إلى جلسة من جهاز آخر (\"{0}\"). يرجى تحديد جلسة الجهاز الحالي أو إنشاء جلسة جديدة.",
+    "Antigravity Backup Size": "حجم النسخ الاحتياطي Antigravity",
+    "conversations": "محادثات",
+    "uses {0} of Drive": "يستخدم {0} من Drive",
+    "Different Device": "جهاز مختلف"
 }

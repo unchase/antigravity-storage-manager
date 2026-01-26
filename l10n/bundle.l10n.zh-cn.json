@@ -471,5 +471,11 @@
     "Local: {0}, {1}": "本地: {0}, {1}",
     "Remote: {0}, {1} (by {2})": "远程: {0}, {1} (由 {2})",
     "Hashes: L={0} / R={1}": "哈希: L={0} / R={1}",
-    "Star on GitHub": "在 GitHub 上加星"
+    "Star on GitHub": "在 GitHub 上加星",
+    "Unavailable (Different Device)": "不可用 (其他设备)",
+    "Cannot join a session from another device (\"{0}\"). Please select the current device session or create a new one.": "无法加入来自其他设备 (\"{0}\") 的会话。请选择当前设备会话或创建一个新会话。",
+    "Antigravity Backup Size": "Antigravity 备份大小",
+    "conversations": "对话",
+    "uses {0} of Drive": "使用 {0} 云端硬盘空间",
+    "Different Device": "其他设备"
 }

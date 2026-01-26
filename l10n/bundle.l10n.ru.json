@@ -469,5 +469,11 @@
     "Local: {0}, {1}": "Локально: {0}, {1}",
     "Remote: {0}, {1} (by {2})": "Удаленно: {0}, {1} (от {2})",
     "Hashes: L={0} / R={1}": "Хеши: L={0} / R={1}",
-    "Star on GitHub": "Звезда на GitHub"
+    "Star on GitHub": "Звезда на GitHub",
+    "Unavailable (Different Device)": "Недоступно (Другое устройство)",
+    "Cannot join a session from another device (\"{0}\"). Please select the current device session or create a new one.": "Нельзя продолжить сессию другого устройства (\"{0}\"). Пожалуйста, выберите сессию текущего устройства или создайте новую.",
+    "Antigravity Backup Size": "Размер резервной копии Antigravity",
+    "conversations": "диалогов",
+    "uses {0} of Drive": "использует {0} от Диска",
+    "Different Device": "Другое устройство"
 }

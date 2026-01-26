@@ -471,5 +471,11 @@
     "Local: {0}, {1}": "Cục bộ: {0}, {1}",
     "Remote: {0}, {1} (by {2})": "Từ xa: {0}, {1} (bởi {2})",
     "Hashes: L={0} / R={1}": "Hashes: L={0} / R={1}",
-    "Star on GitHub": "Sao trên GitHub"
+    "Star on GitHub": "Sao trên GitHub",
+    "Unavailable (Different Device)": "Không khả dụng (Thiết bị khác)",
+    "Cannot join a session from another device (\"{0}\"). Please select the current device session or create a new one.": "Không thể tham gia phiên từ thiết bị khác (\"{0}\"). Vui lòng chọn phiên thiết bị hiện tại hoặc tạo phiên mới.",
+    "Antigravity Backup Size": "Kích thước sao lưu Antigravity",
+    "conversations": "cuộc trò chuyện",
+    "uses {0} of Drive": "sử dụng {0} của Drive",
+    "Different Device": "Thiết bị khác"
 }
