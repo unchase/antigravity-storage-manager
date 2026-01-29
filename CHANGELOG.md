@@ -5,6 +5,25 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-01-30
+### Chat & Conversations
+- **Alternative Chat View**: Introduced a specialized viewer for browsing conversation history directly within the extension, independent of the main UI. It supports full Markdown rendering, code highlighting, and optimized layouts.
+
+### User Interface Enhancements
+- **Attachment UI**:
+    - **Sticky Labels**: Filenames are now pinned to the bottom of attachment thumbnails with a premium glassmorphism effect.
+    - **Vertical Centering**: Image previews are perfectly centered, and file icons are neatly aligned.
+    - **Copy Path**: Added a quick "Copy Path" button (📋) to all attachment labels.
+- **Zoom Controls**: Added a visual zoom level indicator (e.g., "1.0x") next to the font size controls in code views, updating dynamically.
+- **Improved UX**:
+    - **Response Time**: Refined the "Response time" display to be cleaner (no parentheses) and "look-back" based (shows only on AI messages).
+    - **Deduplication**: Fixed an issue where tool call descriptions and errors could appear twice in the chat stream.
+    - **Error Details**: Enhanced error reporting to merge high-level user messages with technical details for better debugging.
+
+### Bug Fixes
+- **Tool Rendering**: Resolved duplicate rendering of tool call summaries (like `task_boundary`) by handling them atomically.
+
+
 ## [0.9.6] - 2026-01-27
 ### Sync & Dashboard
 - **Google Drive Storage**: Enhanced the storage breakdown section to include the total size of your Antigravity backup and its percentage of used space.

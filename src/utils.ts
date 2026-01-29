@@ -84,16 +84,29 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                     return null;
                 };
 
-                // Priority: task.md > implementation_plan.md > walkthrough.md
-                const titleSourceFiles = ['task.md', 'implementation_plan.md', 'walkthrough.md'];
+                // Priority 1: .pb file (via heuristic extraction)
+                try {
+                    const { PbParser } = require('./quota/pbParser');
+                    const conversationsDir = path.join(brainDir, '..', 'conversations');
+                    const pbPath = path.join(conversationsDir, `${id}.pb`);
+                    const pbTitle = await PbParser.extractTitle(pbPath);
+                    if (pbTitle) {
+                        label = pbTitle;
+                    }
+                } catch {
+                    // Ignore errors from pb parsing or missing files
+                }
 
-                for (const file of titleSourceFiles) {
-                    const foundTitle = await parseTitle(file);
-                    if (foundTitle) {
-                        label = foundTitle;
-                        // Determine type for icon/detail hint? 
-                        // For now just using the label is better than UUID
-                        break;
+                // Priority 2: task.md > implementation_plan.md > walkthrough.md (only if label is still UUID)
+                if (label === id) {
+                    const titleSourceFiles = ['task.md', 'implementation_plan.md', 'walkthrough.md'];
+
+                    for (const file of titleSourceFiles) {
+                        const foundTitle = await parseTitle(file);
+                        if (foundTitle) {
+                            label = foundTitle;
+                            break;
+                        }
                     }
                 }
 
@@ -163,16 +176,19 @@ export function formatDuration(ms: number): string {
     const d = Math.floor(ms / (1000 * 60 * 60 * 24));
     const h = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const m = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    const s = Math.floor((ms % (1000 * 60)) / 1000);
 
     const lm = LocalizationManager.getInstance();
     const dText = lm.t('d');
     const hText = lm.t('h');
     const mText = lm.t('m');
+    const sText = lm.t('s');
 
     const parts: string[] = [];
     if (d > 0) parts.push(`${d}${dText}`);
     if (h > 0) parts.push(`${h}${hText}`);
-    if (m > 0 || parts.length === 0) parts.push(`${m}${mText}`);
+    if (m > 0) parts.push(`${m}${mText}`);
+    if (s > 0 || parts.length === 0) parts.push(`${s}${sText}`);
 
     return parts.join(' ');
 }

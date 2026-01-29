@@ -4,6 +4,9 @@ import { SyncManifest } from '../googleDrive';
 import { getFileIconSvg } from './fileIcons';
 import { QuotaSnapshot } from './types';
 import { formatResetTime, formatDuration, getCycleDuration, getModelAbbreviation } from './utils';
+import { SearchResult } from './antigravityClient';
+
+export { SearchResult };
 
 export interface ActiveTransfer {
     conversationId: string;
@@ -19,6 +22,9 @@ export interface SyncStatsData {
     localCount: number;
     remoteCount: number;
     lastSync: string;
+    lastSyncTime?: number;
+    nextSyncTime?: number;
+    syncInterval?: number;
     machines: any[];
     loadTime: number;
     currentMachineId: string;
@@ -28,6 +34,8 @@ export interface SyncStatsData {
     accountQuotaSnapshot?: QuotaSnapshot;
     userEmail?: string;
     usageHistory?: Map<string, { timestamp: number; usage: number }[]>; // modelId -> history points
+    searchResults?: SearchResult[];
+    searchQuery?: string;
 }
 
 export class SyncStatsWebview {
@@ -36,6 +44,29 @@ export class SyncStatsWebview {
     private static extensionUri: vscode.Uri | undefined;
     private static devicesSort = { col: 'lastSync', dir: 'desc' as 'asc' | 'desc' };
     private static convsSort = { col: 'modified', dir: 'desc' as 'asc' | 'desc' };
+    private static isSearching = false;
+    private static md: any;
+
+    private static initializeMd() {
+        if (!SyncStatsWebview.md) {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const markdownit = require('markdown-it');
+                const MD = (markdownit as any).default || markdownit;
+                SyncStatsWebview.md = new MD({
+                    html: true,
+                    linkify: true,
+                    breaks: true
+                });
+            } catch (e) {
+                console.error('Failed to initialize MarkdownIt in SyncStatsWebview:', e);
+            }
+        }
+    }
+
+    public static isUserSearching(): boolean {
+        return SyncStatsWebview.isSearching;
+    }
 
     public static show(context: vscode.ExtensionContext, data: SyncStatsData, onMessage: (message: any) => void, preserveFocus: boolean = false): void {
         const column = vscode.window.activeTextEditor
@@ -71,6 +102,8 @@ export class SyncStatsWebview {
                 vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
             } else if (message.command === 'openRepo') {
                 vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager'));
+            } else if (message.command === 'setSearchState') {
+                SyncStatsWebview.isSearching = !!message.active;
             } else {
                 onMessage(message);
             }
@@ -86,7 +119,7 @@ export class SyncStatsWebview {
     }
 
     public static update(data: SyncStatsData): void {
-        if (SyncStatsWebview.currentPanel) {
+        if (SyncStatsWebview.currentPanel && !SyncStatsWebview.isSearching) {
             SyncStatsWebview.currentPanel.webview.html = SyncStatsWebview.getHtmlContent(data);
         }
     }
@@ -108,6 +141,7 @@ export class SyncStatsWebview {
     private static getHtmlContent(data: SyncStatsData): string {
         const lm = LocalizationManager.getInstance();
         const now = Date.now();
+        SyncStatsWebview.initializeMd();
 
         // Sort machines
         const sortedMachines = [...data.machines];
@@ -222,7 +256,7 @@ export class SyncStatsWebview {
                 
                 * { box-sizing: border-box; }
 
-                .container { max-width: 1200px; margin: 0 auto; }
+                .container { max-width: 100%; margin: 0 auto; padding: 0 20px; }
 
                 /* Header */
                 .header {
@@ -452,13 +486,53 @@ export class SyncStatsWebview {
                     opacity: 0.5;
                     margin-bottom: 16px;
                 }
+
+                .sync-countdown {
+                    position: relative;
+                    width: 44px;
+                    height: 44px;
+                    flex-shrink: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    transition: transform 0.2s;
+                    border-radius: 50%;
+                }
+                .sync-countdown:hover { transform: scale(1.1); background: rgba(255,255,255,0.05); }
+                .sync-countdown svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+                .sync-timer-text {
+                    position: absolute;
+                    font-size: 10px;
+                    font-weight: 700;
+                    opacity: 0.8;
+                    font-family: monospace;
+                    pointer-events: none;
+                }
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>Antigravity <strong>${lm.t('Sync')}</strong></h1>
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <h1>Antigravity <strong>${lm.t('Sync')}</strong></h1>
+                        ${data.nextSyncTime ? `
+                            <div id="sync-countdown" class="sync-countdown" 
+                                data-next="${data.nextSyncTime}" 
+                                data-interval="${data.syncInterval || 300000}"
+                                onclick="postCommand('refresh')"
+                                title="${lm.t('Next sync update. Click to refresh.')}"
+                            >
+                                <svg viewBox="0 0 32 32">
+                                    <circle cx="16" cy="16" r="14" fill="none" stroke="var(--border)" stroke-width="3" />
+                                    <circle id="sync-progress" cx="16" cy="16" r="14" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="88" stroke-dashoffset="0" stroke-linecap="round" />
+                                </svg>
+                                <div id="sync-timer-text" class="sync-timer-text"></div>
+                            </div>
+                        ` : ''}
+                    </div>
                     <div class="header-actions">
+
                         <button class="btn" onclick="postCommand('openPatreon')" title="${lm.t('Support on Patreon')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">🧡</button>
                         <button class="btn" onclick="postCommand('openCoffee')" title="${lm.t('Buy Me a Coffee')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">☕</button>
                         <button class="btn" onclick="postCommand('openRepo')" title="${lm.t('Star on GitHub')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">⭐</button>
@@ -467,6 +541,8 @@ export class SyncStatsWebview {
                         <button class="btn" onclick="postCommand('refresh')">🔄 ${lm.t('Refresh')}</button>
                     </div>
                 </div>
+
+
 
                 <div class="stats-grid">
                     <div class="card" style="animation-delay: 0.1s">
@@ -633,7 +709,7 @@ export class SyncStatsWebview {
                                                  ${snapshot.userEmail || snapshot.planName ? `<div style="font-size: 11px; opacity: 0.6;">${snapshot.userEmail ? `${lm.t('User')}: ${snapshot.userEmail}` : ''}${snapshot.userEmail && snapshot.planName ? ' • ' : ''}${snapshot.planName ? `${lm.t('Plan')}: ${snapshot.planName}` : ''}</div>` : ''}
                                             </div>
                                             
-                                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px;">
+                                            <div style="display: flex; flex-direction: row; gap: 24px; width: 100%; overflow-x: visible;">
                                                 ${(() => {
                                         const pinned = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string[]>('quota.pinnedModels') || [];
 
@@ -790,7 +866,7 @@ export class SyncStatsWebview {
                                             const groupLabel = isGroup ? g.name : cleanLabel(primary.label);
                                             function cleanLabel(l: string) { return l.replace('Gemini 1.5 ', '').replace('Gemini 3 Pro (Thinking)', 'Pro (High)').replace('Gemini 3 Pro', 'Pro (Medium)').replace('Gemini 3 Flash', 'Flash').replace('Claude 3.5 Sonnet (Thinking)', 'Claude Sonnet 4.5 (Thinking)').replace('Claude 3.5 Sonnet', 'Claude Sonnet 4.5').replace('Claude 3.5 Opus (Thinking)', 'Claude Opus 4.5 (Thinking)').replace('Claude 3.5 Opus', 'Claude Opus 4.5').replace('Claude 3 ', '').replace('GPT-OSS 120B', 'GPT-OSS 120B (Medium)'); }
 
-                                            return `<div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); padding: 24px; border-radius: 16px; box-sizing: border-box; min-height: 240px; border: 1px solid rgba(255,255,255,0.02);">
+                                            return `<div style="display: flex; flex-direction: column; flex: 1; min-width: 0; background: rgba(255,255,255,0.03); padding: 24px; border-radius: 16px; box-sizing: border-box; min-height: 240px; border: 1px solid rgba(255,255,255,0.02);">
                                                 
                                                 <div class="quota-group-header">
                                                     <span>${groupLabel}</span>
@@ -846,7 +922,7 @@ export class SyncStatsWebview {
                                                 <td>${lm.formatDateTime(m.lastSync)}</td>
                                                 <td style="text-align:right">
                                                     ${!m.isCurrent ? `
-                                                        <button class="btn-icon danger" onclick="postCommand('deleteMachine', {id:'${m.fileId}', name:'${m.name}'})" title="${lm.t('Remove machine')}">🗑️</button>
+                                                        <button class="btn-icon danger" onclick="postCommand('deleteMachine', {id:'${m.fileId}', machineId:'${m.id}', name:'${m.name}'})" title="${lm.t('Remove machine')}">🗑️</button>
                                                         <button class="btn-icon" onclick="postCommand('deleteMachineConversations', {id:'${m.id}', name:'${m.name}'})" title="${lm.t('Clear Files')}">🧹</button>
                                                         <button class="btn-icon" onclick="postCommand('forceRemoteSync', {id:'${m.id}', name:'${m.name}'})" title="${lm.t('Ping Device')}">🔄</button>
                                                     ` : '-'}
@@ -861,7 +937,25 @@ export class SyncStatsWebview {
                     </table>
                 </div>
 
-                <div class="section-title">${lm.t('Conversations')}</div>
+                <div class="section-title" style="display: flex; align-items: center; justify-content: space-between;">
+                    ${lm.t('Conversations')}
+                    <div class="search-box" style="position: relative; margin-left: auto; display: flex; align-items: center; gap: 8px;">
+                        <div style="position: relative;">
+                            <input type="text" id="pbSearchInput" placeholder="${lm.t('Search .pb history...')}" 
+                                style="background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 6px 28px 6px 8px; border-radius: 4px; width: 200px; font-family: inherit; font-size: 12px; outline: none;"
+                                onkeydown="if(event.key === 'Enter') performSearch()"
+                                value="${data.searchQuery || ''}"
+                            >
+                            <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; opacity: 0.6;" onclick="performSearch()">🔍</span>
+                        </div>
+                        ${data.searchQuery ? `
+                            <button class="btn-icon" onclick="clearSearch()" title="${lm.t('Clear Search')}">✕</button>
+                            <span style="font-size: 13px; font-weight: 400; opacity: 0.6;">
+                                ${data.searchResults?.length || 0} ${lm.t('found')}
+                            </span>
+                        ` : ''}
+                    </div>
+                </div>
                 <div class="data-container">
                     <table>
                         <thead>
@@ -897,6 +991,19 @@ export class SyncStatsWebview {
 
                     return { id, local, remote, title, statusType };
                 });
+
+                // Filter by search results if query exists
+                if (data.searchQuery) {
+                    if (data.searchResults && data.searchResults.length > 0) {
+                        const searchIds = new Set(data.searchResults.map(r => r.cascadeId));
+                        const filtered = convList.filter(c => searchIds.has(c.id));
+                        convList.length = 0;
+                        convList.push(...filtered);
+                    } else {
+                        // Query exists but no results -> show nothing (or empty list)
+                        convList.length = 0;
+                    }
+                }
 
                 // Sort conversations
                 const cSort = SyncStatsWebview.convsSort;
@@ -949,16 +1056,36 @@ export class SyncStatsWebview {
                             fileListHtml = fileEntries.map(([fPath, fInfo]) => {
                                 const size = (fInfo as any).size || 0;
                                 const icon = getFileIconSvg(fPath);
-                                return `<div class="file-item" onclick="event.stopPropagation(); postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})">
-                                        <div style="display:flex; align-items:center;">
-                                            <span class="file-icon">${icon}</span>
-                                            <span>${fPath.split('/').pop()}</span>
-                                            <span style="opacity:0.4; font-size:10px; margin-left:8px; font-family:monospace">${fPath}</span>
+                                const isPb = fPath.endsWith('.pb');
+                                const searchResult = isPb && data.searchResults ? data.searchResults.find(r => r.cascadeId === id) : undefined;
+
+                                return `<div class="file-item" style="flex-direction: column; align-items: stretch; cursor: pointer" onclick="event.stopPropagation(); ${isPb ? `postCommand('viewPb', {id: '${id}', file: '${fPath}'})` : `postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})`}">
+                                        <div style="display:flex; justify-content: space-between; align-items: center; width: 100%;">
+                                            <div style="display:flex; align-items:center;">
+                                                <span class="file-icon">${icon}</span>
+                                                <span>${fPath.split('/').pop()}</span>
+                                                <span style="opacity:0.4; font-size:10px; margin-left:8px; font-family:monospace">${fPath}</span>
+                                            </div>
+                                            <div style="display:flex; align-items:center;">
+                                                <span style="opacity:0.5; font-family:monospace; margin-right: 10px;">${formatBytes(size)}</span>
+                                                <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversationFile', {id:'${id}', file:'${fPath}'})" title="${lm.t('Delete')}">🗑️</button>
+                                            </div>
                                         </div>
-                                        <div style="display:flex; align-items:center;">
-                                            <span style="opacity:0.5; font-family:monospace; margin-right: 10px;">${formatBytes(size)}</span>
-                                            <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversationFile', {id:'${id}', file:'${fPath}'})" title="${lm.t('Delete')}">🗑️</button>
-                                        </div>
+                                        ${searchResult ? `
+                                            <div style="margin-top: 8px; padding-left: 24px; width: 100%;">
+                                                <div style="font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 4px;">${lm.t('Search Matches')}:</div>
+                                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                                    ${searchResult.matches.map(m => `
+                                                        <div style="display:flex; gap:6px; font-size: 11px; background: rgba(255,255,255,0.03); padding: 4px; border-radius: 4px;">
+                                                            <span style="font-weight:bold; opacity:0.7; min-width:30px; font-size: 10px; align-self: flex-start; margin-top:2px;">${m.role === 'user' ? 'USER' : 'AI'}</span>
+                                                            <div class="markdown-body" style="font-family: monospace; white-space: pre-wrap; word-break: break-all; opacity: 0.9;">
+                                                                ${SyncStatsWebview.md ? SyncStatsWebview.md.render(m.text) : m.text}
+                                                            </div>
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            </div>
+                                        ` : ''}
                                     </div>`;
                             }).join('');
                         }
@@ -984,7 +1111,7 @@ export class SyncStatsWebview {
                                             </td>
                                         </tr>
                                         ${fileListHtml ? `
-                                        <tr id="files-${id}" class="file-list-row">
+                                        <tr id="files-${id}" class="file-list-row" style="${data.searchResults?.some(r => r.cascadeId === id) ? 'display: table-row' : ''}">
                                             <td colspan="5" style="padding: 0;">
                                                 <div class="file-list-wrapper">
                                                     ${fileListHtml}
@@ -1007,6 +1134,66 @@ export class SyncStatsWebview {
 
                 function postCommand(command, data = {}) {
                     vscode.postMessage({ command, ...data });
+                }
+
+                function performSearch() {
+                    const input = document.getElementById('pbSearchInput');
+                    if (input && input.value.trim()) {
+                         postCommand('searchPb', { query: input.value.trim() });
+                    }
+                }
+
+                // Focus/Blur tracking for refresh prevention
+                document.addEventListener('DOMContentLoaded', () => {
+                    // Sync Countdown Animation
+                    const countdown = document.getElementById('sync-countdown');
+                    const progress = document.getElementById('sync-progress');
+                    const timerText = document.getElementById('sync-timer-text');
+                    
+                    if (countdown && progress && timerText) {
+                        const nextTime = parseInt(countdown.dataset.next);
+                        const interval = parseInt(countdown.dataset.interval);
+                        const circumference = 88; // 2 * PI * 14
+
+                        function updateCountdown() {
+                            const now = Date.now();
+                            const remaining = Math.max(0, nextTime - now);
+                            const ratio = Math.min(1, remaining / interval);
+                            
+                            // Update circle
+                            const offset = circumference * (1 - ratio);
+                            progress.style.strokeDashoffset = offset;
+                            
+                            // Update text
+                            if (remaining > 60000) {
+                                timerText.textContent = Math.ceil(remaining / 60000) + 'm';
+                            } else {
+                                timerText.textContent = Math.ceil(remaining / 1000) + 's';
+                            }
+                            
+                            if (remaining > 0) {
+                                requestAnimationFrame(updateCountdown);
+                            } else {
+                                timerText.textContent = '...';
+                                // Auto-refresh when countdown hits zero
+                                setTimeout(() => postCommand('refresh'), 2000);
+                            }
+                        }
+                        updateCountdown();
+                    }
+
+                    const searchInput = document.getElementById('pbSearchInput');
+                    if (searchInput) {
+                        searchInput.addEventListener('focus', () => postCommand('setSearchState', { active: true }));
+                        searchInput.addEventListener('blur', () => {
+                            // Delay blur slightly to allow click commands to execute first
+                            setTimeout(() => postCommand('setSearchState', { active: false }), 200);
+                        });
+                    }
+                });
+
+                function clearSearch() {
+                    postCommand('searchPb', { query: '' }); // Clear
                 }
 
                 function toggleGroup(groupId) {

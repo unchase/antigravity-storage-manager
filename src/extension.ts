@@ -336,7 +336,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     const remoteSizeStr = formatSize(conflict.remoteSize);
 
                     const msg = [
-                        lm.t('Conflict detected.'),
+                        lm.t('Conflict detected for "{0}"{1}.', conflict.conversationTitle || conflict.conversationId, conflict.relativePath ? ` (${conflict.relativePath})` : ''),
                         lm.t('Local: {0}, {1}', localDate, localSizeStr),
                         lm.t('Remote: {0}, {1} (by {2})', remoteDate, remoteSizeStr, conflict.remoteModifiedByName || conflict.remoteModifiedBy || 'Unknown'),
                         lm.t('Hashes: L={0} / R={1}', conflict.localHash.substring(0, 7), conflict.remoteHash.substring(0, 7))
