@@ -124,17 +124,27 @@ export class GoogleDriveService {
         return this._drive!;
     }
 
-    /**
-     * Ensure the sync folder structure exists in Google Drive
-     * Creates folders if they don't exist
-     */
     async ensureSyncFolders(): Promise<{ syncFolderId: string; machinesFolderId: string; conversationsFolderId: string }> {
+        // Fast path: return cached IDs if available
+        if (this.syncFolderId && this.machinesFolderId && this.conversationsFolderId) {
+            return {
+                syncFolderId: this.syncFolderId,
+                machinesFolderId: this.machinesFolderId,
+                conversationsFolderId: this.conversationsFolderId
+            };
+        }
+
         // Find or create main sync folder
         this.syncFolderId = await this.findOrCreateFolder(SYNC_FOLDER_NAME, 'root');
 
-        // Find or create subfolders
-        this.machinesFolderId = await this.findOrCreateFolder(MACHINES_FOLDER_NAME, this.syncFolderId);
-        this.conversationsFolderId = await this.findOrCreateFolder(CONVERSATIONS_FOLDER_NAME, this.syncFolderId);
+        // Parallelize subfolder creation for better performance
+        const [machinesId, conversationsId] = await Promise.all([
+            this.findOrCreateFolder(MACHINES_FOLDER_NAME, this.syncFolderId),
+            this.findOrCreateFolder(CONVERSATIONS_FOLDER_NAME, this.syncFolderId)
+        ]);
+
+        this.machinesFolderId = machinesId;
+        this.conversationsFolderId = conversationsId;
 
         return {
             syncFolderId: this.syncFolderId,

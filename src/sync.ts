@@ -900,7 +900,6 @@ export class SyncManager {
         const lm = LocalizationManager.getInstance();
         try {
             if (!this.driveService) return null;
-            await this.driveService.ensureSyncFolders();
             const encrypted = await this.driveService.getManifest();
 
             if (!encrypted) {
@@ -2446,6 +2445,10 @@ export class SyncManager {
             return;
         }
 
+        // Show skeleton immediately
+        SyncStatsWebview.showWithSkeleton(this.context, (msg) => this.handleSyncStatsMessage(msg));
+
+        // Then fetch data
         this.refreshStatistics(false);
     }
 
@@ -2559,14 +2562,10 @@ export class SyncManager {
         }
     }
 
-    private async refreshStatistics(preserveFocus: boolean = true) {
+    private async refreshStatistics(preserveFocus: boolean = true, showProgress: boolean = true) {
         const lm = LocalizationManager.getInstance();
 
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: lm.t('Loading Sync Statistics...'),
-            cancellable: false
-        }, async () => {
+        const loadTask = async () => {
             try {
                 const start = Date.now();
 
@@ -2782,247 +2781,258 @@ export class SyncManager {
                 };
 
                 this.lastStatsData = statsData;
-                const onMessage = async (message: any) => {
-                    switch (message.command) {
-                        case 'sort': {
-                            SyncStatsWebview.updateSort(message.table, message.col);
-                            if (this.lastStatsData) {
-                                SyncStatsWebview.update(this.lastStatsData);
-                            } else {
-                                this.refreshStatistics();
-                            }
-                            break;
-                        }
-                        case 'refresh': {
-                            this.refreshStatistics(false); // Force refresh
-                            break;
-                        }
-                        case 'forceSync': {
-                            vscode.commands.executeCommand(`${EXT_NAME}.forceSync`);
-                            break;
-                        }
-                        case 'viewPb': {
-                            const { id, file } = message;
-                            const filename = file.split('/').pop() || id;
-                            await this.openPbChat(id, filename);
-                            break;
-                        }
-                        case 'openConversation': {
-                            // Try to open in Antigravity/Roo-Cline/Claude-Dev first
-                            let opened = false;
-                            const possibleCommands = [
-                                'antigravity.openConversation',
-                                'roo-cline.openConversation',
-                                'claude-dev.openConversation',
-                                'cline.openConversation'
-                            ];
-
-                            for (const cmd of possibleCommands) {
-                                try {
-                                    await vscode.commands.executeCommand(cmd, message.id);
-                                    opened = true;
-                                    break;
-                                } catch {
-                                    // ignore
-                                }
-                            }
-
-                            if (opened) break;
-
-                            const id = message.id;
-                            const pbPath = path.join(STORAGE_ROOT, 'conversations', `${id}.pb`);
-                            if (fs.existsSync(pbPath)) {
-                                const title = message.title || this.getConversationTitle(id) || id;
-                                await this.openPbChat(id, title);
-                            } else {
-                                const convPath = path.join(BRAIN_DIR, id);
-                                if (fs.existsSync(convPath)) {
-                                    const taskMd = path.join(convPath, 'task.md');
-                                    if (fs.existsSync(taskMd)) {
-                                        const doc = await vscode.workspace.openTextDocument(taskMd);
-                                        await vscode.window.showTextDocument(doc);
-                                    } else {
-                                        vscode.env.openExternal(vscode.Uri.file(convPath));
-                                    }
-                                } else {
-                                    const lm = LocalizationManager.getInstance();
-                                    vscode.window.showInformationMessage(lm.t('Conversation content not found locally.'));
-                                }
-                            }
-                            break;
-                        }
-                        case 'deleteConversation': {
-                            const confirm = await vscode.window.showWarningMessage(
-                                lm.t('Are you sure you want to delete conversation "{0}"?', message.title || message.id),
-                                { modal: true },
-                                lm.t('Delete'),
-                                lm.t('Cancel')
-                            );
-                            if (confirm === lm.t('Delete')) {
-                                await this.deleteConversation(message.id);
-                                this.refreshStatistics();
-                            }
-                            break;
-                        }
-                        case 'openConversationFile': {
-                            const fullPath = this.getFullPathForRelative(message.id, message.file);
-                            if (fs.existsSync(fullPath)) {
-                                const uri = vscode.Uri.file(fullPath);
-                                // Use vscode.open command which delegates to the default editor for the file type (including images)
-                                await vscode.commands.executeCommand('vscode.open', uri);
-                            } else {
-                                vscode.window.showInformationMessage(lm.t('File not found locally.'));
-                            }
-                            break;
-                        }
-                        case 'deleteConversationFile': {
-                            const confirm = await vscode.window.showWarningMessage(
-                                lm.t('Are you sure you want to delete file "{0}"?', message.file),
-                                { modal: true },
-                                lm.t('Delete'),
-                                lm.t('Cancel')
-                            );
-                            if (confirm === lm.t('Delete')) {
-                                try {
-                                    await this.deleteConversationFile(message.id, message.file);
-                                    vscode.window.showInformationMessage(lm.t('File deleted.'));
-                                    this.refreshStatistics();
-                                } catch (e: any) {
-                                    vscode.window.showErrorMessage(lm.t('Failed to delete file: {0}', e.message));
-                                }
-                            }
-                            break;
-                        }
-                        case 'renameConversation': {
-                            const newName = await vscode.window.showInputBox({
-                                title: lm.t('Rename {0}', message.title),
-                                prompt: lm.t("Press 'Enter' to confirm or 'Escape' to cancel"),
-                                value: message.title
-                            });
-                            if (newName && newName !== message.title) {
-                                await this.renameConversationId(message.id, newName);
-                                this.refreshStatistics();
-                            }
-                            break;
-                        }
-                        case 'pushConversation':
-                            vscode.window.withProgress({
-                                location: vscode.ProgressLocation.Notification,
-                                title: lm.t('Uploading conversation...'),
-                                cancellable: true
-                            }, async (progress, token) => {
-                                try {
-                                    await this.pushConversation(message.id, progress, token);
-                                    vscode.window.showInformationMessage(lm.t('Conversation uploaded.'));
-                                    this.refreshStatistics();
-                                } catch (e: any) {
-                                    if (e instanceof vscode.CancellationError) return;
-                                    vscode.window.showErrorMessage(lm.t('Upload failed: {0}', e.message));
-                                }
-                            });
-                            break;
-                        case 'pullConversation':
-                            vscode.window.withProgress({
-                                location: vscode.ProgressLocation.Notification,
-                                title: lm.t('Downloading conversation...'),
-                                cancellable: true
-                            }, async (progress, token) => {
-                                try {
-                                    await this.pullConversation(message.id, progress, token);
-                                    vscode.window.showInformationMessage(lm.t('Conversation downloaded.'));
-                                    this.refreshStatistics();
-                                } catch (e: any) {
-                                    if (e instanceof vscode.CancellationError) return;
-                                    vscode.window.showErrorMessage(lm.t('Download failed: {0}', e.message));
-                                }
-                            });
-                            break;
-                        case 'deleteMachine': {
-                            const confirm = await vscode.window.showWarningMessage(
-                                lm.t('Are you sure you want to remove machine "{0}" from sync stats?', message.name),
-                                { modal: true },
-                                lm.t('Remove'),
-                                lm.t('Cancel')
-                            );
-                            if (confirm === lm.t('Remove')) {
-                                try {
-                                    // 1. Remove from Drive file if exists
-                                    if (message.id && message.id.trim() !== '') {
-                                        await this.driveService.deleteFile(message.id);
-                                    }
-
-                                    // 2. Remove from Manifest if present
-                                    const manifest = await this.getDecryptedManifest();
-                                    if (manifest && manifest.machines) {
-                                        const initialCount = manifest.machines.length;
-                                        manifest.machines = manifest.machines.filter(m => m.name !== message.name && m.id !== message.machineId);
-
-                                        if (manifest.machines.length < initialCount) {
-                                            const encrypted = crypto.encrypt(Buffer.from(JSON.stringify(manifest)), this.masterPassword!);
-                                            await this.driveService.updateManifest(encrypted);
-                                            this.cachedManifest = manifest;
-                                        }
-                                    }
-
-                                    vscode.window.showInformationMessage(lm.t('Machine removed.'));
-                                    this.refreshStatistics();
-                                } catch (e: any) {
-                                    vscode.window.showErrorMessage(lm.t('Failed to remove machine: {0}', e.message));
-                                }
-                            }
-                            break;
-                        }
-                        case 'forceRemoteSync':
-                            vscode.window.showInformationMessage(lm.t('Sync signal sent to {0}. (Requires target machine to be online and polling)', message.name));
-                            break;
-                        case 'deleteMachineConversations':
-                            await this.deleteRemoteConversationsForMachine(message.id, message.name);
-                            this.refreshStatistics();
-                            break;
-                        case 'searchPb': {
-                            const query = message.query;
-                            if (!query) {
-                                // Clear search
-                                if (this.lastStatsData) {
-                                    this.lastStatsData.searchResults = undefined;
-                                    this.lastStatsData.searchQuery = undefined;
-                                    SyncStatsWebview.update(this.lastStatsData);
-                                }
-                                return;
-                            }
-
-                            // Perform Search
-                            await vscode.window.withProgress({
-                                location: vscode.ProgressLocation.Notification,
-                                title: lm.t('Searching history...'),
-                                cancellable: true
-                            }, async () => {
-                                try {
-                                    const results = await this.apiClient.search(query);
-                                    if (this.lastStatsData) {
-                                        this.lastStatsData.searchResults = results;
-                                        this.lastStatsData.searchQuery = query;
-                                        SyncStatsWebview.update(this.lastStatsData);
-                                    }
-                                } catch (e: any) {
-                                    vscode.window.showErrorMessage(lm.t('Search failed: {0}', e.message));
-                                }
-                            });
-                            break;
-                        }
-                    }
-                };
-
                 if (SyncStatsWebview.isVisible()) {
                     SyncStatsWebview.update(statsData);
                 } else {
-                    SyncStatsWebview.show(this.context, statsData, onMessage, preserveFocus);
+                    SyncStatsWebview.show(this.context, statsData, (msg) => this.handleSyncStatsMessage(msg), preserveFocus);
                 }
 
             } catch (error: any) {
                 vscode.window.showErrorMessage(`${lm.t('Error loading statistics')}: ${error.message}`);
             }
-        });
+        };
+
+        if (showProgress) {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: lm.t('Loading Sync Statistics...'),
+                cancellable: false
+            }, loadTask);
+        } else {
+            await loadTask();
+        }
+    }
+
+    private async handleSyncStatsMessage(message: any) {
+        const lm = LocalizationManager.getInstance();
+        switch (message.command) {
+            case 'sort': {
+                SyncStatsWebview.updateSort(message.table, message.col);
+                if (this.lastStatsData) {
+                    SyncStatsWebview.update(this.lastStatsData);
+                } else {
+                    this.refreshStatistics();
+                }
+                break;
+            }
+            case 'refresh': {
+                this.refreshStatistics(false); // Force refresh
+                break;
+            }
+            case 'forceSync': {
+                vscode.commands.executeCommand(`${EXT_NAME}.forceSync`);
+                break;
+            }
+            case 'viewPb': {
+                const { id, file } = message;
+                const filename = file.split('/').pop() || id;
+                await this.openPbChat(id, filename);
+                break;
+            }
+            case 'openConversation': {
+                // Try to open in Antigravity/Roo-Cline/Claude-Dev first
+                let opened = false;
+                const possibleCommands = [
+                    'antigravity.openConversation',
+                    'roo-cline.openConversation',
+                    'claude-dev.openConversation',
+                    'cline.openConversation'
+                ];
+
+                for (const cmd of possibleCommands) {
+                    try {
+                        await vscode.commands.executeCommand(cmd, message.id);
+                        opened = true;
+                        break;
+                    } catch {
+                        // ignore
+                    }
+                }
+
+                if (opened) break;
+
+                const id = message.id;
+                const pbPath = path.join(STORAGE_ROOT, 'conversations', `${id}.pb`);
+                if (fs.existsSync(pbPath)) {
+                    const title = message.title || this.getConversationTitle(id) || id;
+                    await this.openPbChat(id, title);
+                } else {
+                    const convPath = path.join(BRAIN_DIR, id);
+                    if (fs.existsSync(convPath)) {
+                        const taskMd = path.join(convPath, 'task.md');
+                        if (fs.existsSync(taskMd)) {
+                            const doc = await vscode.workspace.openTextDocument(taskMd);
+                            await vscode.window.showTextDocument(doc);
+                        } else {
+                            vscode.env.openExternal(vscode.Uri.file(convPath));
+                        }
+                    } else {
+                        const lm = LocalizationManager.getInstance();
+                        vscode.window.showInformationMessage(lm.t('Conversation content not found locally.'));
+                    }
+                }
+                break;
+            }
+            case 'deleteConversation': {
+                const confirm = await vscode.window.showWarningMessage(
+                    lm.t('Are you sure you want to delete conversation "{0}"?', message.title || message.id),
+                    { modal: true },
+                    lm.t('Delete'),
+                    lm.t('Cancel')
+                );
+                if (confirm === lm.t('Delete')) {
+                    await this.deleteConversation(message.id);
+                    this.refreshStatistics();
+                }
+                break;
+            }
+            case 'openConversationFile': {
+                const fullPath = this.getFullPathForRelative(message.id, message.file);
+                if (fs.existsSync(fullPath)) {
+                    const uri = vscode.Uri.file(fullPath);
+                    // Use vscode.open command which delegates to the default editor for the file type (including images)
+                    await vscode.commands.executeCommand('vscode.open', uri);
+                } else {
+                    vscode.window.showInformationMessage(lm.t('File not found locally.'));
+                }
+                break;
+            }
+            case 'deleteConversationFile': {
+                const confirm = await vscode.window.showWarningMessage(
+                    lm.t('Are you sure you want to delete file "{0}"?', message.file),
+                    { modal: true },
+                    lm.t('Delete'),
+                    lm.t('Cancel')
+                );
+                if (confirm === lm.t('Delete')) {
+                    try {
+                        await this.deleteConversationFile(message.id, message.file);
+                        vscode.window.showInformationMessage(lm.t('File deleted.'));
+                        this.refreshStatistics();
+                    } catch (e: any) {
+                        vscode.window.showErrorMessage(lm.t('Failed to delete file: {0}', e.message));
+                    }
+                }
+                break;
+            }
+            case 'renameConversation': {
+                const newName = await vscode.window.showInputBox({
+                    title: lm.t('Rename {0}', message.title),
+                    prompt: lm.t("Press 'Enter' to confirm or 'Escape' to cancel"),
+                    value: message.title
+                });
+                if (newName && newName !== message.title) {
+                    await this.renameConversationId(message.id, newName);
+                    this.refreshStatistics();
+                }
+                break;
+            }
+            case 'pushConversation':
+                vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: lm.t('Uploading conversation...'),
+                    cancellable: true
+                }, async (progress, token) => {
+                    try {
+                        await this.pushConversation(message.id, progress, token);
+                        vscode.window.showInformationMessage(lm.t('Conversation uploaded.'));
+                        this.refreshStatistics();
+                    } catch (e: any) {
+                        if (e instanceof vscode.CancellationError) return;
+                        vscode.window.showErrorMessage(lm.t('Upload failed: {0}', e.message));
+                    }
+                });
+                break;
+            case 'pullConversation':
+                vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: lm.t('Downloading conversation...'),
+                    cancellable: true
+                }, async (progress, token) => {
+                    try {
+                        await this.pullConversation(message.id, progress, token);
+                        vscode.window.showInformationMessage(lm.t('Conversation downloaded.'));
+                        this.refreshStatistics();
+                    } catch (e: any) {
+                        if (e instanceof vscode.CancellationError) return;
+                        vscode.window.showErrorMessage(lm.t('Download failed: {0}', e.message));
+                    }
+                });
+                break;
+            case 'deleteMachine': {
+                const confirm = await vscode.window.showWarningMessage(
+                    lm.t('Are you sure you want to remove machine "{0}" from sync stats?', message.name),
+                    { modal: true },
+                    lm.t('Remove'),
+                    lm.t('Cancel')
+                );
+                if (confirm === lm.t('Remove')) {
+                    try {
+                        // 1. Remove from Drive file if exists
+                        if (message.id && message.id.trim() !== '') {
+                            await this.driveService.deleteFile(message.id);
+                        }
+
+                        // 2. Remove from Manifest if present
+                        const manifest = await this.getDecryptedManifest();
+                        if (manifest && manifest.machines) {
+                            const initialCount = manifest.machines.length;
+                            manifest.machines = manifest.machines.filter(m => m.name !== message.name && m.id !== message.machineId);
+
+                            if (manifest.machines.length < initialCount) {
+                                const encrypted = crypto.encrypt(Buffer.from(JSON.stringify(manifest)), this.masterPassword!);
+                                await this.driveService.updateManifest(encrypted);
+                                this.cachedManifest = manifest;
+                            }
+                        }
+
+                        vscode.window.showInformationMessage(lm.t('Machine removed.'));
+                        this.refreshStatistics();
+                    } catch (e: any) {
+                        vscode.window.showErrorMessage(lm.t('Failed to remove machine: {0}', e.message));
+                    }
+                }
+                break;
+            }
+            case 'forceRemoteSync':
+                vscode.window.showInformationMessage(lm.t('Sync signal sent to {0}. (Requires target machine to be online and polling)', message.name));
+                break;
+            case 'deleteMachineConversations':
+                await this.deleteRemoteConversationsForMachine(message.id, message.name);
+                this.refreshStatistics();
+                break;
+            case 'searchPb': {
+                const query = message.query;
+                if (!query) {
+                    // Clear search
+                    if (this.lastStatsData) {
+                        this.lastStatsData.searchResults = undefined;
+                        this.lastStatsData.searchQuery = undefined;
+                        SyncStatsWebview.update(this.lastStatsData);
+                    }
+                    return;
+                }
+
+                // Perform Search
+                await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: lm.t('Searching history...'),
+                    cancellable: true
+                }, async () => {
+                    try {
+                        const results = await this.apiClient.search(query);
+                        if (this.lastStatsData) {
+                            this.lastStatsData.searchResults = results;
+                            this.lastStatsData.searchQuery = query;
+                            SyncStatsWebview.update(this.lastStatsData);
+                        }
+                    } catch (e: any) {
+                        vscode.window.showErrorMessage(lm.t('Search failed: {0}', e.message));
+                    }
+                });
+                break;
+            }
+        }
     }
 
 
@@ -3989,7 +3999,9 @@ export class SyncManager {
                             if (!isNaN(d.getTime())) {
                                 timestampDisplay = d.toLocaleTimeString(lm.getLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                             }
-                        } catch { }
+                        } catch {
+                            // Ignore invalid date strings
+                        }
                     }
 
                     // Render content using the same methods as regular messages

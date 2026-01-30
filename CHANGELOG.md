@@ -5,6 +5,18 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-01-30
+### Sync Statistics
+- **Instant Loading**: Implemented a skeleton loader for the Sync Statistics dashboard. The view now opens instantly with a placeholder UI while data loads in the background, significantly improving perceived performance.
+- **Silent Refresh**: Data loading is now seamless and non-blocking, removing intrusive progress notifications when the dashboard is already visible.
+
+### Sync Performance
+- **Setup Optimization**: Validated `machines` and `conversations` folders are now cached by ID, reducing the number of Google Drive API calls during setup from ~7 to ~2.
+- **Parallel Execution**: Initial folder checks are now performed in parallel, speeding up the connection process.
+
+### Bug Fixes
+- **Interaction Handlers**: Restored missing message handlers (`openConversation`, `viewPb`, `deleteConversation`) in the Sync Statistics logic, fixing unresponsive clicks and actions in the dashboard.
+
 ## [0.10.1] - 2026-01-30
 ### Sync & Dashboard
 - **Force Sync**: Added **Force Sync** capability (🚀) to bypass local caches and flush server-side buffers, ensuring absolute data consistency with the cloud.

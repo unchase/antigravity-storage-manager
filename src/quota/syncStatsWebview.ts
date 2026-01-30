@@ -69,6 +69,61 @@ export class SyncStatsWebview {
         return SyncStatsWebview.isSearching;
     }
 
+    /**
+     * Show the webview with a skeleton loading state immediately.
+     * Returns a function to update the webview with actual data once loaded.
+     */
+    public static showWithSkeleton(context: vscode.ExtensionContext, onMessage: (message: any) => void): void {
+        const column = vscode.window.activeTextEditor
+            ? vscode.window.activeTextEditor.viewColumn
+            : undefined;
+
+        if (SyncStatsWebview.currentPanel) {
+            SyncStatsWebview.currentPanel.reveal(column, false);
+            // Don't update HTML - keep current content if panel exists
+            return;
+        }
+
+        const lm = LocalizationManager.getInstance();
+        const panel = vscode.window.createWebviewPanel(
+            SyncStatsWebview.viewType,
+            lm.t('Antigravity Sync Statistics'),
+            column || vscode.ViewColumn.One,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true
+            }
+        );
+
+        SyncStatsWebview.extensionUri = context.extensionUri;
+        SyncStatsWebview.currentPanel = panel;
+
+        // Show skeleton immediately
+        panel.webview.html = SyncStatsWebview.getSkeletonHtml();
+
+        panel.webview.onDidReceiveMessage(message => {
+            if (message.command === 'openPatreon') {
+                vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
+            } else if (message.command === 'openCoffee') {
+                vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
+            } else if (message.command === 'openRepo') {
+                vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager'));
+            } else if (message.command === 'setSearchState') {
+                SyncStatsWebview.isSearching = !!message.active;
+            } else {
+                onMessage(message);
+            }
+        }, undefined, context.subscriptions);
+
+        panel.onDidDispose(
+            () => {
+                SyncStatsWebview.currentPanel = undefined;
+            },
+            undefined,
+            context.subscriptions
+        );
+    }
+
     public static show(context: vscode.ExtensionContext, data: SyncStatsData, onMessage: (message: any) => void, preserveFocus: boolean = false): void {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
@@ -137,6 +192,123 @@ export class SyncStatsWebview {
 
     public static isVisible(): boolean {
         return !!SyncStatsWebview.currentPanel;
+    }
+
+    private static getSkeletonHtml(): string {
+        const lm = LocalizationManager.getInstance();
+        const cspSource = SyncStatsWebview.currentPanel?.webview.cspSource || '';
+
+        return `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'unsafe-inline' ${cspSource}; font-src ${cspSource}; img-src ${cspSource} data:;">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                :root {
+                    --bg: var(--vscode-editor-background);
+                    --fg: var(--vscode-editor-foreground);
+                    --card-bg: var(--vscode-editor-lineHighlightBackground);
+                    --border: var(--vscode-panel-border);
+                    --accent: var(--vscode-button-background);
+                    --font: var(--vscode-font-family, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
+                }
+                body { font-family: var(--font); background-color: var(--bg); color: var(--fg); padding: 30px; margin: 0; }
+                * { box-sizing: border-box; }
+                .container { max-width: 100%; margin: 0 auto; padding: 0 20px; }
+                .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+                h1 { margin: 0; font-size: 28px; font-weight: 300; letter-spacing: -0.5px; opacity: 0.9; }
+                h1 strong { font-weight: 700; color: var(--accent); }
+                @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+                .skeleton {
+                    background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+                    background-size: 200% 100%;
+                    animation: shimmer 1.5s infinite;
+                    border-radius: 6px;
+                }
+                .skeleton-text { height: 14px; margin-bottom: 8px; }
+                .skeleton-text.sm { height: 10px; width: 60%; }
+                .skeleton-text.lg { height: 32px; width: 50%; }
+                .skeleton-card {
+                    background: var(--card-bg);
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    padding: 24px;
+                    min-height: 120px;
+                }
+                .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 40px; }
+                .storage-section {
+                    background: linear-gradient(135deg, var(--card-bg), rgba(255,255,255,0.02));
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    padding: 24px;
+                    margin-bottom: 40px;
+                }
+                .data-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 40px; padding: 16px; }
+                .skeleton-row { display: flex; gap: 24px; margin-bottom: 16px; }
+                .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; opacity: 0.9; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Antigravity <strong>${lm.t('Sync')}</strong></h1>
+                    <div style="display: flex; gap: 12px;">
+                        <div class="skeleton" style="width: 40px; height: 36px;"></div>
+                        <div class="skeleton" style="width: 40px; height: 36px;"></div>
+                        <div class="skeleton" style="width: 40px; height: 36px;"></div>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    ${[1, 2, 3, 4].map(() => `
+                        <div class="skeleton-card">
+                            <div class="skeleton skeleton-text" style="width: 40%;"></div>
+                            <div class="skeleton skeleton-text lg" style="width: 30%;"></div>
+                            <div class="skeleton skeleton-text sm"></div>
+                            <div class="skeleton" style="height: 4px; margin-top: 15px;"></div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="storage-section">
+                    <div class="skeleton-row">
+                        <div class="skeleton" style="width: 40px; height: 40px; border-radius: 50%;"></div>
+                        <div style="flex: 1;">
+                            <div class="skeleton skeleton-text" style="width: 30%;"></div>
+                            <div class="skeleton skeleton-text sm" style="width: 80%;"></div>
+                            <div class="skeleton" style="height: 10px; margin-top: 8px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-title">${lm.t('Devices & Active Sessions')}</div>
+                <div class="data-container">
+                    ${[1, 2, 3].map(() => `
+                        <div class="skeleton-row" style="padding: 12px 0; border-bottom: 1px solid var(--border);">
+                            <div class="skeleton" style="width: 8px; height: 8px; border-radius: 50%;"></div>
+                            <div class="skeleton skeleton-text" style="width: 25%; margin: 0;"></div>
+                            <div class="skeleton skeleton-text" style="width: 15%; margin: 0;"></div>
+                            <div class="skeleton skeleton-text" style="width: 15%; margin: 0;"></div>
+                            <div class="skeleton skeleton-text" style="width: 20%; margin: 0;"></div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="section-title">${lm.t('Conversations')}</div>
+                <div class="data-container">
+                    ${[1, 2, 3, 4, 5].map(() => `
+                        <div class="skeleton-row" style="padding: 12px 0; border-bottom: 1px solid var(--border);">
+                            <div class="skeleton skeleton-text" style="width: 35%; margin: 0;"></div>
+                            <div class="skeleton skeleton-text" style="width: 15%; margin: 0;"></div>
+                            <div class="skeleton skeleton-text" style="width: 15%; margin: 0;"></div>
+                            <div class="skeleton skeleton-text" style="width: 10%; margin: 0;"></div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </body>
+        </html>`;
     }
 
     private static getHtmlContent(data: SyncStatsData): string {
@@ -382,6 +554,27 @@ export class SyncStatsWebview {
                 @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
                 @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
                 @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+                @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+                /* Skeleton Loading */
+                .skeleton {
+                    background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+                    background-size: 200% 100%;
+                    animation: shimmer 1.5s infinite;
+                    border-radius: 6px;
+                }
+                .skeleton-text { height: 14px; margin-bottom: 8px; }
+                .skeleton-text.sm { height: 10px; width: 60%; }
+                .skeleton-text.lg { height: 32px; width: 50%; }
+                .skeleton-card {
+                    background: var(--card-bg);
+                    border: 1px solid var(--border);
+                    border-radius: 12px;
+                    padding: 24px;
+                    min-height: 120px;
+                }
+                .skeleton-row { display: flex; gap: 24px; margin-bottom: 24px; }
+                .skeleton-table-row { height: 60px; border-bottom: 1px solid var(--border); }
 
                 .link { color: var(--link); text-decoration: none; font-weight: 600; cursor: pointer; }
                 .link:hover { text-decoration: underline; }
