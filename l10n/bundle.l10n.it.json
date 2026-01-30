@@ -549,5 +549,16 @@
     "Force Sync complete!": "Sincronizzazione forzata completata!",
     "Force Sync failed: {0}": "Sincronizzazione forzata fallita: {0}",
     "Deep sync: flushes server state and bypasses local hash cache": "Sincronizzazione profonda: svuota lo stato del server e ignora la cache hash locale",
-    "Flushing server state...": "Svuotamento stato server..."
+    "Flushing server state...": "Svuotamento stato server...",
+    "Connected": "Connesso",
+    "Disconnected": "Disconnesso",
+    "Pending": "In attesa",
+    "tools": "strumenti",
+    "resources": "risorse",
+    "Show Tools": "Mostra strumenti",
+    "more": "altro",
+    "No MCP servers configured": "Nessun server MCP configurato",
+    "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "I server MCP possono essere configurati in ~/.gemini/antigravity/mcp/mcp_config.json",
+    "Refresh MCP Servers": "Aggiorna server MCP",
+    "Failed to refresh MCP servers: {0}": "Impossibile aggiornare i server MCP: {0}"
 }

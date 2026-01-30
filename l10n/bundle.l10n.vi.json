@@ -549,5 +549,16 @@
     "Force Sync complete!": "Buộc đồng bộ hóa hoàn tất!",
     "Force Sync failed: {0}": "Buộc đồng bộ hóa thất bại: {0}",
     "Deep sync: flushes server state and bypasses local hash cache": "Đồng bộ sâu: xóa trạng thái máy chủ và bỏ qua bộ đệm băm cục bộ",
-    "Flushing server state...": "Đang xóa trạng thái máy chủ..."
+    "Flushing server state...": "Đang xóa trạng thái máy chủ...",
+    "Connected": "Đã kết nối",
+    "Disconnected": "Đã ngắt kết nối",
+    "Pending": "Đang chờ",
+    "tools": "công cụ",
+    "resources": "tài nguyên",
+    "Show Tools": "Hiển thị công cụ",
+    "more": "thêm",
+    "No MCP servers configured": "Không có máy chủ MCP nào được cấu hình",
+    "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "Máy chủ MCP có thể được cấu hình trong ~/.gemini/antigravity/mcp/mcp_config.json",
+    "Refresh MCP Servers": "Làm mới máy chủ MCP",
+    "Failed to refresh MCP servers: {0}": "Không thể làm mới máy chủ MCP: {0}"
 }

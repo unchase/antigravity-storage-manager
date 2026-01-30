@@ -37,6 +37,17 @@ export interface SyncStatsData {
     searchResults?: SearchResult[];
     searchQuery?: string;
     activeConversationId?: string;
+    // MCP Servers data
+    mcpServerStates?: McpServerStateData[];
+}
+
+export interface McpServerStateData {
+    serverId: string;
+    serverName: string;
+    status: string;
+    tools?: { name: string; description?: string }[];
+    resources?: { uri: string; name?: string }[];
+    lastError?: string;
 }
 
 export class SyncStatsWebview {
@@ -839,6 +850,140 @@ export class SyncStatsWebview {
                 </div>
                 ` : ''}
 
+                ${data.mcpServerStates && data.mcpServerStates.length > 0 ? `
+                <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>🔌 ${lm.t('MCP Servers')}</span>
+                    <button class="btn" onclick="postCommand('refreshMcp')" title="${lm.t('Refresh MCP Servers')}" style="padding: 4px 10px; font-size: 11px;">
+                        🔄 ${lm.t('Refresh')}
+                    </button>
+                </div>
+                <div class="data-container" style="background: linear-gradient(135deg, var(--card-bg), rgba(138,43,226,0.05)); border: 1px solid rgba(138,43,226,0.2);">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; padding: 16px;">
+                        ${data.mcpServerStates.map(server => {
+                    const isConnected = server.status === 'CONNECTED' || server.status === 'connected';
+                    const isPending = server.status === 'PENDING' || server.status === 'pending';
+                    const isError = server.status === 'ERROR' || server.status === 'error';
+                    const statusIcon = isConnected ? '🟢' : isError ? '🔴' : isPending ? '🟡' : '⚪';
+                    const toolsCount = server.tools?.length || 0;
+                    const resourcesCount = server.resources?.length || 0;
+
+                    return `
+                        <div class="mcp-server-card" style="
+                            background: rgba(255,255,255,0.03);
+                            border: 1px solid rgba(255,255,255,0.08);
+                            border-radius: 10px;
+                            padding: 16px;
+                            transition: all 0.2s;
+                            cursor: default;
+                        " onmouseover="this.style.background='rgba(255,255,255,0.06)'; this.style.transform='translateY(-2px)';" 
+                           onmouseout="this.style.background='rgba(255,255,255,0.03)'; this.style.transform='translateY(0)';">
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                <span style="font-size: 18px;">${statusIcon}</span>
+                                <div style="flex: 1; min-width: 0;">
+                                    <div style="font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                        ${server.serverName || server.serverId}
+                                    </div>
+                                    <div style="font-size: 10px; opacity: 0.5; font-family: monospace;">
+                                        ${server.serverId.length > 24 ? server.serverId.substring(0, 24) + '...' : server.serverId}
+                                    </div>
+                                </div>
+                                <span class="badge ${isConnected ? 'success' : isError ? '' : ''}" style="
+                                    background: ${isConnected ? 'var(--success)' : isError ? 'var(--error)' : 'rgba(255,255,255,0.1)'};
+                                    color: ${isConnected || isError ? '#fff' : 'inherit'};
+                                    font-size: 9px;
+                                    padding: 2px 6px;
+                                ">${isConnected ? lm.t('Connected') : isError ? lm.t('Error') : isPending ? lm.t('Pending') : lm.t('Disconnected')}</span>
+                            </div>
+                            
+                            <div style="display: flex; gap: 16px; margin-bottom: ${server.lastError ? '12px' : '0'};">
+                                <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.7;">
+                                    <span>🛠️</span>
+                                    <span><strong>${toolsCount}</strong> ${lm.t('tools')}</span>
+                                </div>
+                                ${resourcesCount > 0 ? `
+                                <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.7;">
+                                    <span>📦</span>
+                                    <span><strong>${resourcesCount}</strong> ${lm.t('resources')}</span>
+                                </div>
+                                ` : ''}
+                            </div>
+                            
+                            ${server.lastError ? `
+                            <div style="
+                                font-size: 11px;
+                                color: var(--error);
+                                background: rgba(255,0,0,0.1);
+                                padding: 8px 10px;
+                                border-radius: 6px;
+                                border-left: 3px solid var(--error);
+                                word-break: break-word;
+                            ">
+                                ⚠️ ${server.lastError}
+                            </div>
+                            ` : ''}
+                            
+                            ${toolsCount > 0 && server.tools ? `
+                            <details style="margin-top: 12px;">
+                                <summary style="
+                                    cursor: pointer; 
+                                    font-size: 11px; 
+                                    opacity: 0.7; 
+                                    user-select: none;
+                                    padding: 4px 0;
+                                ">${lm.t('Show Tools')}</summary>
+                                <div style="
+                                    margin-top: 8px;
+                                    padding: 8px;
+                                    background: rgba(0,0,0,0.15);
+                                    border-radius: 6px;
+                                    max-height: 150px;
+                                    overflow-y: auto;
+                                ">
+                                    ${server.tools.slice(0, 15).map(tool => `
+                                        <div style="
+                                            display: flex;
+                                            align-items: flex-start;
+                                            gap: 8px;
+                                            padding: 4px 0;
+                                            border-bottom: 1px solid rgba(255,255,255,0.05);
+                                            font-size: 11px;
+                                        ">
+                                            <span style="opacity: 0.5;">•</span>
+                                            <div style="flex: 1; min-width: 0;">
+                                                <div style="font-weight: 500; color: var(--link);">${tool.name}</div>
+                                                ${tool.description ? `<div style="opacity: 0.5; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${tool.description}</div>` : ''}
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                    ${server.tools.length > 15 ? `
+                                        <div style="font-size: 10px; opacity: 0.5; padding-top: 6px; text-align: center;">
+                                            +${server.tools.length - 15} ${lm.t('more')}...
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </details>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('')}
+                    </div>
+                </div>
+                ` : data.mcpServerStates !== undefined ? `
+                <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>🔌 ${lm.t('MCP Servers')}</span>
+                    <button class="btn" onclick="postCommand('refreshMcp')" title="${lm.t('Refresh MCP Servers')}" style="padding: 4px 10px; font-size: 11px;">
+                        🔄 ${lm.t('Refresh')}
+                    </button>
+                </div>
+                <div class="data-container" style="padding: 24px; text-align: center; opacity: 0.6;">
+                    <div style="font-size: 32px; margin-bottom: 8px;">🔌</div>
+                    <div>${lm.t('No MCP servers configured')}</div>
+                    <div style="font-size: 11px; margin-top: 8px; opacity: 0.7;">
+                        ${lm.t('MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json')}
+                    </div>
+                </div>
+                ` : ''}
+
                 <div class="section-title">${lm.t('Devices & Active Sessions')}</div>
                 <div class="data-container">
                     <table>
@@ -1182,7 +1327,11 @@ export class SyncStatsWebview {
                 const convList = Array.from(allIds).map(id => {
                     const local = data.localConversations.find(c => c.id === id);
                     const remote = data.remoteManifest.conversations.find(c => c.id === id);
-                    const title = remote?.title || local?.title || id;
+
+                    // Prefer actual title over GUID. If remote title equals ID, try local title
+                    const remoteTitle = remote?.title && remote.title !== id ? remote.title : null;
+                    const localTitle = local?.title && local.title !== id ? local.title : null;
+                    const title = remoteTitle || localTitle || remote?.title || local?.title || id;
 
                     let statusType = 0; // Synced
                     if (!remote) statusType = 1; // Local Only

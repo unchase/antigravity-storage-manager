@@ -39,7 +39,10 @@ export class DiagnosticsManager {
         // 4. Check Server Heartbeat
         results.push(await this.checkHeartbeat());
 
-        // 5. Check Drive API Latency (if authenticated)
+        // 5. Check MCP Servers
+        results.push(await this.checkMcpServers());
+
+        // 6. Check Drive API Latency (if authenticated)
         if (this.authProvider.isAuthenticated()) {
             results.push(await this.checkDriveLatency());
         }
@@ -128,6 +131,49 @@ export class DiagnosticsManager {
         }
     }
 
+    private async checkMcpServers(): Promise<DiagnosticResult> {
+        const lm = LocalizationManager.getInstance();
+        try {
+            const states = await this.client.getMcpServerStates();
+
+            if (states.length === 0) {
+                return {
+                    id: 'mcp',
+                    label: lm.t('MCP Servers'),
+                    status: 'warn',
+                    message: lm.t('No MCP servers configured'),
+                };
+            }
+
+            const connected = states.filter((s: any) =>
+                s.status === 'CONNECTED' || s.status === 'connected'
+            ).length;
+            const total = states.length;
+
+            let status: 'pass' | 'warn' | 'fail' = 'pass';
+            if (connected === 0) status = 'fail';
+            else if (connected < total) status = 'warn';
+
+            const serverNames = states.map((s: any) => s.serverName || s.serverId || 'Unknown').join(', ');
+
+            return {
+                id: 'mcp',
+                label: lm.t('MCP Servers'),
+                status: status,
+                message: lm.t('{0}/{1} connected', connected, total),
+                details: serverNames
+            };
+        } catch (e: any) {
+            return {
+                id: 'mcp',
+                label: lm.t('MCP Servers'),
+                status: 'warn',
+                message: lm.t('Unable to check'),
+                details: e.message
+            };
+        }
+    }
+
     private async checkDriveLatency(): Promise<DiagnosticResult> {
         const lm = LocalizationManager.getInstance();
         try {
@@ -161,3 +207,4 @@ export class DiagnosticsManager {
         }
     }
 }
+

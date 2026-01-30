@@ -5,6 +5,20 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2026-01-31
+### MCP Panel
+- **MCP Server Status**: Added a new **MCP Servers** panel to the Sync Statistics Dashboard, displaying:
+    - **Server List**: All configured MCP servers with their names, IDs, and connection status.
+    - **Status Indicators**: Visual icons (🟢/🟡/🔴/⚪) for Connected, Pending, Error, and Disconnected states.
+    - **Tool & Resource Counts**: Number of available tools and resources for each server.
+    - **Error Display**: Detailed error messages for servers that fail to connect.
+    - **Refresh Button**: Manually reconnect to all MCP servers with a single click.
+- **Localization**: Complete MCP panel translations across all 16 supported languages (English, Russian, German, Chinese, Japanese, Korean, French, Spanish, Italian, Portuguese, Polish, Vietnamese, Arabic, Czech, Turkish).
+
+### Bug Fixes
+- **Remote Conversation Titles**: Fixed an issue where remote-only conversations displayed GUIDs instead of their actual titles. Now correctly prioritizes real titles over IDs from the manifest.
+- **Lint Warning**: Removed unused `statusColor` variable in `syncStatsWebview.ts`.
+
 ## [0.10.2] - 2026-01-30
 ### Sync Statistics
 - **Instant Loading**: Implemented a skeleton loader for the Sync Statistics dashboard. The view now opens instantly with a placeholder UI while data loads in the background, significantly improving perceived performance.

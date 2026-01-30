@@ -549,5 +549,16 @@
     "Force Sync complete!": "Vynucená synchronizace dokončena!",
     "Force Sync failed: {0}": "Vynucená synchronizace selhala: {0}",
     "Deep sync: flushes server state and bypasses local hash cache": "Hluboká synchronizace: vyprázdní stav serveru a obejde místní mezipaměť hash",
-    "Flushing server state...": "Vyprázdnění stavu serveru..."
+    "Flushing server state...": "Vyprázdnění stavu serveru...",
+    "Connected": "Připojeno",
+    "Disconnected": "Odpojeno",
+    "Pending": "Čeká",
+    "tools": "nástroje",
+    "resources": "zdroje",
+    "Show Tools": "Zobrazit nástroje",
+    "more": "více",
+    "No MCP servers configured": "Žádné servery MCP nejsou nakonfigurovány",
+    "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "Servery MCP lze nakonfigurovat v ~/.gemini/antigravity/mcp/mcp_config.json",
+    "Refresh MCP Servers": "Obnovit servery MCP",
+    "Failed to refresh MCP servers: {0}": "Nepodařilo se obnovit servery MCP: {0}"
 }

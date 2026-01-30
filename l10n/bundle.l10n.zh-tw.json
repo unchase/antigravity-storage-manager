@@ -549,5 +549,16 @@
     "Force Sync complete!": "強制同步完成！",
     "Force Sync failed: {0}": "強制同步失敗：{0}",
     "Deep sync: flushes server state and bypasses local hash cache": "深度同步：重置伺服器狀態並繞過本地哈希快取",
-    "Flushing server state...": "正在重置伺服器狀態..."
+    "Flushing server state...": "正在重置伺服器狀態...",
+    "Connected": "已連線",
+    "Disconnected": "已斷開",
+    "Pending": "待處理",
+    "tools": "工具",
+    "resources": "資源",
+    "Show Tools": "顯示工具",
+    "more": "更多",
+    "No MCP servers configured": "未設定 MCP 伺服器",
+    "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "可以在 ~/.gemini/antigravity/mcp/mcp_config.json 中設定 MCP 伺服器",
+    "Refresh MCP Servers": "重新整理 MCP 伺服器",
+    "Failed to refresh MCP servers: {0}": "重新整理 MCP 伺服器失敗：{0}"
 }

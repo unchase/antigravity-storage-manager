@@ -549,5 +549,16 @@
     "Force Sync complete!": "اكتمل فرض المزامنة!",
     "Force Sync failed: {0}": "فشل فرض المزامنة: {0}",
     "Deep sync: flushes server state and bypasses local hash cache": "مزامنة عميقة: تمسح حالة الخادم وتتجاوز ذاكرة التخزين المؤقت للتجزئة المحلية",
-    "Flushing server state...": "جاري مسح حالة الخادم..."
+    "Flushing server state...": "جاري مسح حالة الخادم...",
+    "Connected": "متصل",
+    "Disconnected": "غير متصل",
+    "Pending": "قيد الانتظار",
+    "tools": "أدوات",
+    "resources": "موارد",
+    "Show Tools": "عرض الأدوات",
+    "more": "المزيد",
+    "No MCP servers configured": "لم يتم تكوين خوادم MCP",
+    "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "يمكن تكوين خوادم MCP في ~/.gemini/antigravity/mcp/mcp_config.json",
+    "Refresh MCP Servers": "تحديث خوادم MCP",
+    "Failed to refresh MCP servers: {0}": "فشل تحديث خوادم MCP: {0}"
 }

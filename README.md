@@ -142,6 +142,25 @@ Monitor your AI usage limits and remaining credits directly within VS Code.
 
 ---
 
+## MCP Server Monitoring (New!)
+
+![MCP Panel](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/mcp-panel.png)
+
+*(Fig. 4: MCP Server Status Panel)*
+
+Monitor your Model Context Protocol (MCP) server connections directly from the Sync Statistics Dashboard.
+
+### Features
+- **Connection Status**: Real-time status indicators (🟢 Connected, 🟡 Pending, 🔴 Error, ⚪ Disconnected) for each server.
+- **Tool & Resource Overview**: Quickly see the number of tools and resources available on each MCP server.
+- **Error Diagnostics**: Detailed error messages are displayed for servers that fail to connect.
+- **Manual Refresh**: Reconnect to all configured MCP servers with a single click.
+
+### Configuration
+MCP servers are configured in `~/.gemini/antigravity/mcp/mcp_config.json`. The panel will automatically display all servers defined in your configuration.
+
+---
+
 ## Proxy Configuration (New!)
 
 If you are behind a corporate proxy, you can configure Antigravity to route its internal requests through your proxy server.
@@ -163,7 +182,7 @@ If you are behind a corporate proxy, you can configure Antigravity to route its 
 
 ![Google Account Data](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/google_account_data.png)
 
-*(Fig. 4: Raw Account Data view)*
+*(Fig. 5: Raw Account Data view)*
 
 For power users and troubleshooting, you can view the raw JSON data received from the Google API. This includes detailed information about your account status, tier details, and all raw model quota limits.
 

@@ -643,8 +643,8 @@ export class SyncManager {
             throw new Error(lm.t('Conversation {0} not found in manifest', conversationId));
         }
 
-        // Track active transfer for dashboard
-        const convTitle = this.getConversationTitle(conversationId);
+        // Track active transfer for dashboard - prefer remote title from manifest for remote-only conversations
+        const convTitle = remoteConv.title || this.getConversationTitle(conversationId);
         this.activeTransfers.set(conversationId, { title: convTitle, type: 'download', startTime: Date.now() });
         this.updateDashboardIfVisible();
 
@@ -1859,6 +1859,9 @@ export class SyncManager {
 
                     // Ask user which conversations to sync
                     if (manifest.conversations.length > 0) {
+                        // Get titles from server to enrich manifest data
+                        const serverTitles = await this.getServerTitleMap();
+
                         // Sort by creation date descending (newest first)
                         const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem & { id: string }>();
                         quickPick.title = lm.t('Select conversations to sync from Google Drive');
@@ -1882,7 +1885,9 @@ export class SyncManager {
                         const updateItems = (preserveSelection = false) => {
                             const sortedConversations = [...manifest.conversations].sort((a, b) => {
                                 if (sortMethod === 'name') {
-                                    return (a.title || a.id).localeCompare(b.title || b.id);
+                                    const titleA = serverTitles.get(a.id) || a.title || a.id;
+                                    const titleB = serverTitles.get(b.id) || b.title || b.id;
+                                    return titleA.localeCompare(titleB);
                                 } else if (sortMethod === 'created') {
                                     const dateA = new Date(a.createdAt || 0).getTime();
                                     const dateB = new Date(b.createdAt || 0).getTime();
@@ -1902,7 +1907,7 @@ export class SyncManager {
                                     : undefined;
 
                                 return {
-                                    label: c.title || c.id,
+                                    label: serverTitles.get(c.id) || c.title || c.id,
                                     description: c.id,
                                     detail: `${lm.t('Modified')}: ${modifiedDate}${dateInfo ? ` | ${dateInfo}` : ''}`,
                                     picked: true, // Default to all
@@ -2239,6 +2244,39 @@ export class SyncManager {
     }
 
     /**
+     * Get a map of cascade IDs to their titles from the Antigravity server.
+     * Used to enrich manifest data with readable titles.
+     */
+    private async getServerTitleMap(): Promise<Map<string, string>> {
+        const titleMap = new Map<string, string>();
+        try {
+            const response = await this.apiClient.request('GetAllCascadeTrajectories', {});
+            const rawSummaries = response?.trajectorySummaries;
+            let trajectories: any[] = [];
+
+            if (Array.isArray(rawSummaries)) {
+                trajectories = rawSummaries;
+            } else if (rawSummaries && typeof rawSummaries === 'object') {
+                trajectories = Object.entries(rawSummaries).map(([key, value]: [string, any]) => ({
+                    ...value,
+                    cascadeId: key
+                }));
+            }
+
+            for (const t of trajectories) {
+                const id = t.cascadeId;
+                const title = t.progressTitle || t.summary || t.name || t.title;
+                if (id && title && title !== id) {
+                    titleMap.set(id, title);
+                }
+            }
+        } catch {
+            // Ignore - server might not be available
+        }
+        return titleMap;
+    }
+
+    /**
      * Opens the most recently modified conversation in the specialized chat view.
      * Prioritizes the current workspace and real-time server data.
      */
@@ -2562,6 +2600,29 @@ export class SyncManager {
         }
     }
 
+    /**
+     * Get MCP server states from the API client
+     */
+    private async getMcpServerStates(): Promise<any[] | undefined> {
+        try {
+            const states = await this.apiClient.getMcpServerStates();
+            if (!states || states.length === 0) {
+                return []; // Return empty array to show "No MCP servers" section
+            }
+            return states.map((s: any) => ({
+                serverId: s.serverId || s.id || 'unknown',
+                serverName: s.serverName || s.name || s.serverId || 'Unknown',
+                status: s.status || s.state || 'UNKNOWN',
+                tools: s.tools || [],
+                resources: s.resources || [],
+                lastError: s.lastError || s.error
+            }));
+        } catch (e) {
+            console.error('Failed to get MCP server states', e);
+            return undefined; // undefined means API not available, won't show section
+        }
+    }
+
     private async refreshStatistics(preserveFocus: boolean = true, showProgress: boolean = true) {
         const lm = LocalizationManager.getInstance();
 
@@ -2777,7 +2838,8 @@ export class SyncManager {
                     userEmail: quotaSnapshot?.userEmail, // Keep this for AI Studio account
                     driveEmail: userInfo?.email, // Specific for Drive Storage
                     usageHistory: usageHistory.size > 0 ? usageHistory : undefined,
-                    activeConversationId: this.getActiveConversationId(this.config!.machineId, await this.getServerLatestTrajectoryId())
+                    activeConversationId: this.getActiveConversationId(this.config!.machineId, await this.getServerLatestTrajectoryId()),
+                    mcpServerStates: await this.getMcpServerStates()
                 };
 
                 this.lastStatsData = statsData;
@@ -3030,6 +3092,17 @@ export class SyncManager {
                         vscode.window.showErrorMessage(lm.t('Search failed: {0}', e.message));
                     }
                 });
+                break;
+            }
+            case 'refreshMcp': {
+                try {
+                    await this.apiClient.refreshMcpServers();
+                    // Wait a bit for servers to reconnect
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    this.refreshStatistics(true, false);
+                } catch (e: any) {
+                    vscode.window.showErrorMessage(lm.t('Failed to refresh MCP servers: {0}', e.message));
+                }
                 break;
             }
         }

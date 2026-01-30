@@ -276,4 +276,290 @@ export class AntigravityClient {
             uuid: '00000000-0000-0000-0000-000000000000'
         });
     }
+
+    // ==================== MCP API Methods ====================
+
+    /**
+     * Get MCP server states - returns list of connected MCP servers and their status
+     */
+    async getMcpServerStates(): Promise<McpServerState[]> {
+        try {
+            const result = await this.request('GetMcpServerStates', {});
+            return result.mcpServerStates || result.serverStates || [];
+        } catch (e) {
+            console.error('Failed to get MCP server states', e);
+            return [];
+        }
+    }
+
+    /**
+     * Refresh MCP servers - trigger reconnection/refresh of MCP servers
+     */
+    async refreshMcpServers(): Promise<void> {
+        try {
+            await this.request('RefreshMcpServers', {});
+        } catch (e) {
+            console.error('Failed to refresh MCP servers', e);
+        }
+    }
+
+    /**
+     * List MCP resources for a specific server
+     */
+    async listMcpResources(serverId?: string): Promise<McpResource[]> {
+        try {
+            const body = serverId ? { serverId } : {};
+            const result = await this.request('ListMcpResources', body);
+            return result.resources || [];
+        } catch (e) {
+            console.error('Failed to list MCP resources', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get available MCP server templates (from cloud)
+     */
+    async getMcpServerTemplates(): Promise<any[]> {
+        try {
+            const result = await this.request('GetMcpServerTemplates', {});
+            return result.templates || [];
+        } catch (e) {
+            console.error('Failed to get MCP server templates', e);
+            return [];
+        }
+    }
+
+    // ==================== Additional API Methods ====================
+
+    /**
+     * Get cascade memories (Knowledge Items)
+     */
+    async getCascadeMemories(): Promise<any[]> {
+        try {
+            const result = await this.request('GetCascadeMemories', {});
+            return result.memories || [];
+        } catch (e) {
+            console.error('Failed to get cascade memories', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get user memories
+     */
+    async getUserMemories(): Promise<any[]> {
+        try {
+            const result = await this.request('GetUserMemories', {});
+            return result.memories || [];
+        } catch (e) {
+            console.error('Failed to get user memories', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get brain status
+     */
+    async getBrainStatus(): Promise<any> {
+        try {
+            return await this.request('GetBrainStatus', {});
+        } catch (e) {
+            console.error('Failed to get brain status', e);
+            return null;
+        }
+    }
+
+    /**
+     * Get model statuses
+     */
+    async getModelStatuses(): Promise<any[]> {
+        try {
+            const result = await this.request('GetModelStatuses', {});
+            return result.modelStatuses || [];
+        } catch (e) {
+            console.error('Failed to get model statuses', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get workspace information
+     */
+    async getWorkspaceInfos(): Promise<any[]> {
+        try {
+            const result = await this.request('GetWorkspaceInfos', {});
+            return result.workspaceInfos || result.workspaces || [];
+        } catch (e) {
+            console.error('Failed to get workspace infos', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get repository information
+     */
+    async getRepoInfos(): Promise<any[]> {
+        try {
+            const result = await this.request('GetRepoInfos', {});
+            return result.repoInfos || result.repositories || [];
+        } catch (e) {
+            console.error('Failed to get repo infos', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get available Cascade plugins
+     */
+    async getAvailableCascadePlugins(): Promise<any[]> {
+        try {
+            const result = await this.request('GetAvailableCascadePlugins', {});
+            return result.plugins || [];
+        } catch (e) {
+            console.error('Failed to get cascade plugins', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get all workflows
+     */
+    async getAllWorkflows(): Promise<any[]> {
+        try {
+            const result = await this.request('GetAllWorkflows', {});
+            return result.workflows || [];
+        } catch (e) {
+            console.error('Failed to get workflows', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get all rules
+     */
+    async getAllRules(): Promise<any[]> {
+        try {
+            const result = await this.request('GetAllRules', {});
+            return result.rules || [];
+        } catch (e) {
+            console.error('Failed to get rules', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get user settings
+     */
+    async getUserSettings(): Promise<any> {
+        try {
+            return await this.request('GetUserSettings', {});
+        } catch (e) {
+            console.error('Failed to get user settings', e);
+            return null;
+        }
+    }
+
+    /**
+     * Get Unleash feature flags data
+     */
+    async getUnleashData(): Promise<any> {
+        try {
+            return await this.request('GetUnleashData', {
+                context: {
+                    properties: {
+                        ide: 'antigravity',
+                        os: process.platform
+                    }
+                }
+            });
+        } catch (e) {
+            console.error('Failed to get unleash data', e);
+            return null;
+        }
+    }
+
+    // ==================== Image Generation Tracking ====================
+
+    /**
+     * Analyze trajectory for image generations
+     */
+    async getImageGenerationStats(cascadeId: string): Promise<ImageGenStats> {
+        try {
+            const trajectory = await this.request('GetCascadeTrajectory', { cascadeId });
+            const steps = trajectory.trajectory?.steps || [];
+
+            const imageSteps = steps.filter((s: any) =>
+                s.type === 'CORTEX_STEP_TYPE_GENERATE_IMAGE'
+            );
+
+            return {
+                count: imageSteps.length,
+                prompts: imageSteps.map((s: any) => ({
+                    prompt: s.generateImage?.prompt || s.imageGeneration?.prompt || 'Unknown',
+                    timestamp: s.timestamp || null,
+                    imagePaths: s.generateImage?.imagePaths || s.imageGeneration?.paths || []
+                }))
+            };
+        } catch (e) {
+            console.error(`Failed to get image generation stats for ${cascadeId}`, e);
+            return { count: 0, prompts: [] };
+        }
+    }
+
+    /**
+     * Get step type statistics for a conversation
+     */
+    async getStepTypeStats(cascadeId: string): Promise<Record<string, number>> {
+        try {
+            const trajectory = await this.request('GetCascadeTrajectory', { cascadeId });
+            const steps = trajectory.trajectory?.steps || [];
+
+            const stats: Record<string, number> = {};
+            for (const step of steps) {
+                if (step.type) {
+                    stats[step.type] = (stats[step.type] || 0) + 1;
+                }
+            }
+
+            return stats;
+        } catch (e) {
+            console.error(`Failed to get step type stats for ${cascadeId}`, e);
+            return {};
+        }
+    }
+}
+
+// ==================== Type Definitions ====================
+
+export interface McpServerState {
+    serverId: string;
+    serverName: string;
+    status: 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'PENDING' | 'UNKNOWN';
+    tools?: McpTool[];
+    resources?: McpResource[];
+    lastError?: string;
+    config?: any;
+}
+
+export interface McpTool {
+    name: string;
+    description?: string;
+    inputSchema?: any;
+}
+
+export interface McpResource {
+    uri: string;
+    mimeType?: string;
+    description?: string;
+    name?: string;
+}
+
+export interface ImageGenStats {
+    count: number;
+    prompts: Array<{
+        prompt: string;
+        timestamp?: number | null;
+        imagePaths?: string[];
+    }>;
 }

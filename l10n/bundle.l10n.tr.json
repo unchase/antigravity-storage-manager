@@ -549,5 +549,16 @@
     "Force Sync complete!": "Zorla senkronizasyon tamamlandı!",
     "Force Sync failed: {0}": "Zorla senkronizasyon başarısız oldu: {0}",
     "Deep sync: flushes server state and bypasses local hash cache": "Derin senkronizasyon: sunucu durumunu temizler ve yerel karma önbelleğini atlar",
-    "Flushing server state...": "Sunucu durumu temizleniyor..."
+    "Flushing server state...": "Sunucu durumu temizleniyor...",
+    "Connected": "Bağlı",
+    "Disconnected": "Bağlantı Kesildi",
+    "Pending": "Bekliyor",
+    "tools": "araçlar",
+    "resources": "kaynaklar",
+    "Show Tools": "Araçları Göster",
+    "more": "daha fazla",
+    "No MCP servers configured": "Yapılandırılmış MCP sunucusu yok",
+    "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "MCP sunucuları ~/.gemini/antigravity/mcp/mcp_config.json dosyasında yapılandırılabilir",
+    "Refresh MCP Servers": "MCP Sunucularını Yenile",
+    "Failed to refresh MCP servers: {0}": "MCP sunucuları yenilenemedi: {0}"
 }
