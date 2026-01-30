@@ -484,7 +484,11 @@
     "Errors": "Errors",
     "Detailed content of these messages has been cleared or archived.": "Detailed content of these messages has been cleared or archived.",
     "JSON": "JSON",
+    "Show content": "عرض المحتوى",
+    "Show details": "عرض التفاصيل",
     "TEXT": "TEXT",
+    "Collapse": "طي",
+    "(empty)": "(فارغ)",
     "Search in chat...": "بحث في المحادثة...",
     "Previous (Shift+Enter)": "السابق (Shift+Enter)",
     "Next (Enter)": "التالي (Enter)",
@@ -537,5 +541,13 @@
     "Configure Proxy": "تكوين الوكيل",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "أدخل عنوان URL للوكيل (مثلاً http://user:pass@host:port) أو اتركه فارغاً للمسح",
     "Search in JSON...": "بحث في JSON...",
-    "File not found locally": "الملف غير موجود محليًا"
+    "File not found locally": "الملف غير موجود محليًا",
+    "No conversations found locally.": "لم يتم العثور على محادثات محلياً.",
+    "Force Sync": "فرض المزامنة",
+    "Force sync with server flush and cache bypass": "فرض المزامنة مع مسح الخادم وتجاوز ذاكرة التخزين المؤقت",
+    "Force Syncing conversations...": "جاري فرض مزامنة المحادثات...",
+    "Force Sync complete!": "اكتمل فرض المزامنة!",
+    "Force Sync failed: {0}": "فشل فرض المزامنة: {0}",
+    "Deep sync: flushes server state and bypasses local hash cache": "مزامنة عميقة: تمسح حالة الخادم وتتجاوز ذاكرة التخزين المؤقت للتجزئة المحلية",
+    "Flushing server state...": "جاري مسح حالة الخادم..."
 }

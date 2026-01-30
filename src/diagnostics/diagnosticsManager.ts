@@ -3,6 +3,8 @@ import { GoogleAuthProvider } from '../googleAuth';
 import { QuotaManager } from '../quota/quotaManager';
 import { LocalizationManager } from '../l10n/localizationManager';
 
+import { AntigravityClient } from '../quota/antigravityClient';
+
 export interface DiagnosticResult {
     id: string;
     label: string;
@@ -14,10 +16,12 @@ export interface DiagnosticResult {
 export class DiagnosticsManager {
     private authProvider: GoogleAuthProvider;
     private quotaManager: QuotaManager;
+    private client: AntigravityClient;
 
     constructor(authProvider: GoogleAuthProvider, quotaManager: QuotaManager) {
         this.authProvider = authProvider;
         this.quotaManager = quotaManager;
+        this.client = new AntigravityClient();
     }
 
     public async runDiagnostics(): Promise<DiagnosticResult[]> {
@@ -32,7 +36,10 @@ export class DiagnosticsManager {
         // 3. Check Quota System (Local Port)
         results.push(await this.checkQuotaSystem());
 
-        // 4. Check Drive API Latency (if authenticated)
+        // 4. Check Server Heartbeat
+        results.push(await this.checkHeartbeat());
+
+        // 5. Check Drive API Latency (if authenticated)
         if (this.authProvider.isAuthenticated()) {
             results.push(await this.checkDriveLatency());
         }
@@ -94,6 +101,28 @@ export class DiagnosticsManager {
                 label: lm.t('Antigravity Language Server'),
                 status: 'fail',
                 message: lm.t('Connection failed'),
+                details: e.message
+            };
+        }
+    }
+
+    private async checkHeartbeat(): Promise<DiagnosticResult> {
+        const lm = LocalizationManager.getInstance();
+        try {
+            const res = await this.client.getHeartbeat();
+            return {
+                id: 'heartbeat',
+                label: lm.t('Server Heartbeat'),
+                status: 'pass',
+                message: lm.t('Pulse Detected'),
+                details: res.uuid ? `UUID: ${res.uuid}` : undefined
+            };
+        } catch (e: any) {
+            return {
+                id: 'heartbeat',
+                label: lm.t('Server Heartbeat'),
+                status: 'fail',
+                message: lm.t('No Pulse'),
                 details: e.message
             };
         }

@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "URL прокси-сервера",
     "antigravity.config.proxy.strictSSL": "Включить строгую проверку SSL для прокси (по умолчанию: true)",
     "antigravity.config.proxy.username": "Имя пользователя прокси (опционально)",
-    "antigravity.config.proxy.password": "Пароль прокси (опционально)"
+    "antigravity.config.proxy.password": "Пароль прокси (опционально)",
+    "antigravity.command.openCurrentConversation": "Просмотр текущего диалога",
+    "antigravity.command.forceSync": "Force Sync"
 }

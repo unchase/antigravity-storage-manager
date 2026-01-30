@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Securely sync Antigravity Conversations with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.",
-    "version": "0.10.0",
+    "version": "0.10.1",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -102,6 +102,12 @@
                 "category": "%antigravity.submenu.label%"
             },
             {
+                "command": "antigravity-storage-manager.forceSync",
+                "title": "%antigravity.command.forceSync%",
+                "icon": "$(cloud-upload)",
+                "category": "%antigravity.submenu.label%"
+            },
+            {
                 "command": "antigravity-storage-manager.syncManage",
                 "title": "%antigravity.command.syncManage%",
                 "icon": "$(list-unordered)",
@@ -140,6 +146,12 @@
                 "title": "%antigravity.command.switchProfile%",
                 "icon": "$(account)",
                 "category": "%antigravity.submenu.label%"
+            },
+            {
+                "command": "antigravity-storage-manager.openCurrentConversation",
+                "title": "%antigravity.command.openCurrentConversation%",
+                "icon": "$(open-preview)",
+                "category": "%antigravity.submenu.label%"
             }
         ],
         "submenus": [
@@ -164,6 +176,9 @@
                 },
                 {
                     "command": "antigravity-storage-manager.syncNow"
+                },
+                {
+                    "command": "antigravity-storage-manager.forceSync"
                 },
                 {
                     "command": "antigravity-storage-manager.syncManage"
@@ -206,12 +221,16 @@
                     "group": "3_sync@2"
                 },
                 {
-                    "command": "antigravity-storage-manager.syncManage",
+                    "command": "antigravity-storage-manager.forceSync",
                     "group": "3_sync@3"
                 },
                 {
+                    "command": "antigravity-storage-manager.syncManage",
+                    "group": "3_sync@4"
+                },
+                {
                     "command": "antigravity-storage-manager.syncManageAuthorizedMachines",
-                    "group": "3_sync@3"
+                    "group": "3_sync@4"
                 },
                 {
                     "command": "antigravity-storage-manager.syncDisconnect",
@@ -251,6 +270,11 @@
                     "submenu": "antigravity-storage-manager.submenu",
                     "when": "view == roo-cline.SidebarProvider || view == claude-dev.SidebarProvider",
                     "group": "z_commands"
+                },
+                {
+                    "command": "antigravity-storage-manager.openCurrentConversation",
+                    "when": "view == roo-cline.SidebarProvider",
+                    "group": "navigation@6"
                 }
             ]
         },

@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "代理服务器地址",
     "antigravity.config.proxy.strictSSL": "启用代理的严格 SSL 验证 (默认: true)",
     "antigravity.config.proxy.username": "代理用户名 (可选)",
-    "antigravity.config.proxy.password": "代理密码 (可选)"
+    "antigravity.config.proxy.password": "代理密码 (可选)",
+    "antigravity.command.openCurrentConversation": "查看当前对话",
+    "antigravity.command.forceSync": "强制同步"
 }

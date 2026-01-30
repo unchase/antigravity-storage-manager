@@ -484,7 +484,11 @@
     "Errors": "오류",
     "Detailed content of these messages has been cleared or archived.": "이 메시지의 상세 내용은 삭제되거나 아카이브되었습니다.",
     "JSON": "JSON",
+    "Show content": "콘텐츠 표시",
+    "Show details": "세부 정보 표시",
     "TEXT": "텍스트",
+    "Collapse": "접기",
+    "(empty)": "(비어 있음)",
     "Search in chat...": "채팅에서 검색...",
     "Previous (Shift+Enter)": "이전 (Shift+Enter)",
     "Next (Enter)": "다음 (Enter)",
@@ -537,5 +541,13 @@
     "Configure Proxy": "프록시 구성",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "프록시 URL을 입력(예: http://user:pass@host:port)하거나 비워 두어 지웁니다",
     "Search in JSON...": "JSON에서 검색...",
-    "File not found locally": "로컬에서 파일을 찾을 수 없습니다"
+    "File not found locally": "로컬에서 파일을 찾을 수 없습니다",
+    "No conversations found locally.": "로컬에서 대화를 찾을 수 없습니다.",
+    "Force Sync": "강제 동기화",
+    "Force sync with server flush and cache bypass": "서버 상태 플러시 및 캐시 우회 강제 동기화",
+    "Force Syncing conversations...": "대화 강제 동기화 중...",
+    "Force Sync complete!": "강제 동기화 완료!",
+    "Force Sync failed: {0}": "강제 동기화 실패: {0}",
+    "Deep sync: flushes server state and bypasses local hash cache": "딥 싱크: 서버 상태를 플러시하고 로컬 해시 캐시를 우회합니다",
+    "Flushing server state...": "서버 상태 플러시 중..."
 }

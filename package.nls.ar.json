@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "رابط خادم الوكيل",
     "antigravity.config.proxy.strictSSL": "تفعيل SSL الصارم للوكيل (الافتراضي: true)",
     "antigravity.config.proxy.username": "اسم مستخدم الوكيل (اختياري)",
-    "antigravity.config.proxy.password": "كلمة مرور الوكيل (اختياري)"
+    "antigravity.config.proxy.password": "كلمة مرور الوكيل (اختياري)",
+    "antigravity.command.openCurrentConversation": "عرض المحادثة الحالية",
+    "antigravity.command.forceSync": "فرض المزامنة"
 }

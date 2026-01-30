@@ -484,7 +484,11 @@
     "Errors": "ошибок",
     "Detailed content of these messages has been cleared or archived.": "Подробное содержимое этих сообщений было удалено или архивировано.",
     "JSON": "JSON",
+    "Show content": "Показать содержимое",
+    "Show details": "Показать подробности",
     "TEXT": "ТЕКСТ",
+    "Collapse": "Свернуть",
+    "(empty)": "(пусто)",
     "Search in chat...": "Поиск в чате...",
     "Previous (Shift+Enter)": "Предыдущее (Shift+Enter)",
     "Next (Enter)": "Следующее (Enter)",
@@ -537,5 +541,13 @@
     "Configure Proxy": "Настроить прокси",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Введите URL прокси (например, http://user:pass@host:port) или оставьте пустым для очистки",
     "Search in JSON...": "Поиск в JSON...",
-    "File not found locally": "Файл не найден локально"
+    "File not found locally": "Файл не найден локально",
+    "No conversations found locally.": "Локальных диалогов не найдено.",
+    "Force Sync": "Принудительная синхронизация",
+    "Force sync with server flush and cache bypass": "Принудительная синхронизация со сбросом состояния сервера и обходом кэша",
+    "Force Syncing conversations...": "Принудительная синхронизация диалогов...",
+    "Force Sync complete!": "Принудительная синхронизация завершена!",
+    "Force Sync failed: {0}": "Принудительная синхронизация не удалась: {0}",
+    "Deep sync: flushes server state and bypasses local hash cache": "Глубокая синхронизация: сбрасывает состояние сервера и игнорирует локальный кэш хэшей",
+    "Flushing server state...": "Сброс состояния сервера..."
 }

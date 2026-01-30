@@ -484,7 +484,11 @@
     "Errors": "Chyby",
     "Detailed content of these messages has been cleared or archived.": "Podrobný obsah těchto zpráv byl vymazán nebo archivován.",
     "JSON": "JSON",
+    "Show content": "Zobrazit obsah",
+    "Show details": "Zobrazit podrobnosti",
     "TEXT": "TEXT",
+    "Collapse": "Sbalit",
+    "(empty)": "(prázdné)",
     "Search in chat...": "Hledat v chatu...",
     "Previous (Shift+Enter)": "Předchozí (Shift+Enter)",
     "Next (Enter)": "Další (Enter)",
@@ -537,5 +541,13 @@
     "Configure Proxy": "Konfigurovat proxy",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Zadejte adresu URL proxy (např. http://user:pass@host:port) nebo nechte prázdné pro vymazání",
     "Search in JSON...": "Hledat v JSON...",
-    "File not found locally": "Soubor nebyl nalezen lokálně"
+    "File not found locally": "Soubor nebyl nalezen lokálně",
+    "No conversations found locally.": "Lokálně nebyly nalezeny žádné konverzace.",
+    "Force Sync": "Vynutit synchronizaci",
+    "Force sync with server flush and cache bypass": "Vynutit synchronizaci s vyprázdněním serveru a obejitím mezipaměti",
+    "Force Syncing conversations...": "Vynucování synchronizace konverzací...",
+    "Force Sync complete!": "Vynucená synchronizace dokončena!",
+    "Force Sync failed: {0}": "Vynucená synchronizace selhala: {0}",
+    "Deep sync: flushes server state and bypasses local hash cache": "Hluboká synchronizace: vyprázdní stav serveru a obejde místní mezipaměť hash",
+    "Flushing server state...": "Vyprázdnění stavu serveru..."
 }

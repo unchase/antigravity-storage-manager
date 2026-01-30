@@ -484,7 +484,11 @@
     "Errors": "エラー",
     "Detailed content of these messages has been cleared or archived.": "これらのメッセージの詳細な内容はクリアまたはアーカイブされました。",
     "JSON": "JSON",
+    "Show content": "コンテンツを表示",
+    "Show details": "詳細を表示",
     "TEXT": "テキスト",
+    "Collapse": "折りたたむ",
+    "(empty)": "(空)",
     "Search in chat...": "チャット内を検索...",
     "Previous (Shift+Enter)": "前へ (Shift+Enter)",
     "Next (Enter)": "次へ (Enter)",
@@ -537,5 +541,13 @@
     "Configure Proxy": "プロキシを設定",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "プロキシURLを入力してください（例：http://user:pass@host:port）、またはクリアするには空のままにしてください",
     "Search in JSON...": "JSON内を検索...",
-    "File not found locally": "ファイルがローカルで見つかりません"
+    "File not found locally": "ファイルがローカルで見つかりません",
+    "No conversations found locally.": "ローカルに会話が見つかりませんでした。",
+    "Force Sync": "強制同期",
+    "Force sync with server flush and cache bypass": "サーバーのフラッシュとキャッシュのバイパスを伴う強制同期",
+    "Force Syncing conversations...": "会話を強制同期中...",
+    "Force Sync complete!": "強制同期が完了しました！",
+    "Force Sync failed: {0}": "強制同期に失敗しました: {0}",
+    "Deep sync: flushes server state and bypasses local hash cache": "深い同期: サーバーの状態をフラッシュし、ローカルのハッシュキャッシュをバイパスします",
+    "Flushing server state...": "サーバーの状態をフラッシュ中..."
 }

@@ -98,6 +98,7 @@ Keep your conversations synchronized across multiple machines using your Google 
       - **Force Push (🔄)**: Send a sync signal to other devices.
     - **User Info**: Displays the current user's email and plan (from Google AI Studio or Google Drive).
     - **Active Transfers**: Monitor ongoing uploads and downloads in real-time. **Click** on any item to open the conversation instantly.
+    - **Force Sync (🚀)**: Manually trigger a forceful synchronization that bypasses local caches and flushes server buffers.
     - **Real-time Data**: Information is automatically refreshed during sync events; you can also use the **Refresh Data (🔄)** button to reload manually.
 - **Status Bar**: The **AG Sync** icon updates dynamically (☁️ Cloud, 🔄 Spinning, ⚠️ Error, ✅ Check) to reflect the current state.
 - **Shortcuts**: Default hotkeys are provided for common actions (e.g., `Ctrl+Alt+S` for Sync Now) and are displayed in the menu.
@@ -170,6 +171,20 @@ For power users and troubleshooting, you can view the raw JSON data received fro
 1. Open the **AG Sync** menu from the status bar.
 2. Select **Google Account Data**.
 3. Or click the **View Raw JSON** button directly from the **Account Information** dashboard.
+
+---
+
+## Conversation Viewer
+
+![Conversation Viewer](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/conversation-viewer.png)
+
+Need to review a long conversation without scrolling through the small chat window? Open any conversation in a full-screen, dedicated editor tab.
+
+### Features
+- **Distraction-Free Reading**: Full-width view optimized for readability.
+- **Rich Markdown Support**: Code blocks, tables, and formatting rendered perfectly.
+- **Syntax Highlighting**: Complete language support for all code snippets.
+- **Quick Access**: Just click on any conversation in the **Sync Statistics** dashboard or use the `Antigravity Storage: Open Current Conversation` command.
 
 ---
 

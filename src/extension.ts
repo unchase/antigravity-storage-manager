@@ -141,6 +141,11 @@ export async function activate(context: vscode.ExtensionContext) {
                     command: `${EXT_NAME}.syncNow`
                 },
                 {
+                    label: `$(cloud-upload) ${lm.t('Force Sync')}`,
+                    description: `${lm.t('Force sync with server flush and cache bypass')} ${getKeybindingLabel(`${EXT_NAME}.forceSync`)}`,
+                    command: `${EXT_NAME}.forceSync`
+                },
+                {
                     label: `$(graph) ${lm.t('Show Statistics')}`,
                     description: `${lm.t('View detailed sync status and history')} ${getKeybindingLabel(`${EXT_NAME}.showSyncStats`)}`,
                     command: `${EXT_NAME}.showSyncStats`,
@@ -360,6 +365,26 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
             });
         }),
+        vscode.commands.registerCommand(`${EXT_NAME}.forceSync`, async () => {
+            const lm = LocalizationManager.getInstance();
+            if (!syncManager.isReady()) {
+                vscode.window.showWarningMessage(lm.t('Sync is not configured.'));
+                return;
+            }
+
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: lm.t('Force Syncing conversations...'),
+                cancellable: true
+            }, async (progress, token) => {
+                const result = await syncManager.syncNow(progress, token, true);
+                if (result.success) {
+                    vscode.window.showInformationMessage(lm.t('Force Sync complete!'));
+                } else {
+                    vscode.window.showErrorMessage(lm.t('Force Sync failed: {0}', result.errors.join(', ')));
+                }
+            });
+        }),
         vscode.commands.registerCommand(`${EXT_NAME}.showQuota`, async () => {
             await quotaManager.showQuota();
         }),
@@ -481,6 +506,9 @@ export async function activate(context: vscode.ExtensionContext) {
                 await httpConfig.update('proxyStrictSSL', strictSSL, target);
                 vscode.window.showInformationMessage(lm.t('Applied proxy settings to VS Code: {0}', proxyUrl));
             }
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.openCurrentConversation`, async () => {
+            await syncManager.openCurrentConversation();
         })
     );
 

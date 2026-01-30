@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "代理伺服器網址",
     "antigravity.config.proxy.strictSSL": "啟用代理的嚴格 SSL 驗證 (預設: true)",
     "antigravity.config.proxy.username": "代理使用者名稱 (選用)",
-    "antigravity.config.proxy.password": "代理密碼 (選用)"
+    "antigravity.config.proxy.password": "代理密碼 (選用)",
+    "antigravity.command.openCurrentConversation": "查看當前對話",
+    "antigravity.command.forceSync": "強制同步"
 }

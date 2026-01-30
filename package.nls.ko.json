@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "프록시 서버 URL",
     "antigravity.config.proxy.strictSSL": "프록시용 엄격한 SSL 활성화 (기본값: true)",
     "antigravity.config.proxy.username": "프록시 사용자 이름 (선택 사항)",
-    "antigravity.config.proxy.password": "프록시 비밀번호 (선택 사항)"
+    "antigravity.config.proxy.password": "프록시 비밀번호 (선택 사항)",
+    "antigravity.command.openCurrentConversation": "현재 대화 보기",
+    "antigravity.command.forceSync": "강제 동기화"
 }

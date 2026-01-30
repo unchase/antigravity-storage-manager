@@ -84,14 +84,23 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                     return null;
                 };
 
-                // Priority 1: .pb file (via heuristic extraction)
+                // Priority 1: .pb file (via heuristic extraction and for timestamps)
+                let modDate = stats.mtime;
+                let birthDate = stats.birthtime;
                 try {
-                    const { PbParser } = require('./quota/pbParser');
+                    const { PbParser } = await import('./quota/pbParser');
                     const conversationsDir = path.join(brainDir, '..', 'conversations');
                     const pbPath = path.join(conversationsDir, `${id}.pb`);
-                    const pbTitle = await PbParser.extractTitle(pbPath);
-                    if (pbTitle) {
-                        label = pbTitle;
+
+                    if (fs.existsSync(pbPath)) {
+                        const pbStats = fs.statSync(pbPath);
+                        modDate = pbStats.mtime;
+                        birthDate = pbStats.birthtime;
+
+                        const pbTitle = await PbParser.extractTitle(pbPath);
+                        if (pbTitle) {
+                            label = pbTitle;
+                        }
                     }
                 } catch {
                     // Ignore errors from pb parsing or missing files
@@ -114,10 +123,10 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                 return {
                     label: label,
                     description: id,
-                    detail: `${lm.t('Created')}: ${lm.formatDateTime(stats.birthtime)} | ${lm.t('Modified')}: ${lm.formatDateTime(stats.mtime)}`,
+                    detail: `${lm.t('Created')}: ${lm.formatDateTime(birthDate)} | ${lm.t('Modified')}: ${lm.formatDateTime(modDate)}`,
                     id: id,
-                    lastModified: stats.mtime,
-                    createdAt: stats.birthtime
+                    lastModified: modDate,
+                    createdAt: birthDate
                 } as ConversationItem;
 
             } catch (e: any) {

@@ -42,7 +42,10 @@ export class AntigravityClient {
         return this.connectionInfo;
     }
 
-    private async request(method: string, body: any): Promise<any> {
+    /**
+     * Internal request helper
+     */
+    public async request(method: string, body: any): Promise<any> {
         const { port, token } = await this.ensureConnection();
 
         return new Promise((resolve, reject) => {
@@ -252,5 +255,25 @@ export class AntigravityClient {
             console.error(`Failed to fetch user trajectory ${trajectoryId}`, e);
             return null;
         }
+    }
+
+    /**
+     * Force the server to flush all queued messages and state to disk.
+     */
+    async sendAllQueuedMessages(): Promise<void> {
+        try {
+            await this.request('SendAllQueuedMessages', {});
+        } catch (e) {
+            console.error('Failed to flush server messages', e);
+        }
+    }
+
+    /**
+     * Check server heartbeat
+     */
+    async getHeartbeat(): Promise<any> {
+        return await this.request('Heartbeat', {
+            uuid: '00000000-0000-0000-0000-000000000000'
+        });
     }
 }

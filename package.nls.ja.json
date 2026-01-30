@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "プロキシサーバーのURL",
     "antigravity.config.proxy.strictSSL": "プロキシの厳格なSSL確認を有効にする (デフォルト: true)",
     "antigravity.config.proxy.username": "プロキシユーザー名 (任意)",
-    "antigravity.config.proxy.password": "プロキシパスワード (任意)"
+    "antigravity.config.proxy.password": "プロキシパスワード (任意)",
+    "antigravity.command.openCurrentConversation": "現在の会話を表示",
+    "antigravity.command.forceSync": "強制同期"
 }

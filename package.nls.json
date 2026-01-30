@@ -7,6 +7,7 @@
     "antigravity.command.resolveConflicts": "Resolve Conflict Copies",
     "antigravity.command.syncSetup": "Setup Google Drive Sync",
     "antigravity.command.syncNow": "Sync Now",
+    "antigravity.command.forceSync": "Force Sync",
     "antigravity.command.syncManage": "Manage Synced Conversations",
     "antigravity.command.syncDisconnect": "Disconnect Google Drive Sync",
     "antigravity.submenu.label": "Antigravity Storage",
@@ -43,5 +44,6 @@
     "antigravity.config.proxy.url": "Proxy Server URL",
     "antigravity.config.proxy.strictSSL": "Enable Strict SSL for Proxy (default: true)",
     "antigravity.config.proxy.username": "Proxy Username (Optional)",
-    "antigravity.config.proxy.password": "Proxy Password (Optional)"
+    "antigravity.config.proxy.password": "Proxy Password (Optional)",
+    "antigravity.command.openCurrentConversation": "View Current Conversation"
 }

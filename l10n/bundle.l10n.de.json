@@ -484,7 +484,11 @@
     "Errors": "Fehler",
     "Detailed content of these messages has been cleared or archived.": "Der detaillierte Inhalt dieser Nachrichten wurde gelöscht oder archiviert.",
     "JSON": "JSON",
+    "Show content": "Inhalt anzeigen",
+    "Show details": "Details anzeigen",
     "TEXT": "TEXT",
+    "Collapse": "Einklappen",
+    "(empty)": "(leer)",
     "Search in chat...": "Im Chat suchen...",
     "Previous (Shift+Enter)": "Vorheriges (Umschalt+Eingabe)",
     "Next (Enter)": "Nächstes (Eingabe)",
@@ -537,5 +541,13 @@
     "Configure Proxy": "Proxy konfigurieren",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Geben Sie die Proxy-URL ein (z. B. http://user:pass@host:port) oder lassen Sie das Feld leer, um es zu löschen",
     "Search in JSON...": "In JSON suchen...",
-    "File not found locally": "Datei lokal nicht gefunden"
+    "File not found locally": "Datei lokal nicht gefunden",
+    "No conversations found locally.": "Keine Konversationen lokal gefunden.",
+    "Force Sync": "Synchronisierung erzwingen",
+    "Force sync with server flush and cache bypass": "Synchronisierung mit Server-Flush und Cache-Umgehung erzwingen",
+    "Force Syncing conversations...": "Erzwinge Synchronisierung der Konversationen...",
+    "Force Sync complete!": "Erzwungene Synchronisierung abgeschlossen!",
+    "Force Sync failed: {0}": "Erzwungene Synchronisierung fehlgeschlagen: {0}",
+    "Deep sync: flushes server state and bypasses local hash cache": "Tiefe Synchronisierung: Leert den Serverstatus und umgeht den lokalen Hash-Cache",
+    "Flushing server state...": "Leere Serverstatus..."
 }

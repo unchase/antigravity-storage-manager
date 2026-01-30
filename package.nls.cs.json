@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "URL proxy serveru",
     "antigravity.config.proxy.strictSSL": "Povolit striktní SSL pro proxy (výchozí: true)",
     "antigravity.config.proxy.username": "Uživatelské jméno proxy (Volitelné)",
-    "antigravity.config.proxy.password": "Heslo proxy (Volitelné)"
+    "antigravity.config.proxy.password": "Heslo proxy (Volitelné)",
+    "antigravity.command.openCurrentConversation": "Zobrazit aktuální konverzaci",
+    "antigravity.command.forceSync": "Vynutit synchronizaci"
 }

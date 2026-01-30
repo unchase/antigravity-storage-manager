@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "URL máy chủ Proxy",
     "antigravity.config.proxy.strictSSL": "Bật SSL nghiêm ngặt cho Proxy (mặc định: true)",
     "antigravity.config.proxy.username": "Tên người dùng Proxy (Tùy chọn)",
-    "antigravity.config.proxy.password": "Mật khẩu Proxy (Tùy chọn)"
+    "antigravity.config.proxy.password": "Mật khẩu Proxy (Tùy chọn)",
+    "antigravity.command.openCurrentConversation": "Xem cuộc trò chuyện hiện tại",
+    "antigravity.command.forceSync": "Buộc đồng bộ"
 }

@@ -484,7 +484,11 @@
     "Errors": "Hatalar",
     "Detailed content of these messages has been cleared or archived.": "Bu mesajların ayrıntılı içeriği temizlendi veya arşivlendi.",
     "JSON": "JSON",
+    "Show content": "İçeriği göster",
+    "Show details": "Ayrıntıları göster",
     "TEXT": "METİN",
+    "Collapse": "Daralt",
+    "(empty)": "(boş)",
     "Search in chat...": "Sohbette ara...",
     "Previous (Shift+Enter)": "Önceki (Shift+Enter)",
     "Next (Enter)": "Sonraki (Enter)",
@@ -537,5 +541,13 @@
     "Configure Proxy": "Proxy Yapılandır",
     "Enter Proxy URL (e.g., http://user:pass@host:port) or leave empty to clear": "Proxy URL'sini girin (örn. http://user:pass@host:port) veya temizlemek için boş bırakın",
     "Search in JSON...": "JSON içinde ara...",
-    "File not found locally": "Dosya yerel olarak bulunamadı"
+    "File not found locally": "Dosya yerel olarak bulunamadı",
+    "No conversations found locally.": "Yerel olarak hiç konuşma bulunamadı.",
+    "Force Sync": "Senkronizasyonu Zorla",
+    "Force sync with server flush and cache bypass": "Sunucu temizleme ve önbellek atlama ile senkronizasyonu zorla",
+    "Force Syncing conversations...": "Konuşmalar senkronize edilmeye zorlanıyor...",
+    "Force Sync complete!": "Zorla senkronizasyon tamamlandı!",
+    "Force Sync failed: {0}": "Zorla senkronizasyon başarısız oldu: {0}",
+    "Deep sync: flushes server state and bypasses local hash cache": "Derin senkronizasyon: sunucu durumunu temizler ve yerel karma önbelleğini atlar",
+    "Flushing server state...": "Sunucu durumu temizleniyor..."
 }

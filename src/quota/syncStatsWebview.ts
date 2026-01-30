@@ -36,6 +36,7 @@ export interface SyncStatsData {
     usageHistory?: Map<string, { timestamp: number; usage: number }[]>; // modelId -> history points
     searchResults?: SearchResult[];
     searchQuery?: string;
+    activeConversationId?: string;
 }
 
 export class SyncStatsWebview {
@@ -342,6 +343,10 @@ export class SyncStatsWebview {
                 tr:last-child td { border-bottom: none; }
                 tr:hover td { background: rgba(255,255,255,0.02); }
 
+                tr.active-conversation td { background: rgba(var(--accent-rgb, 0, 122, 204), 0.08) !important; border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent); }
+                tr.active-conversation td:first-child { border-left: 4px solid var(--accent); }
+                tr.active-conversation .link { color: var(--fg); font-weight: 800; }
+
                 .group-header { background: rgba(255,255,255,0.03) !important; font-weight: 700; cursor: pointer; user-select: none; }
                 .group-header td { padding: 12px 16px; border-left: 4px solid var(--accent); }
                 .collapse-icon { display: inline-block; transition: transform 0.2s; margin-right: 8px; opacity: 0.5; }
@@ -537,8 +542,9 @@ export class SyncStatsWebview {
                         <button class="btn" onclick="postCommand('openCoffee')" title="${lm.t('Buy Me a Coffee')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">☕</button>
                         <button class="btn" onclick="postCommand('openRepo')" title="${lm.t('Star on GitHub')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">⭐</button>
                         <div style="width: 1px; height: 24px; background: var(--border); margin: 0 4px;"></div>
-                        <span class="last-sync">${lm.t('Last Update')}: ${lm.formatDateTime(new Date())}</span>
-                        <button class="btn" onclick="postCommand('refresh')">🔄 ${lm.t('Refresh')}</button>
+                        <span class="last-sync" style="font-size: 11px; opacity: 0.6; margin-right: 4px;">${lm.formatDateTime(new Date())}</span>
+                        <button class="btn" onclick="postCommand('refresh')" title="${lm.t('Refresh Data')}" style="padding: 6px 10px; min-width: 36px; justify-content: center;">🔄</button>
+                        <button class="btn" onclick="postCommand('forceSync')" title="${lm.t('Force Sync')} - ${lm.t('Deep sync: flushes server state and bypasses local hash cache')}" style="padding: 6px 10px; min-width: 36px; justify-content: center;">🚀</button>
                     </div>
                 </div>
 
@@ -1092,7 +1098,7 @@ export class SyncStatsWebview {
                     }
 
                     return `
-                                        <tr onclick="toggleFiles('${id}')" style="cursor: pointer">
+                                        <tr class="${id === data.activeConversationId ? 'active-conversation' : ''}" onclick="toggleFiles('${id}')" style="cursor: pointer">
                                             <td>
                                                 <div class="link" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})">${title}</div>
                                                 <div title="${id}" style="font-size:11px; opacity:0.5; font-family:monospace; display: inline-block;">
@@ -1205,7 +1211,29 @@ export class SyncStatsWebview {
                     rows.forEach(row => {
                         row.classList.toggle('collapsed-row');
                     });
+
+                    // Persist collapse state to localStorage
+                    try {
+                        const collapsedGroups = JSON.parse(localStorage.getItem('syncStats_collapsedGroups') || '{}');
+                        collapsedGroups[groupId] = header.classList.contains('collapsed');
+                        localStorage.setItem('syncStats_collapsedGroups', JSON.stringify(collapsedGroups));
+                    } catch (e) { console.warn('Failed to save collapse state', e); }
                 }
+
+                // Restore collapsed state on load
+                (function restoreCollapseState() {
+                    try {
+                        const collapsedGroups = JSON.parse(localStorage.getItem('syncStats_collapsedGroups') || '{}');
+                        for (const groupId in collapsedGroups) {
+                            if (collapsedGroups[groupId]) {
+                                const rows = document.querySelectorAll('.' + groupId);
+                                const header = document.querySelector('[onclick*="toggleGroup(\\''+groupId+'\\')"]');
+                                if (header) header.classList.add('collapsed');
+                                rows.forEach(row => row.classList.add('collapsed-row'));
+                            }
+                        }
+                    } catch (e) { console.warn('Failed to restore collapse state', e); }
+                })();
                 
                 function toggleFiles(id) {
                     const el = document.getElementById('files-' + id);

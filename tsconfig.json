@@ -14,9 +14,6 @@
     },
     "exclude": [
         "node_modules",
-        ".vscode-test",
-        "debug_specific_conv.ts",
-        "test_api.ts",
-        "test_real_pb.ts"
+        ".vscode-test"
     ]
 }

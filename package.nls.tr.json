@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "Proxy Sunucu URL'si",
     "antigravity.config.proxy.strictSSL": "Proxy için Katı SSL'i Etkinleştir (varsayılan: true)",
     "antigravity.config.proxy.username": "Proxy Kullanıcı Adı (İsteğe Bağlı)",
-    "antigravity.config.proxy.password": "Proxy Parolası (İsteğe Bağlı)"
+    "antigravity.config.proxy.password": "Proxy Parolası (İsteğe Bağlı)",
+    "antigravity.command.openCurrentConversation": "Mevcut Konuşmayı Görüntüle",
+    "antigravity.command.forceSync": "Senkronizasyonu Zorla"
 }

@@ -87,6 +87,7 @@ export class SyncManager {
     private lastStatsData: any | null = null;
     private manifestUpdateQueue: Promise<void> = Promise.resolve();
     private quotaManager: QuotaManager | null = null;
+    private lastActiveConversationId?: string;
 
     // Status bar item for sync status
     private statusBarItem: vscode.StatusBarItem | null = null;
@@ -243,7 +244,17 @@ export class SyncManager {
     /**
      * Sync now - manual or automatic sync trigger
      */
-    async syncNow(progress?: vscode.Progress<{ message?: string; increment?: number }>, token?: vscode.CancellationToken): Promise<SyncResult> {
+    async syncNow(progress?: vscode.Progress<{ message?: string; increment?: number }>, token?: vscode.CancellationToken, force: boolean = false): Promise<SyncResult> {
+        if (force) {
+            try {
+                this.reportProgress(progress, LocalizationManager.getInstance().t('Flushing server state...'));
+                await this.apiClient.sendAllQueuedMessages();
+                // Wait a bit for server to finish writing
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (e) {
+                console.error('Force sync: flush failed', e);
+            }
+        }
         const lm = LocalizationManager.getInstance();
         if (this.isSyncing) {
             return {
@@ -333,7 +344,7 @@ export class SyncManager {
                     const chunk = toSync.slice(i, i + chunkSize);
                     await Promise.all(chunk.map(convId => {
                         if (token?.isCancellationRequested) return Promise.reject(new vscode.CancellationError());
-                        return this.processSyncItem(convId, localConversations, remoteManifest, lastSyncedConversations, result, progress, token);
+                        return this.processSyncItem(convId, localConversations, remoteManifest, lastSyncedConversations, result, progress, token, force);
                     }));
                 }
 
@@ -1186,7 +1197,7 @@ export class SyncManager {
         if (!this.config) return;
 
         const configName = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.machineName');
-        const machineName = configName || this.config.machineName || os.hostname();
+        const machineName = (configName || this.config.machineName || os.hostname()).trim();
 
         // Fetch Quota
         const quota = await this.driveService.getStorageInfo();
@@ -1702,12 +1713,14 @@ export class SyncManager {
                                 { label: lm.t('Existing Sessions'), kind: vscode.QuickPickItemKind.Separator, id: '' }
                             ];
 
-                            const currentHostname = os.hostname();
+                            const configName = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.machineName');
+                            const currentMachineName = (configName || (this.config?.machineName) || os.hostname()).trim();
 
                             for (const m of sortedMachines) {
                                 if (m.id && m.name) {
                                     let detail = '';
-                                    const isSameDevice = m.name?.toLowerCase() === currentHostname.toLowerCase();
+                                    const isSameDevice = (this.config && m.id === this.config.machineId) ||
+                                        (m.name?.trim().toLowerCase() === currentMachineName.toLowerCase());
 
                                     if (m.lastSync && m.createdAt) {
                                         const start = new Date(m.createdAt).getTime();
@@ -2047,7 +2060,8 @@ export class SyncManager {
         lastSyncedDatabase: Map<string, string>, // id -> lastSyncedHash
         result: SyncResult,
         progress?: vscode.Progress<{ message?: string; increment?: number }>,
-        token?: vscode.CancellationToken
+        token?: vscode.CancellationToken,
+        force: boolean = false
     ): Promise<void> {
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
@@ -2101,7 +2115,7 @@ export class SyncManager {
             }
         } else if (local && remote) {
             // Both exist - check for changes
-            if (local.hash === remote.hash) {
+            if (local.hash === remote.hash && !force) {
                 // Synced
                 return;
             }
@@ -2169,6 +2183,133 @@ export class SyncManager {
                 });
             }
         }
+    }
+
+    /**
+     * Opens the most recently modified conversation in the specialized chat view.
+     * Prioritizes the current workspace and real-time server data.
+     */
+    /**
+     * Helper to retrieve the latest trajectory ID from the server.
+     */
+    private async getServerLatestTrajectoryId(): Promise<string | undefined> {
+        try {
+            const response = await this.apiClient.request('GetAllCascadeTrajectories', {});
+            const rawSummaries = response?.trajectorySummaries;
+            let trajectories: any[] = [];
+
+            if (Array.isArray(rawSummaries)) {
+                trajectories = rawSummaries;
+            } else if (rawSummaries && typeof rawSummaries === 'object') {
+                trajectories = Object.entries(rawSummaries).map(([key, value]: [string, any]) => ({
+                    ...value,
+                    cascadeId: key
+                }));
+            }
+
+            if (trajectories.length > 0) {
+                // Get current workspace info to filter if possible
+                const workspaceFolders = vscode.workspace.workspaceFolders;
+                const workspaceNames = new Set((workspaceFolders || []).map(f => f.name.toLowerCase()));
+
+                // Sort trajectories by lastModifiedTime descending
+                const sorted = [...trajectories].sort((a, b) => {
+                    const timeA = a.lastModifiedTime ? new Date(a.lastModifiedTime).getTime() : 0;
+                    const timeB = b.lastModifiedTime ? new Date(b.lastModifiedTime).getTime() : 0;
+                    return timeB - timeA;
+                });
+
+                // Try to find the latest that matches the current workspace
+                let target = sorted.find(t => {
+                    if (!t.workspaces || !Array.isArray(t.workspaces)) return false;
+                    return t.workspaces.some((ws: any) => {
+                        const wsName = (ws.name || ws.repository?.computedName || '').toLowerCase();
+                        return wsName && workspaceNames.has(wsName);
+                    });
+                });
+
+                // Fallback to absolute latest if no workspace match
+                if (!target) target = sorted[0];
+
+                return target?.cascadeId;
+            }
+        } catch (error) {
+            console.error('Failed to get server latest trajectory:', error);
+        }
+        return undefined;
+    }
+
+    /**
+     * Opens the most recently modified conversation in the specialized chat view.
+     * Prioritizes the current workspace and real-time server data.
+     */
+    async openCurrentConversation(): Promise<void> {
+        const lm = LocalizationManager.getInstance();
+
+        // Priority 1: Server API
+        const serverId = await this.getServerLatestTrajectoryId();
+        if (serverId) {
+            // We need title/summary. Ideally we'd have it from the helper, but for now we just use ID as fallback title if needed.
+            // But actually openPbChat will try to load title from file if we pass just ID, or we can fetch title again?
+            // Let's just pass ID. openPbChat handles title logic.
+            // Wait, openPbChat takes (id, title).
+            // We can optimize getServerLatestTrajectoryId to return object {id, title}.
+            // For now, let's just keep strict separation to minimize changes.
+            await this.openPbChat(serverId, serverId);
+            return;
+        }
+
+        // Priority 2: Fallback to the existing file-system-based detection (brain/ directory)
+        const conversations = await getConversationsAsync(BRAIN_DIR);
+        if (conversations.length === 0) {
+            vscode.window.showInformationMessage(lm.t('No conversations found locally.'));
+            return;
+        }
+
+        // getConversationsAsync already returns sorted, but we ensure descending here
+        const latestLocal = [...conversations].sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime())[0];
+        await this.openPbChat(latestLocal.id, latestLocal.label || latestLocal.id);
+    }
+
+    private getActiveConversationId(currentMachineId: string, serverActiveId?: string): string | undefined {
+        // Priority 1: Check active text editor for Antigravity-specific files
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor) {
+            const fsPath = activeEditor.document.uri.fsPath;
+            // Matches brain/<id>/task.md or brain/<id>/...
+            const brainMatch = fsPath.match(/[\\/]brain[\\/]([a-f0-9-]{36})[\\/]/i);
+            if (brainMatch) return brainMatch[1];
+
+            // Matches .pb trajectories
+            const pbMatch = fsPath.match(/([a-f0-9-]{36})\.(?:pb|trajectory)$/i);
+            if (pbMatch) return pbMatch[1];
+        }
+
+        // Priority 2: Check visible text editors (useful if the dashboard is the active tab)
+        for (const editor of vscode.window.visibleTextEditors) {
+            const fsPath = editor.document.uri.fsPath;
+            const brainMatch = fsPath.match(/[\\/]brain[\\/]([a-f0-9-]{36})[\\/]/i);
+            if (brainMatch) return brainMatch[1];
+
+            const pbMatch = fsPath.match(/([a-f0-9-]{36})\.(?:pb|trajectory)$/i);
+            if (pbMatch) return pbMatch[1];
+        }
+
+        // Priority 3: Server Reported Active (Real-time Webview)
+        if (serverActiveId) return serverActiveId;
+
+        // Priority 4: Last opened/viewed via Antigravity UI
+        if (this.lastActiveConversationId) return this.lastActiveConversationId;
+
+        // Priority 5: Default to last modified (existing behavior, but moved here as final fallback)
+        if (this.lastStatsData?.localConversations?.length > 0) {
+            const latest = [...this.lastStatsData.localConversations].sort((a, b) =>
+                new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
+            )[0];
+            return latest.id;
+        }
+
+        return undefined;
     }
 
     async manageConversations(): Promise<void> {
@@ -2437,6 +2578,9 @@ export class SyncManager {
                     this.driveService.listMachineStates()
                 ]);
 
+                const configName = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.machineName');
+                const currentMachineName = (configName || this.config?.machineName || os.hostname()).trim();
+
                 // Get machine states in parallel
                 const machinePromises = machineFiles.map(async file => {
                     let machineName = lm.t('Unknown Device');
@@ -2474,7 +2618,7 @@ export class SyncManager {
                                     // If names differ, or if the remote lastSync is significantly newer than our lastSync (implies concurrency), 
                                     // treat it as a ghost/other device.
                                     // Simplest check: Name difference.
-                                    if (state.machineName && state.machineName !== this.config!.machineName) {
+                                    if (state.machineName && state.machineName !== currentMachineName) {
                                         const remoteGhost = {
                                             name: state.machineName, // Shows the OTHER name
                                             id: machineId,
@@ -2547,7 +2691,7 @@ export class SyncManager {
                 // Ensure current machine is always present
                 if (!machines.some(m => m.isCurrent)) {
                     machines.push({
-                        name: this.config!.machineName,
+                        name: currentMachineName,
                         id: this.config!.machineId,
                         fileId: 'current',
                         lastSync: new Date().toISOString(),
@@ -2572,7 +2716,7 @@ export class SyncManager {
                         if (!existsWithSameName) {
                             // Check if this machine shares the ID with current machine but has different name
                             const isSameIdDifferentName = manifestMachine.id === this.config!.machineId &&
-                                manifestMachine.name !== this.config!.machineName;
+                                manifestMachine.name !== currentMachineName;
 
                             if (isSameIdDifferentName || !machines.some(m => m.id === manifestMachine.id)) {
                                 machines.push({
@@ -2633,7 +2777,8 @@ export class SyncManager {
                     accountQuotaSnapshot: quotaSnapshot || undefined,
                     userEmail: quotaSnapshot?.userEmail, // Keep this for AI Studio account
                     driveEmail: userInfo?.email, // Specific for Drive Storage
-                    usageHistory: usageHistory.size > 0 ? usageHistory : undefined
+                    usageHistory: usageHistory.size > 0 ? usageHistory : undefined,
+                    activeConversationId: this.getActiveConversationId(this.config!.machineId, await this.getServerLatestTrajectoryId())
                 };
 
                 this.lastStatsData = statsData;
@@ -2650,6 +2795,10 @@ export class SyncManager {
                         }
                         case 'refresh': {
                             this.refreshStatistics(false); // Force refresh
+                            break;
+                        }
+                        case 'forceSync': {
+                            vscode.commands.executeCommand(`${EXT_NAME}.forceSync`);
                             break;
                         }
                         case 'viewPb': {
@@ -2674,6 +2823,7 @@ export class SyncManager {
                                     opened = true;
                                     break;
                                 } catch {
+                                    // ignore
                                 }
                             }
 
@@ -3148,6 +3298,7 @@ export class SyncManager {
      * Opens a specialized chat view for a .pb trajectory.
      */
     private async openPbChat(id: string, filename: string): Promise<void> {
+        this.lastActiveConversationId = id;
         const lm = LocalizationManager.getInstance();
         const panel = vscode.window.createWebviewPanel(
             'antigravityChat',
@@ -3290,7 +3441,7 @@ export class SyncManager {
                                         }
                                     }
                                     await vscode.window.showTextDocument(doc, options);
-                                } catch (e) {
+                                } catch {
                                     // Fallback for binary files (images, etc.)
                                     vscode.commands.executeCommand('vscode.open', vscode.Uri.file(fullPath));
                                 }
@@ -3708,7 +3859,7 @@ export class SyncManager {
 
                         try {
                             stepRendered = this.md ? this.md.render(cleanText) : cleanText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-                        } catch (e) {
+                        } catch {
                             stepRendered = cleanText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
                         }
                     }
@@ -3823,6 +3974,86 @@ export class SyncManager {
                     }
                 });
 
+                // Pre-render each message using the same logic as regular messages
+                const seenExecIds = new Set<string>();
+                const preRenderedMessages = groupSteps.map((s: any) => {
+                    const { isUser, isModel, isError, sender } = s;
+                    if (!isUser && !isModel && !isError) return '';
+
+                    // Get timestamp
+                    let timestampDisplay = '';
+                    const ts = s.metadata?.createdAt || s.createdAt || s.timestamp;
+                    if (ts) {
+                        try {
+                            const d = new Date(ts);
+                            if (!isNaN(d.getTime())) {
+                                timestampDisplay = d.toLocaleTimeString(lm.getLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                            }
+                        } catch { }
+                    }
+
+                    // Render content using the same methods as regular messages
+                    let contentHtml = '';
+                    const cleanText = (s.text || '').trim();
+
+                    // Check if this is a "cleared" placeholder message
+                    const isClearedPlaceholder = cleanText.includes('cleared-message') ||
+                        cleanText.includes('Содержимое сообщения было удалено') ||
+                        cleanText.includes('message content has been cleared') ||
+                        cleanText.includes('Message content cleared');
+
+                    if (isClearedPlaceholder) {
+                        // Render as styled cleared message
+                        contentHtml = `<span class="cleared-message">${lm.t('Message content has been cleared or archived.')}</span>`;
+                    } else if (cleanText) {
+                        try {
+                            contentHtml = this.md ? this.md.render(cleanText) : cleanText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                        } catch {
+                            contentHtml = cleanText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                        }
+                        // Apply same post-processing as regular messages
+                        contentHtml = this.formatModelError(contentHtml, s);
+                        contentHtml = this.renderToolCalls(contentHtml, seenExecIds);
+                    }
+
+                    if (!contentHtml.trim()) return '';
+
+                    const avatar = isUser ? '👤' : isError ? '⚠️' : isModel ? '🤖' : '⚙️';
+                    const senderName = sender || (isUser ? lm.t('User') : isError ? lm.t('Error') : lm.t('AI'));
+                    const msgClass = isUser ? 'user' : isError ? 'error-msg' : isModel ? 'ai' : '';
+
+                    return `
+                        <div class="message ${msgClass} restored" style="margin: 4px 0; padding: 4px 0;">
+                            <div class="avatar" style="font-size: 12px;">${avatar}</div>
+                            <div class="content">
+                                <div class="sender" style="font-size: 11px;">
+                                    <span class="sender-name">${senderName}</span>
+                                    <span class="timestamp" style="margin-left: 8px;">${timestampDisplay}</span>
+                                </div>
+                                <div class="text-box" style="padding: 4px 8px;">
+                                    <div class="text markdown-body" style="font-size: 12px;">
+                                        ${contentHtml}
+                                    </div>
+                                    <div class="box-footer">
+                                        ${this.renderTokenUsage(s.usage)}
+                                        <button class="toggle-mode-btn" onclick="toggleMode(this)" style="font-size: 10px; opacity: 0.5;">${lm.t('JSON')}</button>
+                                    </div>
+                                    <div class="json-box" style="display:none;">
+                                        <div class="json-search-bar">
+                                            <input type="text" class="json-search-input" placeholder="${lm.t('Search in JSON...')}" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 2px 6px; font-size: 11px;" onkeyup="if(event.key==='Enter') navigateJsonSearch(this, event.shiftKey); else filterJson(this)">
+                                            <span class="json-search-count" style="font-size: 10px; opacity: 0.6; min-width: 30px; text-align: center;"></span>
+                                            <button class="search-btn" title="${lm.t('Previous (Shift+Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling, true)">⬆️</button>
+                                            <button class="search-btn" title="${lm.t('Next (Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling.previousElementSibling, false)">⬇️</button>
+                                        </div>
+                                        <pre style="display:none;">${JSON.stringify(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                                        <div class="json-container"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).filter((h: string) => h.trim()).join('');
+
                 return `
                     <div class="message cleared-group">
                         <div class="avatar">📦</div>
@@ -3841,10 +4072,25 @@ export class SyncManager {
                                         ${userCount > 0 ? `<span>👤 <b>${userCount}</b> ${lm.t('User Messages')}</span>` : ''}
                                         ${errorCount > 0 ? `<span>⚠️ <b>${errorCount}</b> ${lm.t('Errors')}</span>` : ''}
                                     </div>
-                                    <div class="cleared-message group-sub">${lm.t('Detailed content of these messages has been cleared or archived.')}</div>
+                                    <div class="cleared-message group-sub">${lm.t('Detailed content of these messages has been cleared or archived.')} <button class="expand-content-btn" onclick="expandClearedContent(this)" style="font-size: 10px; margin-left: 8px; background: rgba(100,150,255,0.1); border: 1px solid rgba(100,150,255,0.3); color: var(--vscode-textLink-foreground); padding: 3px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s;">📖 ${lm.t('Show content')}</button></div>
                                 </div>
                                 <div class="box-footer">
                                     ${this.renderTokenUsage(totalUsage)}
+                                    <button class="toggle-mode-btn" onclick="toggleMode(this)" style="font-size: 10px; opacity: 0.5;">${lm.t('JSON')}</button>
+                                </div>
+                                <div class="pre-rendered-content" style="display: none; max-height: 60vh; overflow-y: auto; position: relative; padding-top: 8px; margin-top: 8px; border-top: 1px dashed rgba(127,127,127,0.3);">
+                                    ${preRenderedMessages}
+                                    <button class="collapse-content-btn" onclick="collapseClearedContent(this)" style="font-size: 10px; position: sticky; bottom: 0; margin-top: 8px; background: rgba(150,100,100,0.95); border: 1px solid rgba(150,100,100,0.5); color: var(--vscode-button-foreground, #fff); padding: 5px 12px; border-radius: 4px; cursor: pointer; display: block; backdrop-filter: blur(4px); box-shadow: 0 -2px 6px rgba(0,0,0,0.2);">📕 ${lm.t('Collapse')}</button>
+                                </div>
+                                <div class="json-box" style="display:none;">
+                                    <div class="json-search-bar">
+                                        <input type="text" class="json-search-input" placeholder="${lm.t('Search in JSON...')}" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 2px 6px; font-size: 11px;" onkeyup="if(event.key==='Enter') navigateJsonSearch(this, event.shiftKey); else filterJson(this)">
+                                        <span class="json-search-count" style="font-size: 10px; opacity: 0.6; min-width: 30px; text-align: center;"></span>
+                                        <button class="search-btn" title="${lm.t('Previous (Shift+Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling, true)">⬆️</button>
+                                        <button class="search-btn" title="${lm.t('Next (Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling.previousElementSibling, false)">⬇️</button>
+                                    </div>
+                                    <pre style="display:none;">${JSON.stringify(groupSteps).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                                    <div class="json-container"></div>
                                 </div>
                             </div>
                         </div>
@@ -3883,7 +4129,7 @@ export class SyncManager {
             .date-label { background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); padding: 1px 8px; border-radius: 4px; font-weight: 700; font-size: 0.85em; }
             .timestamp { white-space: nowrap; }
             
-            .text-box { background: var(--vscode-editor-lineHighlightBackground); padding: 14px 16px; border-radius: 12px; border: 1px solid var(--vscode-widget-border); box-shadow: 0 4px 12px rgba(0,0,0,0.1); backdrop-filter: blur(4px); transition: border-color 0.2s; position: relative; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+            .text-box { background: var(--vscode-editor-lineHighlightBackground); padding: 14px 16px; border-radius: 12px; border: 1px solid var(--vscode-widget-border); box-shadow: 0 4px 12px rgba(0,0,0,0.1); backdrop-filter: blur(4px); transition: border-color 0.2s; position: relative; max-width: 100%; box-sizing: border-box; overflow: auto; resize: vertical; min-height: 50px; display: flex; flex-direction: column; }
             .message.user .text-box { background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.05); }
             .message.error-msg .text-box { background: rgba(255, 0, 0, 0.04); border-color: rgba(255, 0, 0, 0.2); }
             .message:hover .text-box { border-color: var(--vscode-focusBorder); }
@@ -3920,7 +4166,7 @@ export class SyncManager {
             .file-badge .open-btn { cursor: pointer; color: var(--vscode-textLink-foreground); opacity: 0.7; font-size: 11px; margin-left: 4px; }
             .file-badge .open-btn:hover { text-decoration: underline; opacity: 1; }
             .file-badge.missing { opacity: 0.65; border-style: dotted; filter: grayscale(0.5); }
-            .file-badge.missing .path { text-decoration: line-through; opacity: 0.8; }
+            .file-badge.missing .path, .tool-query-badge.missing { text-decoration: line-through; opacity: 0.8; }
 
             .attachment-preview { margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
             .attachment-item { border: 1px solid var(--vscode-widget-border); border-radius: 8px; overflow: hidden; background: rgba(0,0,0,0.3); transition: transform 0.2s, background 0.2s; max-width: 240px; position: relative; min-width: 120px; min-height: 120px; display: flex; align-items: center; justify-content: center; padding-bottom: 30px; }
@@ -3985,7 +4231,7 @@ export class SyncManager {
             .font-btn:hover { background: rgba(127,127,127,0.3); border-color: var(--vscode-focusBorder); opacity: 1; }
             .diff-header .stats { margin-left: auto; opacity: 0.6; font-size: 0.85em; font-weight: normal; }
 
-            .diff-block { border-top: 1px solid var(--vscode-widget-border); padding: 8px 0; max-height: 500px; overflow-y: auto; overflow-x: auto; background: var(--vscode-editor-background); font-family: var(--vscode-editor-font-family); font-size: 12px; line-height: 1.4; transition: max-height 0.3s ease-in-out; }
+            .diff-block { border-top: 1px solid var(--vscode-widget-border); padding: 8px 0; max-height: none; overflow-y: visible; overflow-x: auto; background: var(--vscode-editor-background); font-family: var(--vscode-editor-font-family); font-size: 12px; line-height: 1.4; transition: max-height 0.3s ease-in-out; }
             .diff-block.collapsed { max-height: 0; padding: 0; border: none; }
             .diff-lines-wrapper { display: inline-block; min-width: 100%; vertical-align: top; }
             
@@ -4020,9 +4266,10 @@ export class SyncManager {
             .toggle-mode-btn { background: transparent; border: 1px solid rgba(127,127,127,0.2); color: var(--vscode-textLink-foreground); font-size: 10px; padding: 2px 6px; border-radius: 4px; cursor: pointer; opacity: 0.5; transition: all 0.2s; font-family: var(--vscode-editor-font-family); margin-left: auto; }
             .toggle-mode-btn:hover { opacity: 1; border-color: var(--vscode-textLink-foreground); background: rgba(127,127,127,0.05); }
             
-            .json-box { background: rgba(0,0,0,0.1); border-radius: 6px; padding: 12px; margin-top: 8px; font-family: var(--vscode-editor-font-family); font-size: 0.85em; overflow: auto; max-height: 500px; position: relative; }
-            .json-search-bar { position: sticky; top: -12px; z-index: 10; background: var(--vscode-editor-lineHighlightBackground); margin: -12px -12px 8px -12px; padding: 12px 12px 8px 12px; border-bottom: 1px solid rgba(127,127,127,0.1); display: flex; align-items: center; gap: 4px; backdrop-filter: blur(4px); }
+            .json-box { background: rgba(0,0,0,0.1); border-radius: 6px; padding: 12px; margin-top: 8px; font-family: var(--vscode-editor-font-family); font-size: 0.85em; overflow: auto; position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+            .json-search-bar { position: sticky; top: -12px; z-index: 100; background: var(--vscode-editor-lineHighlightBackground); margin: -12px -12px 8px -12px; padding: 12px 12px 8px 12px; border-bottom: 1px solid rgba(127,127,127,0.2); display: flex; align-items: center; gap: 4px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
             .json-box pre { margin: 0; white-space: pre-wrap; word-break: break-all; color: var(--vscode-editor-foreground); opacity: 0.6; }
+            .json-container { flex: 1; min-height: 0; }
             
             .json-tree { font-family: var(--vscode-editor-font-family); line-height: 1.5; color: var(--vscode-editor-foreground); }
             .json-node { position: relative; padding-left: 20px; white-space: nowrap; }
@@ -4330,6 +4577,9 @@ export class SyncManager {
                         const json = textBox.querySelector('.json-box');
                         const isJson = json.style.display !== 'none';
 
+                        // Reset height when switching views
+                        textBox.style.height = '';
+
                         if (isJson) {
                             json.style.display = 'none';
                             text.style.display = 'block';
@@ -4351,6 +4601,67 @@ export class SyncManager {
                             json.style.display = 'block';
                             text.style.display = 'none';
                             btn.textContent = '${lm.t('TEXT')}';
+                        }
+                    }
+
+                    function expandClearedContent(btn) {
+                        const textBox = btn.closest('.text-box');
+                        const summaryDiv = textBox.querySelector('.compact-summary');
+                        const preRendered = textBox.querySelector('.pre-rendered-content');
+                        
+                        if (preRendered) {
+                            // Store original dimensions
+                            textBox.dataset.originalHeight = textBox.style.height || '';
+                            textBox.dataset.originalMinHeight = textBox.style.minHeight || '';
+                            
+                            // Show pre-rendered content with flex
+                            preRendered.style.display = 'flex';
+                            preRendered.style.flexDirection = 'column';
+                            preRendered.style.flex = '1';
+                            preRendered.style.maxHeight = 'none';
+                            summaryDiv.style.display = 'none';
+
+                            // If box is too small, give it some decent initial height for content
+                            if (!textBox.style.height || parseInt(textBox.style.height) < 400) {
+                                textBox.style.height = '400px';
+                            }
+                            
+                            // Scroll pre-rendered content to top
+                            preRendered.scrollTop = 0;
+                        }
+                    }
+
+                    function collapseClearedContent(btn) {
+                        const textBox = btn.closest('.text-box');
+                        const summaryDiv = textBox.querySelector('.compact-summary');
+                        const preRendered = textBox.querySelector('.pre-rendered-content');
+                        const message = textBox.closest('.message');
+                        
+                        if (preRendered && summaryDiv) {
+                            preRendered.style.display = 'none';
+                            summaryDiv.style.display = 'block';
+                            
+                            // Reset scroll position
+                            preRendered.scrollTop = 0;
+                            
+                            // Restore original text-box dimensions
+                            if (textBox.dataset.originalHeight !== undefined) {
+                                textBox.style.height = textBox.dataset.originalHeight;
+                            } else {
+                                textBox.style.height = '';
+                            }
+                            
+                            if (textBox.dataset.originalMinHeight !== undefined) {
+                                textBox.style.minHeight = textBox.dataset.originalMinHeight;
+                            } else {
+                                textBox.style.minHeight = '';
+                            }
+                            
+                            // Also reset message height if it was resized
+                            if (message) {
+                                message.style.height = '';
+                                message.style.minHeight = '';
+                            }
                         }
                     }
 
@@ -4556,6 +4867,21 @@ export class SyncManager {
                             match.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }
                     }
+
+                    // Double-click to reset resized text-box
+                    document.addEventListener('dblclick', function(e) {
+                        const target = e.target.closest('.text-box');
+                        if (target) {
+                            const rect = target.getBoundingClientRect();
+                            const isBottomRight = (e.clientX >= rect.right - 20) && (e.clientY >= rect.bottom - 20);
+                            
+                            // If clicked on the resize handle area (approximately)
+                            if (isBottomRight) {
+                                target.style.height = ''; // Reset inline height
+                                target.style.maxHeight = ''; // Ensure max-height is also cleared if it was set inline
+                            }
+                        }
+                    });
 </script>
     </body>
     </html>
@@ -4722,7 +5048,7 @@ export class SyncManager {
                         exists = true;
                         isDirectory = fs.statSync(cleanFilePath).isDirectory();
                     }
-                } catch (e) { /* ignore */ }
+                } catch { /* ignore */ }
 
                 fileBadge = `
                     <span class="file-badge mini ${isDirectory ? 'directory' : ''} ${!exists ? 'missing' : ''}" onclick="openFile('${filePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="${!exists ? lm.t('File not found locally') : ''}">
@@ -4773,7 +5099,7 @@ export class SyncManager {
                     }
 
                     if (toolName === 'grep_search' || toolName === 'find_by_name' || toolName === 'view_file' || toolName === 'ls' || toolName === 'list_dir') {
-                        let q = args.Query || args.Pattern || args.query || args.pattern || args.AbsolutePath || args.Path || args.SearchDirectory || args.SearchPath;
+                        const q = args.Query || args.Pattern || args.query || args.pattern || args.AbsolutePath || args.Path || args.SearchDirectory || args.SearchPath;
                         // Strip fragment for equality check
                         const cleanFilePath = filePath ? (filePath.includes('#') ? filePath.split('#')[0] : filePath) : '';
 
@@ -4785,7 +5111,7 @@ export class SyncManager {
                                     qExists = true;
                                     qIsDir = fs.statSync(q).isDirectory();
                                 }
-                            } catch (e) { /* ignore */ }
+                            } catch { /* ignore */ }
 
                             // Smart join for find_by_name/grep_search if q looks like a relative filename
                             let openPath = q;
@@ -4805,8 +5131,9 @@ export class SyncManager {
 
                             const qIcon = toolName === 'grep_search' ? '🔍' : (qIsDir ? '📂' : (qExists ? getFileIconSvg(openPath) : '🚫'));
                             const qStyle = !qExists && toolName !== 'grep_search' ? 'opacity: 0.6; filter: grayscale(1);' : '';
+                            const qClass = !qExists && toolName !== 'grep_search' ? 'missing' : '';
 
-                            detailBadges = `<span class="tool-query-badge" style="cursor: pointer; ${qStyle}" onclick="openFile('${openPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="${openPath.replace(/"/g, '&quot;')}"><small style="margin-right:4px; opacity:0.6; width: 14px; height: 14px; display: inline-flex; align-items: center; vertical-align: middle;">${qIcon}</small>${q.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
+                            detailBadges = `<span class="tool-query-badge ${qClass}" style="cursor: pointer; ${qStyle}" onclick="openFile('${openPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="${openPath.replace(/"/g, '&quot;')}"><small style="margin-right:4px; opacity:0.6; width: 14px; height: 14px; display: inline-flex; align-items: center; vertical-align: middle;">${qIcon}</small>${q.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
 
                         }
                     }
@@ -4817,8 +5144,8 @@ export class SyncManager {
 
             let infoBadges = '';
             if (detailBadges || fileBadge) {
-                // Ensure fileBadge doesn't float right by overriding margin-left
-                const styledFileBadge = fileBadge.replace('class="file-badge mini', 'class="file-badge mini" style="margin-left: 0"');
+                // Fix: Properly insert style while maintaining the class attribute
+                const styledFileBadge = fileBadge.replace('class="file-badge mini', 'style="margin-left: 0" class="file-badge mini');
                 infoBadges = `
                     <div style="display: flex; align-items: center; gap: 6px; border-left: 1px solid var(--vscode-widget-border); padding-left: 8px; margin-left: 8px;">
                         ${detailBadges}
@@ -4858,7 +5185,7 @@ export class SyncManager {
                         }
                     } else if (toolName === 'run_command' && args.CommandLine) {
                         const desc = args.Message || args.Description || args.Summary || '';
-                        const base64Cmd = Buffer.from(args.CommandLine).toString('base64');
+
                         extraStuff = `
                             <div class="command-info">
                                 ${desc ? `<div class="command-desc">${desc}</div>` : ''}
@@ -4866,7 +5193,7 @@ export class SyncManager {
                             </div>
                         `;
                     }
-                } catch (e) { /* ignore */ }
+                } catch { /* ignore */ }
             }
 
             return `
@@ -5048,7 +5375,7 @@ export class SyncManager {
 
         let toolBadge = `[TOOL_CALL:${tc.name || 'Unknown'}${encodedArgs ? '|||' + encodedArgs : ''}${tc.executionId ? '||||' + tc.executionId : ''}]`;
         let extraInfo = '';
-        let prefixInfo = '';
+        const prefixInfo = '';
 
         if (tc.argumentsJson || tc.arguments) {
             const infos: string[] = [];
@@ -5296,7 +5623,7 @@ export class SyncManager {
                             const res = typeof tc.output === 'string' ? JSON.parse(tc.output) : tc.output;
                             const outline = res.viewFileOutline || res;
                             if (outline && outline.ccis && Array.isArray(outline.ccis)) {
-                                let linesHtml = outline.ccis.map((cci: any) => {
+                                const linesHtml = outline.ccis.map((cci: any) => {
                                     const start = cci.startLine !== undefined ? cci.startLine : '';
                                     const end = cci.endLine !== undefined ? cci.endLine : '';
                                     const range = start !== '' ? `L${start}-${end}` : '';
@@ -5327,7 +5654,7 @@ export class SyncManager {
                                     infos.push(`[DIFF:${Buffer.from(containerHtml).toString('base64')}]`);
                                 }
                             }
-                        } catch (e) {
+                        } catch {
                             /* ignore */
                         }
                     }
@@ -5622,8 +5949,9 @@ export class SyncManager {
         const hasUserInput = !!step.userInput;
         const stopReason = (step.modelResponse?.stopReason || step.plannerResponse?.stopReason || '').toUpperCase();
         const hasToolCall = !!(step.metadata?.toolCall || step.plannerResponse?.toolCall || step.modelResponse?.toolCall);
+        const status = (step.status || '').toUpperCase();
 
-        if (typeStr === 'CORTEX_STEP_TYPE_ERROR_MESSAGE' || step.errorMessage || stopReason.includes('ERROR') || stopReason.includes('CANCELED')) {
+        if (typeStr === 'CORTEX_STEP_TYPE_ERROR_MESSAGE' || step.errorMessage || stopReason.includes('ERROR') || stopReason.includes('CANCELED') || status === 'CORTEX_STEP_STATUS_ERROR') {
             isError = true;
             sender = lm.t('Error');
         } else if (typeStr === 'CORTEX_STEP_TYPE_USER_INPUT' || senderStr === 'USER' || senderStr.includes('USER') || hasUserInput) {
@@ -5662,7 +5990,7 @@ export class SyncManager {
         };
 
         // Check exact match or "clean" match
-        let cleanName = rawName.replace(/^MODEL_PLACEHOLDER_|^PLACEHOLDER_|^models\//, '');
+        const cleanName = rawName.replace(/^MODEL_PLACEHOLDER_|^PLACEHOLDER_|^models\//, '');
 
         // Sometimes the ID in the step comes as just "M12", sometimes "MODEL_PLACEHOLDER_M12"
         // Try direct lookup
@@ -5707,7 +6035,7 @@ export class SyncManager {
 
     private formatModelError(text: string, step?: any): string {
         const lm = LocalizationManager.getInstance();
-        const uniqueId = `error-details-${Math.random().toString(36).substr(2, 9)}`;
+
         let errorCode: string | undefined;
         let detailsHtml = '';
         let displayMessage = '';
@@ -5727,7 +6055,7 @@ export class SyncManager {
                         // Attempt to parse if string looks like JSON
                         const obj = typeof details === 'string' ? JSON.parse(details) : details;
                         const highlightedJson = this.highlightDiff(JSON.stringify(obj, null, 2));
-                        detailsHtml = `<div class="error-raw"><pre>${highlightedJson}</pre></div>`;
+                        detailsHtml = `<pre>${highlightedJson}</pre>`;
                         if (!displayMessage && obj.message) displayMessage = obj.message;
                     } catch {
                         detailsHtml = `<pre>${this.highlightDiff(detailsStr)}</pre>`;
@@ -5751,12 +6079,12 @@ export class SyncManager {
                             if (obj.error) {
                                 if (obj.error.message) {
                                     if (!displayMessage) displayMessage = obj.error.message;
-                                    detailsHtml += `<div class="error-message"><b>Message:</b> ${obj.error.message}</div>`;
+                                    detailsHtml += `<div class="error-message" style="margin: 0; padding: 2px 0;"><b>Message:</b> ${obj.error.message}</div>`;
                                 }
-                                if (obj.error.status) detailsHtml += `<div class="error-status"><b>Status:</b> ${obj.error.status}</div>`;
+                                if (obj.error.status) detailsHtml += `<div class="error-status" style="margin: 0; padding: 2px 0;"><b>Status:</b> ${obj.error.status}</div>`;
                                 if (obj.error.details) {
                                     const highlightedDetails = this.highlightDiff(JSON.stringify(obj.error.details, null, 2));
-                                    detailsHtml += `<div class="error-raw"><pre>${highlightedDetails}</pre></div>`;
+                                    detailsHtml += `<pre>${highlightedDetails}</pre>`;
                                 }
                             } else {
                                 detailsHtml = `<pre>${jsonStr}</pre>`;
@@ -5775,35 +6103,43 @@ export class SyncManager {
         if (errorCode || (text.includes('Encountered retryable error') && detailsHtml)) {
             const headerText = `${lm.t('Model Provider Error')}${errorCode ? ' ' + errorCode : ''}`;
             return `
-                    <div class="model-error-card" style="border: 1px solid var(--vscode-errorForeground); background: var(--vscode-inputValidation-errorBackground); padding: 6px 10px; border-radius: 4px; margin: 6px 0; position: relative; font-size: 0.9em;">
-                        <div class="error-header" style="display: flex; align-items: center; margin-bottom: 4px; color: var(--vscode-errorForeground);">
-                            <span class="icon" style="margin-right: 6px;">⚠️</span>
-                            <strong style="font-size: 1.05em; opacity: 0.9;">${headerText}</strong>
+                    <div class="model-error-card" style="border: 1px solid rgba(255, 70, 70, 0.3); background: linear-gradient(135deg, var(--vscode-inputValidation-errorBackground), rgba(80, 20, 20, 0.45)); padding: 8px 12px; border-radius: 8px; margin: 8px 0; position: relative; font-size: 0.9em; box-shadow: 0 4px 15px rgba(0,0,0,0.25), inset 0 0 8px rgba(255,100,100,0.05); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); overflow: hidden;">
+                        <div class="error-header" style="display: flex; align-items: center; color: var(--vscode-errorForeground); margin-bottom: 4px;">
+                            <span class="icon" style="margin-right: 8px; filter: drop-shadow(0 0 3px var(--vscode-errorForeground)); font-size: 1.1em;">🚫</span>
+                            <strong style="font-size: 1.05em; opacity: 0.95; letter-spacing: 0.3px;">${headerText}</strong>
                         </div>
-                        <div class="error-body" style="font-family: var(--vscode-editor-font-family); white-space: pre-wrap; line-height: 1.3;">
-                            ${(() => {
+                        <div class="error-body" style="font-family: var(--vscode-editor-font-family); white-space: normal; line-height: 1.4;">${(() => {
                     const bodyParts: string[] = [];
                     const mainMsg = displayMessage && displayMessage !== lm.t('Model Provider Error') ? displayMessage : '';
 
                     if (mainMsg) {
-                        bodyParts.push(`<div style="font-weight: 600; margin-bottom: 2px;">${mainMsg}</div>`);
+                        bodyParts.push(`<div style="font-weight: 600; white-space: pre-wrap; opacity: 0.9; margin-bottom: 4px;">${mainMsg}</div>`);
                     }
 
                     if (detailsHtml) {
-                        // Remove excessive margins from pre tags in detailsHtml
-                        const cleanedDetails = detailsHtml.replace(/<pre>/g, '<pre style="margin: 4px 0; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 3px;">');
-                        bodyParts.push(`<div style="opacity: 0.9; font-size: 0.95em;">${cleanedDetails}</div>`);
+                        // Use the exact same structure as "Code Changes" for consistency
+                        const cleanedDetails = detailsHtml.replace(/<pre>/g, '<pre style="margin: 0; padding: 6px; background: rgba(0,0,0,0.25); border-radius: 4px; line-height: 1.3; overflow-x: auto; max-width: 100%; border: 1px solid rgba(255,255,255,0.05);">');
+                        bodyParts.push(`<div class="diff-container" style="border:none; margin: 0; background: transparent; width: 100%;">
+                            <div class="diff-header collapsed" onclick="toggleDiff(this)" style="padding: 2px 8px; background: rgba(255,255,255,0.07); font-size: 10px; opacity: 0.8; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; min-height: 0; margin: 4px 0; display: inline-flex; align-items: center; cursor: pointer; transition: all 0.2s; color: var(--vscode-foreground);">
+                                <div class="diff-icon" style="font-size: 9px; width: 14px; margin-right: 4px;">🔍</div>
+                                <span style="font-weight: 500;">${lm.t('Show details')}</span>
+                            </div>
+                            <div class="diff-block collapsed" style="border:none; background: rgba(0,0,0,0.15); border-radius: 6px; padding: 0; margin: 4px 0 0 0; width: 100%; overflow: hidden;">
+                                <div class="diff-lines-wrapper" style="font-size: 11px; line-height: 1.4; padding: 4px; overflow-x: auto;">
+                                    ${cleanedDetails}
+                                </div>
+                            </div>
+                        </div>`);
                     } else {
                         let rawText = text.replace(/errorCode[\s\S]*}/, '').split('details')[0].trim();
                         rawText = rawText.replace(/^[{},]+|[{},]+$/g, '').trim();
                         if (rawText && rawText !== mainMsg && rawText !== lm.t('Model Provider Error') && !mainMsg.includes(rawText)) {
-                            bodyParts.push(`<div style="opacity: 0.85; font-size: 0.9em;">${rawText}</div>`);
+                            bodyParts.push(`<div style="opacity: 0.8; font-size: 0.9em; white-space: pre-wrap; background: rgba(0,0,0,0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid var(--vscode-errorForeground);">${rawText}</div>`);
                         }
                     }
 
                     return bodyParts.join('');
-                })()}
-                        </div>
+                })()}</div>
                     </div>
                 `;
         }

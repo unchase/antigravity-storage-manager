@@ -43,5 +43,7 @@
     "antigravity.config.proxy.url": "URL server proxy",
     "antigravity.config.proxy.strictSSL": "Abilita SSL rigoroso per proxy (predefinito: true)",
     "antigravity.config.proxy.username": "Nome utente proxy (Opzionale)",
-    "antigravity.config.proxy.password": "Password proxy (Opzionale)"
+    "antigravity.config.proxy.password": "Password proxy (Opzionale)",
+    "antigravity.command.openCurrentConversation": "Visualizza conversazione corrente",
+    "antigravity.command.forceSync": "Forza Sincronizzazione"
 }

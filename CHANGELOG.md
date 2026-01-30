@@ -5,7 +5,32 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.10.0] - 2026-01-30
+## [0.10.1] - 2026-01-30
+### Sync & Dashboard
+- **Force Sync**: Added **Force Sync** capability (🚀) to bypass local caches and flush server-side buffers, ensuring absolute data consistency with the cloud.
+- **Improved Machine Recognition**: Enhanced current device identification during sync setup to avoid incorrect **"Different Device"** labels. Now checks both `sync.machineName` and stored `machineId` with trimmed, case-insensitive logic.
+- **Active Conversation**: The currently active conversation is now highlighted in the Sync Statistics dashboard with a cursor target icon (🎯) and bold text.
+- **Data Origin**: Added a new **"Origin"** column (🏠/📥/☁️) to clearly distinguish between locally created, imported, and cloud-only conversations.
+- **Compact Header**: Redesigned the dashboard header to be more compact, using icon-based actions and a simplified timestamp to save vertical space.
+- **Accuracy**: Fixed an issue where conversation modification times were inaccurate. Now uses the precise filesystem timestamp of the underlying `.pb` file.
+- **Device Collapse Persistence**: The collapsed/expanded state of devices in the Sync Statistics dashboard is now remembered across reloads using `localStorage`.
+
+### Chat & UX
+- **Resizable Messages**: Long chat messages can now be vertically resized, making it easier to read extensive code blocks or explanations.
+  - **Double-Click Reset**: Double-click on the resize handle to reset the message block to its default height.
+  - **View Toggle Reset**: Switching between TEXT and JSON views automatically resets the message height.
+- **Improved Cleared History**:
+  - **Flexible Expansion**: The "Cleared History" content now fills the available height effectively when expanded.
+  - **Auto-Sizing**: Automatically increases text box height to at least 400px when expanding archived content for better visibility.
+  - **Token Usage**: Restored messages in history groups now display detailed **Token Usage** statistics (📥 Input, 📤 Output, 🧠 Thinking, 💾 Cached) and latency timers.
+- **Show Content Button**: Added a "Show content" button for cleared/archived messages, allowing quick access to the underlying JSON data.
+- **Collapsible Error Details**: Error messages with JSON details now display them in a collapsed `<details>` block by default, keeping the UI clean.
+- **Missing Files**: Standardized the visual style for missing or deleted files in the chat view (strikethrough + dimmed), improving clarity.
+
+### Diagnostics
+- **Server Heartbeat**: Added a "Server Heartbeat" check to the Diagnostics Manager (`Run Diagnostics`), probing the Language Server's responsiveness via the internal API.
+
+## [0.10.0] - 2026-01-30 
 ### Chat & Conversations
 - **Alternative Chat View**: Introduced a specialized viewer for browsing conversation history directly within the extension, independent of the main UI. It supports full Markdown rendering, code highlighting, and optimized layouts.
 
