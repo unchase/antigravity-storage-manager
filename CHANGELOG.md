@@ -5,6 +5,10 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-01-31
+### Bug Fixes
+- **Conversation Titles**: Fixed an issue where the "View Current Conversation" tab and Sync Dashboard displayed unreadable GUIDs. Now consistently prioritizes the **Server Title** > **Local Title** > **ID**, ensuring human-readable names are always shown.
+
 ## [0.11.0] - 2026-01-31
 ### Profile Switching
 - **Multi-Account Support**: Seamlessly switch between different Antigravity profiles, each with its own separate authentication, quotas, and limits. Perfect for users with multiple Google accounts.
