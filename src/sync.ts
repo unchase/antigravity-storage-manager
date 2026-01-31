@@ -1510,6 +1510,7 @@ export class SyncManager {
     private async getLocalConversationsAsync(): Promise<Array<{ id: string; title: string; lastModified: string; hash: string; size: number }>> {
         // Reuse utils logic to ensure consistent title extraction
         const items = await getConversationsAsync(BRAIN_DIR);
+        const serverTitleMap = await this.getServerTitleMap();
 
         // Map to format required by sync, computing hashes
         return Promise.all(items.map(async item => {
@@ -1518,9 +1519,15 @@ export class SyncManager {
             const lastModified = maxMtime > 0 ? new Date(maxMtime).toISOString() : item.lastModified.toISOString();
             const size = Object.values(fileHashes).reduce((sum, f) => sum + f.size, 0);
 
+            // Priority: Server Title > Local Title > ID
+            let displayTitle = serverTitleMap.get(item.id);
+            if (!displayTitle || displayTitle === item.id) {
+                displayTitle = item.label;
+            }
+
             return {
                 id: item.id,
-                title: item.label, // Extracted title from utils
+                title: displayTitle || item.label || item.id,
                 lastModified: lastModified,
                 hash: overallHash,
                 files: fileHashes,
@@ -2194,9 +2201,9 @@ export class SyncManager {
      * Prioritizes the current workspace and real-time server data.
      */
     /**
-     * Helper to retrieve the latest trajectory ID from the server.
+     * Helper to retrieve the latest trajectory ID and title from the server.
      */
-    private async getServerLatestTrajectoryId(): Promise<string | undefined> {
+    private async getServerLatestTrajectoryId(): Promise<{ id: string, title?: string } | undefined> {
         try {
             const response = await this.apiClient.request('GetAllCascadeTrajectories', {});
             const rawSummaries = response?.trajectorySummaries;
@@ -2235,7 +2242,11 @@ export class SyncManager {
                 // Fallback to absolute latest if no workspace match
                 if (!target) target = sorted[0];
 
-                return target?.cascadeId;
+                const title = target.progressTitle || target.summary || target.name || target.title;
+                return {
+                    id: target.cascadeId,
+                    title: (title && title !== target.cascadeId) ? title : undefined
+                };
             }
         } catch (error) {
             console.error('Failed to get server latest trajectory:', error);
@@ -2284,15 +2295,25 @@ export class SyncManager {
         const lm = LocalizationManager.getInstance();
 
         // Priority 1: Server API
-        const serverId = await this.getServerLatestTrajectoryId();
-        if (serverId) {
-            // We need title/summary. Ideally we'd have it from the helper, but for now we just use ID as fallback title if needed.
-            // But actually openPbChat will try to load title from file if we pass just ID, or we can fetch title again?
-            // Let's just pass ID. openPbChat handles title logic.
-            // Wait, openPbChat takes (id, title).
-            // We can optimize getServerLatestTrajectoryId to return object {id, title}.
-            // For now, let's just keep strict separation to minimize changes.
-            await this.openPbChat(serverId, serverId);
+        const serverResult = await this.getServerLatestTrajectoryId();
+        if (serverResult) {
+            // Priority: Server Title > Local Title > ID
+            let displayTitle = serverResult.title;
+
+            if (!displayTitle || displayTitle === serverResult.id) {
+                // Fallback to local title if server title is missing or same as ID
+                const localTitle = this.getConversationTitle(serverResult.id);
+                if (localTitle && localTitle !== serverResult.id) {
+                    displayTitle = localTitle;
+                }
+            }
+
+            // Final fallback to ID
+            if (!displayTitle) {
+                displayTitle = serverResult.id;
+            }
+
+            await this.openPbChat(serverResult.id, displayTitle);
             return;
         }
 
@@ -2838,7 +2859,7 @@ export class SyncManager {
                     userEmail: quotaSnapshot?.userEmail, // Keep this for AI Studio account
                     driveEmail: userInfo?.email, // Specific for Drive Storage
                     usageHistory: usageHistory.size > 0 ? usageHistory : undefined,
-                    activeConversationId: this.getActiveConversationId(this.config!.machineId, await this.getServerLatestTrajectoryId()),
+                    activeConversationId: this.getActiveConversationId(this.config!.machineId, (await this.getServerLatestTrajectoryId())?.id),
                     mcpServerStates: await this.getMcpServerStates()
                 };
 
