@@ -5,6 +5,28 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-01-31
+### Telegram Notifications & Bot Integration
+- **Interactive Bot**: The Antigravity Telegram bot is now fully interactive!
+    - **/stats**: View full system statistics (CPU, memory, uptime).
+    - **/sync**: Trigger a manual sync directly from Telegram.
+    - **/ping**: Verify bot connectivity.
+- **Smart Notifications**:
+    - **Quota Alerts**: Get notified immediately when your quota resets or falls below critical thresholds.
+    - **Periodic Stats**: Configure automatic delivery of system statistics at your preferred interval.
+    - **Visuals**: Notifications now include ASCII progress bars for Quota and Reset Cycles, plus the linked account email.
+- **Username Support**: Simplified configuration by allowing `usernames` in addition to `userIds`. The bot automatically resolves usernames to Chat IDs upon first interaction.
+- **Security & UX**: Unauthorized users now receive a helpful "Access Denied" message containing their Chat ID, making setup easier.
+- **Localization**: All bot messages and commands are fully localized into 15 languages.
+- **Enhanced Stats**: Periodic reports now include the linked Google account email for clarity in multi-account setups.
+- **Consistent Reporting**: Telegram messages now perfectly match the VS Code status bar tooltip, including:
+    - **Visual Parity**: Identical progress bars, status icons (🔴/🟠/🟡/🟢), and layout.
+    - **Detailed Stats**: Speed (~%/h), Estimated Remaining Time, and Cycle progress are now included in all Telegram reports.
+
+### Localization
+- **Fix**: Restored English localization bundle that was accidentally overwritten.
+- **Coverage**: Added missing keys for Profile management and Telegram features across all supported languages.
+
 ## [0.11.1] - 2026-01-31
 ### Bug Fixes
 - **Conversation Titles**: Fixed an issue where the "View Current Conversation" tab and Sync Dashboard displayed unreadable GUIDs. Now consistently prioritizes the **Server Title** > **Local Title** > **ID**, ensuring human-readable names are always shown.

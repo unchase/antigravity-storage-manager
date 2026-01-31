@@ -561,5 +561,8 @@
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "يمكن تكوين خوادم MCP في ~/.gemini/antigravity/mcp/mcp_config.json",
     "Refresh MCP Servers": "تحديث خوادم MCP",
     "Failed to refresh MCP servers: {0}": "فشل تحديث خوادم MCP: {0}",
-    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "تم تطبيق الملف الشخصي \"{0}\". إعادة التشغيل مطلوبة. يجب عليك تشغيل Antigravity يدويًا بعد إعادة تحميل النافذة."
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "تم تطبيق الملف الشخصي \"{0}\". إعادة التشغيل مطلوبة. يجب عليك تشغيل Antigravity يدويًا بعد إعادة تحميل النافذة.",
+    "Access Denied": "تم رفض الوصول",
+    "Your ID": "معرفك",
+    "Please ask the owner to add your ID or Username to the configuration.": "يرجى الطلب من المالك إضافة معرفك أو اسم المستخدم الخاص بك إلى التكوين."
 }

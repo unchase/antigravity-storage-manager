@@ -13,6 +13,9 @@ import { LocalizationManager } from './l10n/localizationManager';
 import { BackupManager } from './backup';
 import { QuotaManager } from './quota/quotaManager';
 import { ProfileManager } from './profileManager';
+import { TelegramService } from './telegram/telegramService';
+import { StatsScheduler } from './telegram/statsScheduler';
+import { TelegramCommandController } from './telegram/telegramCommandController';
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
@@ -29,12 +32,19 @@ let backupManager: BackupManager;
 let quotaManager: QuotaManager;
 let diagnosticsManager: DiagnosticsManager;
 let profileManager: ProfileManager;
+let telegramService: TelegramService;
+let statsScheduler: StatsScheduler;
+let telegramCommandController: TelegramCommandController;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log(`Congratulations, "${EXT_NAME}" is now active!`);
 
     // Initialize Localization
     LocalizationManager.getInstance().initialize(context);
+
+    // Initialize Telegram Service
+    telegramService = new TelegramService(context);
+    // context.subscriptions.push(telegramService); // TelegramService has dispose
 
     // Initialize Google Auth Provider
     authProvider = new GoogleAuthProvider(context);
@@ -48,10 +58,19 @@ export async function activate(context: vscode.ExtensionContext) {
     backupManager = new BackupManager(context, STORAGE_ROOT);
     backupManager.initialize();
 
-    // Initialize QuotaManager with AuthProvider
-    quotaManager = new QuotaManager(context, authProvider);
+    // Initialize QuotaManager with AuthProvider and TelegramService
+    quotaManager = new QuotaManager(context, authProvider, telegramService);
     syncManager.setQuotaManager(quotaManager);
     quotaManager.setSyncManager(syncManager); // Inject sync manager for stats
+
+    // Initialize Stats Scheduler
+    statsScheduler = new StatsScheduler(telegramService, quotaManager, syncManager);
+
+    // Initialize Command Controller
+    telegramCommandController = new TelegramCommandController(telegramService, quotaManager, syncManager);
+
+    // Register disposables
+    context.subscriptions.push(telegramService, statsScheduler, telegramCommandController);
 
     // Initialize Diagnostics Manager
     diagnosticsManager = new DiagnosticsManager(authProvider, quotaManager);

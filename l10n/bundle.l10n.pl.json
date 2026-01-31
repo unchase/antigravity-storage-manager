@@ -577,5 +577,8 @@
     "Failed to restore profile: {0}": "Nie udało się przywrócić profilu: {0}",
     "Could not locate Antigravity configuration directory to back up.": "Nie można zlokalizować katalogu konfiguracji Antigravity do kopii zapasowej.",
     "Could not locate Antigravity configuration directory.": "Nie można zlokalizować katalogu konfiguracji Antigravity.",
-    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Zastosowano profil \"{0}\". Wymagane ponowne uruchomienie. Musisz ręcznie uruchomić Antigravity po przeładowaniu okna."
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Zastosowano profil \"{0}\". Wymagane ponowne uruchomienie. Musisz ręcznie uruchomić Antigravity po przeładowaniu okna.",
+    "Access Denied": "Odmowa dostępu",
+    "Your ID": "Twój ID",
+    "Please ask the owner to add your ID or Username to the configuration.": "Poproś właściciela o dodanie Twojego ID lub nazwy użytkownika do konfiguracji."
 }

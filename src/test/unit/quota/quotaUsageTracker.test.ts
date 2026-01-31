@@ -43,14 +43,14 @@ describe('QuotaUsageTracker Test Suite', () => {
         const history = [{ modelId: 'test-model', points: [{ timestamp: 100, usage: 10 }] }];
         globalState.get.mockReturnValue(history);
 
-        const tracker = new QuotaUsageTracker(context);
+        const tracker = new QuotaUsageTracker(context, { sendBroadcast: () => Promise.resolve(), isConfigured: () => true } as any);
 
         const est = tracker.getEstimation('test-model');
         assert.strictEqual(est, null);
     });
 
     test('should track new usage points', () => {
-        const tracker = new QuotaUsageTracker(context);
+        const tracker = new QuotaUsageTracker(context, { sendBroadcast: () => Promise.resolve(), isConfigured: () => true } as any);
         const snapshot: QuotaSnapshot = {
             timestamp: new Date(),
             models: [
@@ -79,7 +79,7 @@ describe('QuotaUsageTracker Test Suite', () => {
     });
 
     test('should calculate speed correctly', () => {
-        const tracker = new QuotaUsageTracker(context);
+        const tracker = new QuotaUsageTracker(context, { sendBroadcast: () => Promise.resolve(), isConfigured: () => true } as any);
         const now = Date.now();
         const oneHourAgo = now - 3600 * 1000;
 
@@ -98,7 +98,7 @@ describe('QuotaUsageTracker Test Suite', () => {
     });
 
     test('should handle resets (usage drop)', () => {
-        const tracker = new QuotaUsageTracker(context);
+        const tracker = new QuotaUsageTracker(context, { sendBroadcast: () => Promise.resolve(), isConfigured: () => true } as any);
         const now = Date.now();
         const trackerAny = tracker as any;
         trackerAny.history.set('m1', [
@@ -117,7 +117,7 @@ describe('QuotaUsageTracker Test Suite', () => {
     });
 
     test('should return null if not enough data', () => {
-        const tracker = new QuotaUsageTracker(context);
+        const tracker = new QuotaUsageTracker(context, { sendBroadcast: () => Promise.resolve(), isConfigured: () => true } as any);
         const trackerAny = tracker as any;
         trackerAny.history.set('m1', [
             { timestamp: Date.now(), usage: 10 }
@@ -128,7 +128,7 @@ describe('QuotaUsageTracker Test Suite', () => {
     });
 
     test('should limit history size', () => {
-        const tracker = new QuotaUsageTracker(context);
+        const tracker = new QuotaUsageTracker(context, { sendBroadcast: () => Promise.resolve(), isConfigured: () => true } as any);
         const modelInfo: ModelQuotaInfo = {
             modelId: 'm1', label: 'M1', remainingPercentage: 100,
             isExhausted: false, resetTime: new Date(), timeUntilReset: 0, timeUntilResetFormatted: ''

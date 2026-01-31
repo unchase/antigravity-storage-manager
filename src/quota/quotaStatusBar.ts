@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { QuotaSnapshot } from './types';
-import { getModelAbbreviation, formatResetTime, drawProgressBar, formatDuration as formatDurationCommon, getCycleDuration } from './utils';
+import { generateQuotaReportMarkdown } from './reportGenerator';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaUsageTracker } from './quotaUsageTracker';
+import { getModelAbbreviation, formatDuration as formatDurationCommon, getModelStatusIcon } from './utils';
 
 export class QuotaStatusBar {
     private item: vscode.StatusBarItem;
@@ -32,14 +33,7 @@ export class QuotaStatusBar {
             console.log('QuotaStatusBar', `Updating status bar with ${pinnedModels.length} pinned models`);
             for (const m of pinnedModels) {
                 const pct = m.remainingPercentage ?? 0;
-                let statusIcon = '🟢';
-                if (m.isExhausted || pct === 0) {
-                    statusIcon = '🔴';
-                } else if (pct < 30) {
-                    statusIcon = '🟠';
-                } else if (pct < 50) {
-                    statusIcon = '🟡';
-                }
+                const statusIcon = getModelStatusIcon(m.remainingPercentage, m.isExhausted);
 
                 const abbrev = getModelAbbreviation(m.label);
                 let text = `${statusIcon} ${abbrev}: ${pct.toFixed(0)}%`;
@@ -58,117 +52,11 @@ export class QuotaStatusBar {
             this.item.text = parts.join('  ');
 
             // Build rich tooltip
-            const md = new vscode.MarkdownString('', true);
+            const reportMarkdown = generateQuotaReportMarkdown(snapshot, pinned, this.lastTracker);
+            const md = new vscode.MarkdownString(reportMarkdown, true);
             md.isTrusted = true;
             md.supportThemeIcons = true;
-
-            const lm = LocalizationManager.getInstance();
-
-            md.appendMarkdown(`### ${lm.t('Pinned Models Quota')}\n`);
-            if (snapshot.userEmail) {
-                md.appendMarkdown(`_${snapshot.userEmail}_\n\n`);
-            } else {
-                md.appendMarkdown(`\n`);
-            }
-
-            // Plan Info (Moved to top)
-            if (snapshot.planName || snapshot.promptCredits) {
-                const planLabel = lm.t('Plan');
-                // Use slightly smaller header or bold for plan to fit under main header
-                md.appendMarkdown(`**${planLabel}: ${snapshot.planName || 'Free'}**\n\n`);
-
-                if (snapshot.promptCredits && vscode.workspace.getConfiguration('antigravity-storage-manager').get('showCreditsBalance', false)) {
-                    const cred = snapshot.promptCredits;
-                    const credText = lm.t('Credits');
-                    const availText = lm.t('available');
-                    md.appendMarkdown(`- ${credText}: \`${cred.available} / ${cred.monthly}\` (${cred.remainingPercentage.toFixed(1)}% ${availText})\n\n`);
-                }
-            }
-
-            md.appendMarkdown('---\n\n');
-
-            for (const m of pinnedModels) {
-                const pct = m.remainingPercentage ?? 0;
-                let statusIcon = '🟢';
-                if (m.isExhausted || pct === 0) {
-                    statusIcon = '🔴';
-                } else if (pct < 30) {
-                    statusIcon = '🟠';
-                } else if (pct < 50) {
-                    statusIcon = '🟡';
-                }
-
-                md.appendMarkdown(`**${statusIcon} ${m.label}**\n\n`);
-
-                const bar = drawProgressBar(pct);
-                md.appendMarkdown(`- ${lm.t('Remaining')}: \`${bar}\` **${pct.toFixed(1)}%**\n`);
-
-                // Add Speed / Estimation
-                if (this.lastTracker) {
-                    const est = this.lastTracker.getEstimation(m.modelId);
-                    if (!(m.isExhausted || pct === 0) && est && est.speedPerHour > 0.1) {
-                        md.appendMarkdown(`- ${lm.t('Speed')}: ~${est.speedPerHour.toFixed(1)}%${lm.t('/h')}\n`);
-                        if (est.estimatedTimeRemainingMs) {
-                            md.appendMarkdown(`- ${lm.t('Estimated Remaining Time')}: ~${this.formatDuration(est.estimatedTimeRemainingMs)}\n`);
-                        }
-                    }
-                }
-
-                if (m.resetTime) {
-                    const now = new Date();
-                    const reset = new Date(m.resetTime);
-                    const msUntilReset = reset.getTime() - now.getTime();
-
-                    // Only show reset time if it's in the future
-                    if (msUntilReset > 0) {
-                        // Show countdown timer if less than 1 hour
-                        if (msUntilReset < 60 * 60 * 1000) {
-                            const mins = Math.floor(msUntilReset / 60000);
-                            const secs = Math.floor((msUntilReset % 60000) / 1000);
-                            const countdown = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
-                            md.appendMarkdown(`- ${lm.t('Resets')}: ${formatResetTime(m.resetTime)} ${countdown}\n`);
-                        } else {
-                            md.appendMarkdown(`- ${lm.t('Resets')}: ${formatResetTime(m.resetTime)}\n`);
-                        }
-
-                        // Visual Scale for Pro and Ultra models
-                        const isHighTier = m.label.includes('Pro') || m.label.includes('Ultra') || m.label.includes('Thinking') || m.label.includes('Opus');
-                        if (isHighTier) {
-                            // Heuristic for cycle duration
-                            const cycleDuration = getCycleDuration(m.label);
-
-                            const progress = Math.max(0, Math.min(1, 1 - (msUntilReset / cycleDuration)));
-                            const progressBar = drawProgressBar(progress * 100);
-
-                            const cycleText = lm.t('Cycle');
-                            const leftText = lm.t('left');
-                            md.appendMarkdown(`- ${cycleText}: \`${progressBar}\` (${this.formatDuration(msUntilReset)} ${leftText})\n`);
-                        }
-                    }
-                    // If reset time has passed, don't show it (quota should refresh soon)
-                }
-
-                // Request/Token Stats
-                if (m.requestLimit && m.requestUsage !== undefined) {
-                    const reqText = lm.t('Requests');
-                    md.appendMarkdown(`- ${reqText}: \`${m.requestUsage} / ${m.requestLimit}\`\n`);
-                }
-                if (m.tokenLimit && m.tokenUsage !== undefined) {
-                    const tokText = lm.t('Tokens');
-                    md.appendMarkdown(`- ${tokText}: \`${m.tokenUsage} / ${m.tokenLimit}\`\n`);
-                }
-
-                md.appendMarkdown('\n---\n');
-            }
-
-            // Last Update Time
-            if (snapshot.timestamp) {
-                const dateStr = formatResetTime(new Date(snapshot.timestamp));
-                md.appendMarkdown(`\n---\n${lm.t('Last updated: {0}', dateStr)}\n`);
-            }
-
-            md.appendMarkdown(`\n🚀 [${lm.t('Show Dashboard')}](command:antigravity-storage-manager.showQuota)`);
-
+            md.appendMarkdown(`\n🚀 [${LocalizationManager.getInstance().t('Show Dashboard')}](command:antigravity-storage-manager.showQuota)`);
             this.item.tooltip = md;
         }
 

@@ -577,5 +577,8 @@
     "Failed to restore profile: {0}": "Не удалось восстановить профиль: {0}",
     "Could not locate Antigravity configuration directory to back up.": "Не удалось найти каталог конфигурации Antigravity для резервного копирования.",
     "Could not locate Antigravity configuration directory.": "Не удалось найти каталог конфигурации Antigravity.",
-    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Профиль \"{0}\" применен. Требуется перезагрузка. Необходимо вручную запустить Antigravity после перезагрузки окна."
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Профиль \"{0}\" применен. Требуется перезагрузка. Необходимо вручную запустить Antigravity после перезагрузки окна.",
+    "Access Denied": "Доступ запрещён",
+    "Your ID": "Ваш ID",
+    "Please ask the owner to add your ID or Username to the configuration.": "Попросите владельца добавить ваш ID или имя пользователя в настройки."
 }

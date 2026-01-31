@@ -129,3 +129,33 @@ export function getCycleDuration(label: string): number {
     // Default 24h
     return 24 * 60 * 60 * 1000;
 }
+
+/**
+ * Gets the status icon based on quota percentage and settings.
+ */
+import * as vscode from 'vscode';
+
+export function getModelStatusIcon(remainingPercentage: number | undefined, isExhausted: boolean): string {
+    const pct = remainingPercentage ?? 0;
+
+    // Strict exhausted check
+    if (isExhausted || pct === 0) {
+        return '🔴';
+    }
+
+    const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
+    const warning = config.get<number>('quota.thresholds.warning', 50);
+    const critical = config.get<number>('quota.thresholds.critical', 30);
+    // danger is usually 0, implied by isExhausted or 0 check above, but let's check config just in case user set it higher
+    const danger = config.get<number>('quota.thresholds.danger', 0);
+
+    if (pct <= danger) {
+        return '🔴';
+    } else if (pct <= critical) {
+        return '🟠';
+    } else if (pct <= warning) {
+        return '🟡';
+    }
+
+    return '🟢';
+}

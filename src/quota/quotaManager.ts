@@ -12,6 +12,8 @@ import { QuotaUsageTracker } from './quotaUsageTracker';
 import { AccountInfoWebview } from './accountInfoWebview';
 import { GoogleAuthProvider } from '../googleAuth';
 
+import { TelegramService } from '../telegram/telegramService';
+
 export class QuotaManager {
     private context: vscode.ExtensionContext;
     private portDetector: ProcessPortDetector;
@@ -25,13 +27,15 @@ export class QuotaManager {
     private sortMethod: 'quota' | 'time' = 'quota';
     private lastNotifiedModels: Map<string, boolean> = new Map(); // modelId -> wasExhausted
     private syncManager: any | null = null; // SyncManager type to be imported or use any to avoid cycle if needed. Ideally interface.
+    private telegramService: TelegramService;
 
-    constructor(context: vscode.ExtensionContext, authProvider: GoogleAuthProvider) {
+    constructor(context: vscode.ExtensionContext, authProvider: GoogleAuthProvider, telegramService: TelegramService) {
         this.context = context;
         this.authProvider = authProvider;
+        this.telegramService = telegramService;
         this.portDetector = new ProcessPortDetector();
         this.statusBar = new QuotaStatusBar();
-        this.usageTracker = new QuotaUsageTracker(context);
+        this.usageTracker = new QuotaUsageTracker(context, telegramService);
         versionInfo.initialize(context);
 
         // Listen for configuration changes

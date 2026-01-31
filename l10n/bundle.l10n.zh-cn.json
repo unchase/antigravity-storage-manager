@@ -577,5 +577,8 @@
     "Failed to restore profile: {0}": "无法恢复配置文件：{0}",
     "Could not locate Antigravity configuration directory to back up.": "找不到要备份的Antigravity配置目录。",
     "Could not locate Antigravity configuration directory.": "找不到Antigravity配置目录。",
-    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "配置文件 \"{0}\" 已应用。需要重新启动。窗口重新加载后，您必须手动启动 Antigravity。"
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "配置文件 \"{0}\" 已应用。需要重新启动。窗口重新加载后，您必须手动启动 Antigravity。",
+    "Access Denied": "访问被拒绝",
+    "Your ID": "您的 ID",
+    "Please ask the owner to add your ID or Username to the configuration.": "请请求所有者将您的 ID 或用户名添加到配置中。"
 }

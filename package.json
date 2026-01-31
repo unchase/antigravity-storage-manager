@@ -1,8 +1,8 @@
 {
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
-    "description": "Securely sync Antigravity Conversations with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.",
-    "version": "0.11.1",
+    "description": "Securely sync Antigravity Conversations with Google Drive. Features Telegram Bot notifications, Multi-Account Profile Switching, Real-time Quota Monitoring, MCP Server Status validation, and advanced backup tools.",
+    "version": "0.12.0",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -510,6 +510,33 @@
                     "type": "string",
                     "default": "",
                     "description": "%antigravity.config.proxy.password%"
+                },
+                "antigravity-storage-manager.telegram.botToken": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Telegram Bot Token for notifications",
+                    "scope": "application"
+                },
+                "antigravity-storage-manager.telegram.userIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Telegram User IDs to receive notifications"
+                },
+                "antigravity-storage-manager.telegram.usernames": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Telegram Usernames (without @) to allow. Bot must interact with user to resolve ID."
+                },
+                "antigravity-storage-manager.telegram.statsIntervalCron": {
+                    "type": "string",
+                    "default": "0 */12 * * *",
+                    "description": "Cron expression for periodic statistics notifications (default: every 12 hours)"
                 }
             }
         },
@@ -599,6 +626,7 @@
         "extract-zip": "^2.0.1",
         "googleapis": "^144.0.0",
         "markdown-it": "^14.1.0",
+        "node-cron": "^4.2.1",
         "protobufjs": "^8.0.0"
     },
     "optionalDependencies": {

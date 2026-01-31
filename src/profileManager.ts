@@ -239,6 +239,7 @@ export class ProfileManager {
                 ? 'taskkill /IM Antigravity.exe /F'
                 : 'pkill -f Antigravity';
 
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
             require('child_process').exec(cmd, (err: any) => {
                 // Ignore errors (process might not be running)
                 if (err) {
@@ -259,6 +260,7 @@ export class ProfileManager {
         }
 
         console.log(`Starting Antigravity from: ${exePath}`);
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { spawn } = require('child_process');
 
         // Spawn detached to let it run independently

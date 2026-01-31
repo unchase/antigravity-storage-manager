@@ -577,5 +577,8 @@
     "Failed to restore profile: {0}": "Khôi phục hồ sơ thất bại: {0}",
     "Could not locate Antigravity configuration directory to back up.": "Không thể xác định thư mục cấu hình Antigravity để sao lưu.",
     "Could not locate Antigravity configuration directory.": "Không thể xác định thư mục cấu hình Antigravity.",
-    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Đã áp dụng hồ sơ \"{0}\". Cần khởi động lại. Bạn phải khởi động Antigravity thủ công sau khi cửa sổ tải lại."
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Đã áp dụng hồ sơ \"{0}\". Cần khởi động lại. Bạn phải khởi động Antigravity thủ công sau khi cửa sổ tải lại.",
+    "Access Denied": "Truy cập bị từ chối",
+    "Your ID": "ID của bạn",
+    "Please ask the owner to add your ID or Username to the configuration.": "Vui lòng yêu cầu chủ sở hữu thêm ID hoặc Tên người dùng của bạn vào cấu hình."
 }

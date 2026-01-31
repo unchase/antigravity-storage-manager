@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Securely sync Antigravity Conversations with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.</strong><br>
+  <strong>Securely sync Antigravity Conversations with Google Drive. Features Telegram Bot notifications, Multi-Account Profile Switching, Real-time Quota Monitoring, MCP Server Status validation, and advanced backup tools.</strong><br>
 </p>
 
 <p align="center">
@@ -43,17 +43,18 @@ If you find this extension useful, consider supporting the development:
 
 ![Status Bar Menu](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/status-menu.png)
 
-- ☁️ **Google Drive Sync** — Automatically sync conversations between devices with end-to-end encryption.
-- ⚡ **Parallel Per-File Sync** — Fast differential sync with parallel processing and hash caching.
-- 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
-- 📊 **Account & Quota Dashboard** — Comprehensive real-time tracking of consumption speed, remaining time estimates, and account status.
-- 🌍 **Global Localization** — Native support for **15 languages** with 100% dashboard localization coverage (English, Russian, Chinese, Japanese, Korean, German, French, Arabic, and more).
+- 🤖 **Telegram Bot Integration** — Real-time quota alerts, system stats, and remote sync control via interactive bot.
+- 👤 **Multi-Account Profiles** — Seamlessly switch between different Antigravity accounts (e.g., Personal vs Work) with separate quotas and settings.
+- 📊 **Advanced Quota Dashboard** — Comprehensive real-time tracking of consumption speed, reset cycles, and remaining time estimates with visual indicators.
+- 🔌 **MCP Server Monitoring** — Monitor the connection status and resource availability of your Model Context Protocol servers.
+- ☁️ **Google Drive Sync** — Automatically sync conversations between devices with end-to-end encryption and parallel processing.
+- 🌍 **Global Localization** — Native support for **16 languages** (English, Russian, Chinese, Japanese, Korean, German, French, Spanish, Italian, Portuguese, Polish, Vietnamese, Arabic, Czech, Turkish).
 - 🔄 **Live Updates** — Seamlessly syncs data between the status bar and dashboard every minute for up-to-the-second accuracy.
 - 🔍 **Account Insights** — Monitor your Plan/Tier, specific feature availability (Web Search, Browser Tool), and raw Google API responses.
-- 🚦 **Premium Status Indicators** — Colored icons (🟢/🟡/🟠/🔴) and visual scales `[██░░]` to track quota, model cycles, and sync health at a glance.
+- �️ **Proxy Support** — Full support for corporate proxies with authentication and strict SSL configuration.
+- 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
 - 🛑 **Cancellation Support** — Abort long-running operations (Sync, Export, Backup) safely at any time.
-- 🛠️ **Smart Configuration** — Auto-detects missing sync setup and prompts for configuration on startup. Hot-reloads on language changes.
-- 🎨 **Command Palette** — All commands available via `Ctrl+Shift+P`
+- 🛠️ **Smart Configuration** — Auto-detects missing sync setup and prompts for configuration on startup.
 
 ---
 
@@ -175,6 +176,48 @@ If you are behind a corporate proxy, you can configure Antigravity to route its 
 4. Run command `Antigravity: Apply Proxy Settings` to apply these settings to your VS Code profile globally.
 
 > **Note**: This command updates the global `http.proxy` setting in VS Code to ensure the Antigravity Language Server respects your proxy configuration.
+
+---
+
+## Telegram Bot Integration (New!)
+
+Receive real-time notifications about your quota usage, system statistics, and sync status directly in Telegram. You can also control Antigravity efficiently using interactive commands.
+
+![Telegram Bot Formatting](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/tg_quota_stats.png)
+
+### Features
+- **Quota Alerts**: Get notified when your AI credit balance is low or when quotas reset.
+- **Visuals**: Messages include ASCII progress bars for quota usage and reset cycles, and display the linked account email.
+- **Interactive Commands**:
+    - `/stats` — View system resource usage (CPU, RAM) and uptime.
+    - `/sync` — Trigger a synchronization remotely.
+    - `/ping` — Check bot health.
+- **Secure Access**: Restrict bot access to specific Telegram User IDs or Usernames. Unauthorized users receive an instant "Access Denied" response with their Chat ID for easy configuration.
+
+### Setup Guide
+
+1. **Create a Telegram Bot**:
+    - Open [BotFather](https://t.me/BotFather) in Telegram.
+    - Send `/newbot` and follow the instructions to create a bot.
+    - Copy the **HTTP API Token** provided by BotFather.
+
+2. **Configure Extension**:
+    - Open VS Code Settings (`Ctrl+,`).
+    - Search for `antigravity telegram`.
+    - Set **Bot Token**: Paste your API Token.
+    - Set **Allowed User IDs**: (Optional) Array of numeric Telegram User IDs allowed to interact with the bot.
+    - Set **Allowed Usernames**: (Easier) Array of Telegram usernames (without `@`) allowed to use the bot (e.g., `["your_username"]`).
+    - **Note**: For usernames to work, you must start a chat with the bot first so it can resolve your Chat ID.
+
+3. **Start the Bot**:
+    - The bot starts automatically when VS Code launches if the token is configured.
+    - Send `/start` or `/help` to your bot to begin.
+
+### Configuration Options
+- `antigravity.telegram.botToken`: Your bot's API token.
+- `antigravity.telegram.userIds`: List of authorized numeric user IDs.
+- `antigravity.telegram.usernames`: List of authorized usernames.
+- `antigravity.telegram.statsIntervalCron`: Cron expression for periodic stats (default: `0 9 * * *` - every day at 9 AM).
 
 ---
 

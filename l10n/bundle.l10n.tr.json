@@ -577,5 +577,8 @@
     "Failed to restore profile: {0}": "Profil geri yüklenemedi: {0}",
     "Could not locate Antigravity configuration directory to back up.": "Yedeklenecek Antigravity yapılandırma dizini bulunamadı.",
     "Could not locate Antigravity configuration directory.": "Antigravity yapılandırma dizini bulunamadı.",
-    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Profil \"{0}\" uygulandı. Yeniden başlatma gerekli. Pencere yeniden yüklendikten sonra Antigravity'yi manuel olarak başlatmalısınız."
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Profil \"{0}\" uygulandı. Yeniden başlatma gerekli. Pencere yeniden yüklendikten sonra Antigravity'yi manuel olarak başlatmalısınız.",
+    "Access Denied": "Erişim Reddedildi",
+    "Your ID": "Kullanıcı Kimliğiniz (ID)",
+    "Please ask the owner to add your ID or Username to the configuration.": "Lütfen sahibinden ID'nizi veya Kullanıcı Adınızı yapılandırmaya eklemesini isteyin."
 }

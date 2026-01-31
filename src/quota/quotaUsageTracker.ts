@@ -11,15 +11,20 @@ interface ModelUsageHistory {
     points: UsagePoint[];
 }
 
+import { TelegramService } from '../telegram/telegramService';
+
 export class QuotaUsageTracker {
     private context: vscode.ExtensionContext;
     private history: Map<string, UsagePoint[]> = new Map();
     private readonly MAX_POINTS = 50; // Legacy fixed count
     private readonly STORAGE_KEY = 'quotaUsageHistory';
     private historyRetentionDays: number = 7;
+    private telegramService: TelegramService;
 
-    constructor(context: vscode.ExtensionContext) {
+    constructor(context: vscode.ExtensionContext, telegramService: TelegramService) {
         this.context = context;
+        this.telegramService = telegramService;
+
         this.updateConfig();
         this.loadHistory();
 
@@ -96,6 +101,19 @@ export class QuotaUsageTracker {
 
                     if (usageDiff > 0.1 || timeDiff > minInterval) {
                         shouldAdd = true;
+                    }
+
+                    // Detect Reset
+                    // If current usage is significantly less than last usage (e.g. dropped from > 80% to < 10% or just strictly < previous)
+                    // Robust check: dropped by at least 10% and is now low (< 20%) OR just simply dropped if it was exhausted.
+                    // Let's use a simple heuristic: if usage dropped by > 50% OR (was > 90% and now < 50%)
+                    if (this.telegramService.isConfigured()) {
+                        if (lastPoint.usage > 50 && currentUsage < 10) {
+                            this.telegramService.sendBroadcast(`✅ Quota Reset Detected for *${model.label}*\n\nPrevious Usage: ${lastPoint.usage.toFixed(1)}%\nCurrent Usage: ${currentUsage.toFixed(1)}%`);
+                        } else if (model.remainingPercentage !== undefined && lastPoint.usage > 99 && currentUsage < 99) {
+                            // Was exhausted, now not
+                            this.telegramService.sendBroadcast(`✅ Quota Restored for *${model.label}*`);
+                        }
                     }
                 }
 

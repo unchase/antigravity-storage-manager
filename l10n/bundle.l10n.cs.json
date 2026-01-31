@@ -561,5 +561,8 @@
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "Servery MCP lze nakonfigurovat v ~/.gemini/antigravity/mcp/mcp_config.json",
     "Refresh MCP Servers": "Obnovit servery MCP",
     "Failed to refresh MCP servers: {0}": "Nepodařilo se obnovit servery MCP: {0}",
-    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Profil \"{0}\" byl použit. Je vyžadován restart. Po opětovném načtení okna musíte ručně spustit Antigravity."
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Profil \"{0}\" byl použit. Je vyžadován restart. Po opětovném načtení okna musíte ručně spustit Antigravity.",
+    "Access Denied": "Přístup zamítnut",
+    "Your ID": "Vaše ID",
+    "Please ask the owner to add your ID or Username to the configuration.": "Požádejte prosím vlastníka, aby přidal vaše ID nebo uživatelské jméno do konfigurace."
 }
