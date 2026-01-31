@@ -180,9 +180,13 @@ If you are behind a corporate proxy, you can configure Antigravity to route its 
 
 ## Profile Switching (New!)
 
+![Profile Switching](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/profile_switching.png)
+
+*(Fig. 5: Profile Switching)*
+
 ![Profile Settings](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/profile_settings.png)
 
-*(Fig. 6: Custom Profile Storage Setting)*
+*(Fig. 6: Profile Settings)*
 
 Easily switch between different Antigravity accounts (e.g., Personal vs Work) with separate quotas, limits, and authentication states.
 
