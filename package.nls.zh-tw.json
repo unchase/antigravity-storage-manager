@@ -37,13 +37,19 @@
     "antigravity.config.quota.warningThreshold": "配額警告（黃色）級別的百分比閾值 (0-100)。低於此值的配額為黃色。",
     "antigravity.config.quota.criticalThreshold": "配額嚴重（橙色）級別的百分比閾值 (0-100)。低於此值的配額為橙色。",
     "antigravity.config.quota.dangerThreshold": "配額危險（紅色）級別的百分比閾值 (0-100)。低於此值的配額為紅色。",
-    "antigravity.command.switchProfile": "切換 VS Code 設定檔",
+    "antigravity.command.switchProfile": "切換 設定檔",
     "antigravity.config.sync.enableCompression": "在加密前啟用壓縮 (Gzip) 以減少 Google Drive 上的資料大小。",
     "antigravity.command.applyProxy": "套用代理設定",
     "antigravity.config.proxy.url": "代理伺服器網址",
     "antigravity.config.proxy.strictSSL": "啟用代理的嚴格 SSL 驗證 (預設: true)",
     "antigravity.config.proxy.username": "代理使用者名稱 (選用)",
     "antigravity.config.proxy.password": "代理密碼 (選用)",
+    "antigravity.command.saveProfile": "儲存設定檔",
+    "antigravity.command.deleteProfile": "刪除設定檔",
     "antigravity.command.openCurrentConversation": "查看當前對話",
-    "antigravity.command.forceSync": "強制同步"
+    "antigravity.command.forceSync": "強制同步",
+    "antigravity.config.profilesDirectory": "設定檔的自訂目錄",
+    "antigravity.config.profilesDirectory.md": "用於儲存設定檔的自訂目錄的絕對路徑。如果為空，則使用預設儲存空間。支援 `~` 代表主目錄。",
+    "antigravity.auth.sessionExpired": "Google Drive 工作階段已過期。請重新登入。",
+    "antigravity.auth.signIn": "登入"
 }

@@ -5,6 +5,15 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-01-31
+### Profile Switching
+- **Multi-Account Support**: Seamlessly switch between different Antigravity profiles, each with its own separate authentication, quotas, and limits. Perfect for users with multiple Google accounts.
+- **Custom Profile Storage**: Added `antigravity.profiles.profilesDirectory` setting to specify a custom folder for storing profiles.
+  - **Persistent Storage**: By default, profiles are stored in the extension's global storage. Using a custom directory allows you to keep profiles safe even if the extension is uninstalled.
+  - **Warning**: If you use the default storage location, all saved profiles will be deleted if the extension is uninstalled.
+- **Improved UX**: The profile switcher now clearly indicates which profile is active and provides a direct way to create, delete, or switch profiles via the QuickPick menu.
+- **Manual Restart**: updated the post-switch message to clearly inform users that a manual restart of the Antigravity process is required after window reload.
+
 ## [0.10.3] - 2026-01-31
 ### MCP Panel
 - **MCP Server Status**: Added a new **MCP Servers** panel to the Sync Statistics Dashboard, displaying:

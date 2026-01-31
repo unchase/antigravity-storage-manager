@@ -560,5 +560,6 @@
     "No MCP servers configured": "未設定 MCP 伺服器",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "可以在 ~/.gemini/antigravity/mcp/mcp_config.json 中設定 MCP 伺服器",
     "Refresh MCP Servers": "重新整理 MCP 伺服器",
-    "Failed to refresh MCP servers: {0}": "重新整理 MCP 伺服器失敗：{0}"
+    "Failed to refresh MCP servers: {0}": "重新整理 MCP 伺服器失敗：{0}",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "設定檔 \"{0}\" 已套用。需要重新啟動。視窗重新載入後，您必須手動啟動 Antigravity。"
 }

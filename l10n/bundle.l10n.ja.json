@@ -560,5 +560,21 @@
     "No MCP servers configured": "MCPサーバーが設定されていません",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "MCPサーバーは ~/.gemini/antigravity/mcp/mcp_config.json で設定できます",
     "Refresh MCP Servers": "MCPサーバーを更新",
-    "Failed to refresh MCP servers: {0}": "MCPサーバーの更新に失敗しました: {0}"
+    "Failed to refresh MCP servers: {0}": "MCPサーバーの更新に失敗しました: {0}",
+    "Switch between Antigravity/Codeium accounts": "Antigravity/Codeiumアカウント間の切り替え",
+    "Save Current Profile": "現在のプロファイルを保存",
+    "Delete Profile": "プロファイルを削除",
+    "Save current authentication state as a new profile": "現在の認証状態を新しいプロファイルとして保存",
+    "Remove a saved profile": "保存されたプロファイルを削除",
+    "Select a profile to switch to or save current state": "切り替えるプロファイルを選択するか、現在の状態を保存します",
+    "Enter profile name (e.g. \"Personal\")": "プロファイル名を入力 (例: \"Personal\")",
+    "Name cannot be empty": "名前を空にすることはできません",
+    "Profile \"{0}\" saved.": "プロファイル \"{0}\" が保存されました。",
+    "Select profile to delete": "削除するプロファイルを選択",
+    "Profile \"{0}\" deleted.": "プロファイル \"{0}\" が削除されました。",
+    "Profile \"{0}\" applied. Reload required.": "プロファイル \"{0}\" が適用されました。再読み込みが必要です。",
+    "Failed to backup configuration: ": "設定のバックアップに失敗しました: ",
+    "Failed to restore profile: {0}": "プロファイルの復元に失敗しました: {0}",
+    "Could not locate Antigravity configuration directory to back up.": "バックアップするAntigravity設定ディレクトリが見つかりませんでした。",
+    "Could not locate Antigravity configuration directory.": "Antigravity設定ディレクトリが見つかりませんでした。"
 }

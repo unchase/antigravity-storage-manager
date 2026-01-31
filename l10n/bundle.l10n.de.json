@@ -560,5 +560,22 @@
     "No MCP servers configured": "Keine MCP-Server konfiguriert",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "MCP-Server können in ~/.gemini/antigravity/mcp/mcp_config.json konfiguriert werden",
     "Refresh MCP Servers": "MCP-Server aktualisieren",
-    "Failed to refresh MCP servers: {0}": "MCP-Server konnten nicht aktualisiert werden: {0}"
+    "Failed to refresh MCP servers: {0}": "MCP-Server konnten nicht aktualisiert werden: {0}",
+    "Switch between Antigravity/Codeium accounts": "Zwischen Antigravity/Codeium-Konten wechseln",
+    "Save Current Profile": "Aktuelles Profil speichern",
+    "Delete Profile": "Profil löschen",
+    "Save current authentication state as a new profile": "Aktuellen Authentifizierungsstatus als neues Profil speichern",
+    "Remove a saved profile": "Gespeichertes Profil entfernen",
+    "Select a profile to switch to or save current state": "Wählen Sie ein Profil zum Wechseln oder Speichern des aktuellen Status",
+    "Enter profile name (e.g. \"Personal\")": "Profilnamen eingeben (z. B. \"Persönlich\")",
+    "Name cannot be empty": "Name darf nicht leer sein",
+    "Profile \"{0}\" saved.": "Profil \"{0}\" gespeichert.",
+    "Select profile to delete": "Profil zum Löschen auswählen",
+    "Profile \"{0}\" deleted.": "Profil \"{0}\" gelöscht.",
+    "Profile \"{0}\" applied. Reload required.": "Profil \"{0}\" angewendet. Neuladen erforderlich.",
+    "Failed to backup configuration: ": "Konfiguration konnte nicht gesichert werden: ",
+    "Failed to restore profile: {0}": "Profil konnte nicht wiederhergestellt werden: {0}",
+    "Could not locate Antigravity configuration directory to back up.": "Antigravity-Konfigurationsverzeichnis für Backup konnte nicht gefunden werden.",
+    "Could not locate Antigravity configuration directory.": "Antigravity-Konfigurationsverzeichnis konnte nicht gefunden werden.",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Profil \"{0}\" angewendet. Neustart erforderlich. Sie müssen Antigravity nach dem Neuladen des Fensters manuell starten."
 }

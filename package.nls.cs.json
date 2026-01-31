@@ -37,13 +37,19 @@
     "antigravity.config.quota.warningThreshold": "Procentuální práh pro úroveň varování (žlutá) kvóty (0-100). Kvóta pod touto hodnotou je žlutá.",
     "antigravity.config.quota.criticalThreshold": "Procentuální práh pro kritickou úroveň (oranžová) kvóty (0-100). Kvóta pod touto hodnotou je oranžová.",
     "antigravity.config.quota.dangerThreshold": "Procentuální práh pro úroveň nebezpečí (červená) kvóty (0-100). Kvóta pod touto hodnotou je červená.",
-    "antigravity.command.switchProfile": "Přepnout profil VS Code",
+    "antigravity.command.switchProfile": "Přepnout profil",
     "antigravity.config.sync.enableCompression": "Povolit kompresi (Gzip) před šifrováním pro snížení velikosti dat na Google Drive.",
     "antigravity.command.applyProxy": "Použít nastavení proxy",
     "antigravity.config.proxy.url": "URL proxy serveru",
     "antigravity.config.proxy.strictSSL": "Povolit striktní SSL pro proxy (výchozí: true)",
     "antigravity.config.proxy.username": "Uživatelské jméno proxy (Volitelné)",
     "antigravity.config.proxy.password": "Heslo proxy (Volitelné)",
+    "antigravity.command.saveProfile": "Uložit profil",
+    "antigravity.command.deleteProfile": "Smazat profil",
     "antigravity.command.openCurrentConversation": "Zobrazit aktuální konverzaci",
-    "antigravity.command.forceSync": "Vynutit synchronizaci"
+    "antigravity.command.forceSync": "Vynutit synchronizaci",
+    "antigravity.config.profilesDirectory": "Vlastní adresář pro ukládání profilů",
+    "antigravity.config.profilesDirectory.md": "Absolutní cesta k vlastnímu adresáři pro ukládání profilů. Pokud je prázdná, použije se výchozí úložiště rozšíření. Podporuje `~` pro domovský adresář.",
+    "antigravity.auth.sessionExpired": "Relace Google Drive vypršela. Přihlaste se prosím znovu.",
+    "antigravity.auth.signIn": "Přihlásit se"
 }

@@ -37,13 +37,19 @@
     "antigravity.config.quota.warningThreshold": "配额警告（黄色）级别的百分比阈值 (0-100)。低于此值的配额为黄色。",
     "antigravity.config.quota.criticalThreshold": "配额严重（橙色）级别的百分比阈值 (0-100)。低于此值的配额为橙色。",
     "antigravity.config.quota.dangerThreshold": "配额危险（红色）级别的百分比阈值 (0-100)。低于此值的配额为红色。",
-    "antigravity.command.switchProfile": "切换 VS Code 配置文件",
+    "antigravity.command.switchProfile": "切换 配置文件",
     "antigravity.config.sync.enableCompression": "在加密前启用压缩 (Gzip) 以减少 Google Drive 上的数据大小。",
     "antigravity.command.applyProxy": "应用代理设置",
     "antigravity.config.proxy.url": "代理服务器地址",
     "antigravity.config.proxy.strictSSL": "启用代理的严格 SSL 验证 (默认: true)",
     "antigravity.config.proxy.username": "代理用户名 (可选)",
     "antigravity.config.proxy.password": "代理密码 (可选)",
+    "antigravity.command.saveProfile": "保存配置文件",
+    "antigravity.command.deleteProfile": "删除配置文件",
     "antigravity.command.openCurrentConversation": "查看当前对话",
-    "antigravity.command.forceSync": "强制同步"
+    "antigravity.command.forceSync": "强制同步",
+    "antigravity.config.profilesDirectory": "用于存储配置文件的自定义目录",
+    "antigravity.config.profilesDirectory.md": "用于存储配置文件的自定义目录的绝对路径。如果为空，则使用默认扩展存储。支持 `~` 代表主目录。",
+    "antigravity.auth.sessionExpired": "Google Drive 会话已过期。请重新登录。",
+    "antigravity.auth.signIn": "登录"
 }

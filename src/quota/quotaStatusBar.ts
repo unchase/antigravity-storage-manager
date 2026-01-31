@@ -64,7 +64,12 @@ export class QuotaStatusBar {
 
             const lm = LocalizationManager.getInstance();
 
-            md.appendMarkdown(`### ${lm.t('Pinned Models Quota')}\n\n`);
+            md.appendMarkdown(`### ${lm.t('Pinned Models Quota')}\n`);
+            if (snapshot.userEmail) {
+                md.appendMarkdown(`_${snapshot.userEmail}_\n\n`);
+            } else {
+                md.appendMarkdown(`\n`);
+            }
 
             // Plan Info (Moved to top)
             if (snapshot.planName || snapshot.promptCredits) {

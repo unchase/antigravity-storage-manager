@@ -560,5 +560,22 @@
     "No MCP servers configured": "Không có máy chủ MCP nào được cấu hình",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "Máy chủ MCP có thể được cấu hình trong ~/.gemini/antigravity/mcp/mcp_config.json",
     "Refresh MCP Servers": "Làm mới máy chủ MCP",
-    "Failed to refresh MCP servers: {0}": "Không thể làm mới máy chủ MCP: {0}"
+    "Failed to refresh MCP servers: {0}": "Không thể làm mới máy chủ MCP: {0}",
+    "Switch between Antigravity/Codeium accounts": "Chuyển đổi giữa các tài khoản Antigravity/Codeium",
+    "Save Current Profile": "Lưu hồ sơ hiện tại",
+    "Delete Profile": "Xóa hồ sơ",
+    "Save current authentication state as a new profile": "Lưu trạng thái xác thực hiện tại dưới dạng hồ sơ mới",
+    "Remove a saved profile": "Xóa hồ sơ đã lưu",
+    "Select a profile to switch to or save current state": "Chọn hồ sơ để chuyển đổi hoặc lưu trạng thái hiện tại",
+    "Enter profile name (e.g. \"Personal\")": "Nhập tên hồ sơ (ví dụ: \"Cá nhân\")",
+    "Name cannot be empty": "Tên không được để trống",
+    "Profile \"{0}\" saved.": "Hồ sơ \"{0}\" đã được lưu.",
+    "Select profile to delete": "Chọn hồ sơ để xóa",
+    "Profile \"{0}\" deleted.": "Hồ sơ \"{0}\" đã bị xóa.",
+    "Profile \"{0}\" applied. Reload required.": "Hồ sơ \"{0}\" đã được áp dụng. Cần tải lại.",
+    "Failed to backup configuration: ": "Sao lưu cấu hình thất bại: ",
+    "Failed to restore profile: {0}": "Khôi phục hồ sơ thất bại: {0}",
+    "Could not locate Antigravity configuration directory to back up.": "Không thể xác định thư mục cấu hình Antigravity để sao lưu.",
+    "Could not locate Antigravity configuration directory.": "Không thể xác định thư mục cấu hình Antigravity.",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Đã áp dụng hồ sơ \"{0}\". Cần khởi động lại. Bạn phải khởi động Antigravity thủ công sau khi cửa sổ tải lại."
 }

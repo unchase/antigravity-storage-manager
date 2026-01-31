@@ -37,13 +37,19 @@
     "antigravity.config.quota.warningThreshold": "Ngưỡng phần trăm cho mức Cảnh báo (Vàng) của hạn ngạch (0-100). Hạn ngạch dưới giá trị này là Màu vàng.",
     "antigravity.config.quota.criticalThreshold": "Ngưỡng phần trăm cho mức Nghiêm trọng (Cam) của hạn ngạch (0-100). Hạn ngạch dưới giá trị này là Màu cam.",
     "antigravity.config.quota.dangerThreshold": "Ngưỡng phần trăm cho mức Nguy hiểm (Đỏ) của hạn ngạch (0-100). Hạn ngạch dưới giá trị này là Màu đỏ.",
-    "antigravity.command.switchProfile": "Chuyển hồ sơ VS Code",
+    "antigravity.command.switchProfile": "Chuyển hồ sơ",
     "antigravity.config.sync.enableCompression": "Bật nén (Gzip) trước khi mã hóa để giảm kích thước dữ liệu trên Google Drive.",
     "antigravity.command.applyProxy": "Áp dụng cài đặt Proxy",
     "antigravity.config.proxy.url": "URL máy chủ Proxy",
     "antigravity.config.proxy.strictSSL": "Bật SSL nghiêm ngặt cho Proxy (mặc định: true)",
     "antigravity.config.proxy.username": "Tên người dùng Proxy (Tùy chọn)",
     "antigravity.config.proxy.password": "Mật khẩu Proxy (Tùy chọn)",
+    "antigravity.command.saveProfile": "Lưu hồ sơ",
+    "antigravity.command.deleteProfile": "Xóa hồ sơ",
     "antigravity.command.openCurrentConversation": "Xem cuộc trò chuyện hiện tại",
-    "antigravity.command.forceSync": "Buộc đồng bộ"
+    "antigravity.command.forceSync": "Buộc đồng bộ",
+    "antigravity.config.profilesDirectory": "Thư mục tùy chỉnh cho hồ sơ",
+    "antigravity.config.profilesDirectory.md": "Đường dẫn tuyệt đối đến thư mục tùy chỉnh để lưu trữ hồ sơ. Nếu để trống, bộ nhớ mặc định sẽ được sử dụng. Hỗ trợ `~` cho thư mục chính.",
+    "antigravity.auth.sessionExpired": "Phiên Google Drive đã hết hạn. Vui lòng đăng nhập lại.",
+    "antigravity.auth.signIn": "Đăng nhập"
 }

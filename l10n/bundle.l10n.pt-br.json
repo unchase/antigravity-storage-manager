@@ -560,5 +560,22 @@
     "No MCP servers configured": "Nenhum servidor MCP configurado",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "Os servidores MCP podem ser configurados em ~/.gemini/antigravity/mcp/mcp_config.json",
     "Refresh MCP Servers": "Atualizar servidores MCP",
-    "Failed to refresh MCP servers: {0}": "Falha ao atualizar os servidores MCP: {0}"
+    "Failed to refresh MCP servers: {0}": "Falha ao atualizar os servidores MCP: {0}",
+    "Switch between Antigravity/Codeium accounts": "Alternar entre contas Antigravity/Codeium",
+    "Save Current Profile": "Salvar perfil atual",
+    "Delete Profile": "Excluir perfil",
+    "Save current authentication state as a new profile": "Salvar estado de autenticação atual como novo perfil",
+    "Remove a saved profile": "Remover um perfil salvo",
+    "Select a profile to switch to or save current state": "Selecione um perfil para alternar ou salvar o estado atual",
+    "Enter profile name (e.g. \"Personal\")": "Digite o nome do perfil (ex. \"Pessoal\")",
+    "Name cannot be empty": "O nome não pode estar vazio",
+    "Profile \"{0}\" saved.": "Perfil \"{0}\" salvo.",
+    "Select profile to delete": "Selecione o perfil para excluir",
+    "Profile \"{0}\" deleted.": "Perfil \"{0}\" excluído.",
+    "Profile \"{0}\" applied. Reload required.": "Perfil \"{0}\" aplicado. Recarga necessária.",
+    "Failed to backup configuration: ": "Falha ao fazer backup da configuração: ",
+    "Failed to restore profile: {0}": "Falha ao restaurar perfil: {0}",
+    "Could not locate Antigravity configuration directory to back up.": "Não foi possível localizar o diretório de configuração do Antigravity para backup.",
+    "Could not locate Antigravity configuration directory.": "Não foi possível localizar o diretório de configuração do Antigravity.",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Perfil \"{0}\" aplicado. Reinicialização necessária. Você deve iniciar o Antigravity manualmente após o recarregamento da janela."
 }

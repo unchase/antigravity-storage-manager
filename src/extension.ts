@@ -204,6 +204,7 @@ export async function activate(context: vscode.ExtensionContext) {
             // Advanced / Tools Section
             items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
             items.push({ label: `$(globe) ${lm.t('Apply Proxy Settings')}`, description: lm.t('Configure and apply proxy settings'), command: `${EXT_NAME}.applyProxy` });
+            items.push({ label: `$(account) ${lm.t('Switch Profile')}`, description: lm.t('Switch between Antigravity/Codeium accounts'), command: `${EXT_NAME}.switchProfile` });
             items.push({ label: `$(trash) ${lm.t('Clear Cache')}`, description: lm.t('Clear temporary files and internal caches'), command: `${EXT_NAME}.clearCache` });
 
             // Post-process items to reflect auth state
@@ -470,6 +471,49 @@ export async function activate(context: vscode.ExtensionContext) {
                 profileManager = new ProfileManager(context);
             }
             await profileManager.showProfilePicker();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.debugProfile`, async () => {
+            if (!profileManager) {
+                profileManager = new ProfileManager(context);
+            }
+            await profileManager.debugProfileInfo();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.saveProfile`, async () => {
+            if (!profileManager) {
+                profileManager = new ProfileManager(context);
+            }
+            const name = await vscode.window.showInputBox({
+                placeHolder: LocalizationManager.getInstance().t('Enter profile name (e.g. "Personal")'),
+                validateInput: (value) => {
+                    return value && value.trim().length > 0 ? null : LocalizationManager.getInstance().t('Name cannot be empty');
+                }
+            });
+            if (name) {
+                try {
+                    await profileManager.saveProfile(name);
+                    vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Profile "{0}" saved.', name));
+                } catch (e: any) {
+                    vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to save profile: {0}', e.message));
+                }
+            }
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.deleteProfile`, async () => {
+            if (!profileManager) {
+                profileManager = new ProfileManager(context);
+            }
+            const profiles = await profileManager.loadProfiles();
+            const lm = LocalizationManager.getInstance();
+            const toDelete = await vscode.window.showQuickPick(profiles.map(p => p.name), {
+                placeHolder: lm.t('Select profile to delete')
+            });
+            if (toDelete) {
+                try {
+                    await profileManager.deleteProfile(toDelete);
+                    vscode.window.showInformationMessage(lm.t('Profile "{0}" deleted.', toDelete));
+                } catch (e: any) {
+                    vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to delete profile: {0}', e.message));
+                }
+            }
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.applyProxy`, async () => {
             const lm = LocalizationManager.getInstance();

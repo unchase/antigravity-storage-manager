@@ -302,6 +302,26 @@ export class GoogleAuthProvider {
             await this.saveTokens(this.tokens);
         } catch (error: any) {
             const lm = LocalizationManager.getInstance();
+            const msg = error.message || '';
+            const isInvalidGrant = msg.includes('invalid_grant') ||
+                (error.response && error.response.data && error.response.data.error === 'invalid_grant');
+
+            if (isInvalidGrant) {
+                console.warn('GoogleAuthProvider: Invalid grant detected. Signing out.');
+                await this.signOut();
+
+                const signIn = lm.t('Sign In');
+                const selection = await vscode.window.showWarningMessage(
+                    lm.t('Google Drive session expired. Please sign in again.'),
+                    signIn
+                );
+
+                if (selection === signIn) {
+                    this.signIn();
+                }
+                throw new Error(lm.t('Session expired. Please sign in again.'));
+            }
+
             vscode.window.showErrorMessage(lm.t('Failed to refresh token: {0}', error.message));
             // Clear tokens on refresh failure
             await this.signOut();

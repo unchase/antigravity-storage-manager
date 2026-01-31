@@ -560,5 +560,22 @@
     "No MCP servers configured": "Yapılandırılmış MCP sunucusu yok",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "MCP sunucuları ~/.gemini/antigravity/mcp/mcp_config.json dosyasında yapılandırılabilir",
     "Refresh MCP Servers": "MCP Sunucularını Yenile",
-    "Failed to refresh MCP servers: {0}": "MCP sunucuları yenilenemedi: {0}"
+    "Failed to refresh MCP servers: {0}": "MCP sunucuları yenilenemedi: {0}",
+    "Switch between Antigravity/Codeium accounts": "Antigravity/Codeium hesapları arasında geçiş yap",
+    "Save Current Profile": "Geçerli Profili Kaydet",
+    "Delete Profile": "Profili Sil",
+    "Save current authentication state as a new profile": "Geçerli kimlik doğrulama durumunu yeni profil olarak kaydet",
+    "Remove a saved profile": "Kayıtlı bir profili kaldır",
+    "Select a profile to switch to or save current state": "Geçiş yapılacak profili seçin veya geçerli durumu kaydedin",
+    "Enter profile name (e.g. \"Personal\")": "Profil adını girin (ör. \"Kişisel\")",
+    "Name cannot be empty": "Ad boş olamaz",
+    "Profile \"{0}\" saved.": "Profil \"{0}\" kaydedildi.",
+    "Select profile to delete": "Silinecek profili seçin",
+    "Profile \"{0}\" deleted.": "Profil \"{0}\" silindi.",
+    "Profile \"{0}\" applied. Reload required.": "Profil \"{0}\" uygulandı. Yeniden yükleme gerekli.",
+    "Failed to backup configuration: ": "Yapılandırma yedeklenemedi: ",
+    "Failed to restore profile: {0}": "Profil geri yüklenemedi: {0}",
+    "Could not locate Antigravity configuration directory to back up.": "Yedeklenecek Antigravity yapılandırma dizini bulunamadı.",
+    "Could not locate Antigravity configuration directory.": "Antigravity yapılandırma dizini bulunamadı.",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Profil \"{0}\" uygulandı. Yeniden başlatma gerekli. Pencere yeniden yüklendikten sonra Antigravity'yi manuel olarak başlatmalısınız."
 }

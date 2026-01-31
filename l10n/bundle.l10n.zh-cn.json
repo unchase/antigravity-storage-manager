@@ -560,5 +560,22 @@
     "No MCP servers configured": "未配置 MCP 服务器",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "可以在 ~/.gemini/antigravity/mcp/mcp_config.json 中配置 MCP 服务器",
     "Refresh MCP Servers": "刷新 MCP 服务器",
-    "Failed to refresh MCP servers: {0}": "刷新 MCP 服务器失败：{0}"
+    "Failed to refresh MCP servers: {0}": "刷新 MCP 服务器失败：{0}",
+    "Switch between Antigravity/Codeium accounts": "在Antigravity/Codeium帐户之间切换",
+    "Save Current Profile": "保存当前配置文件",
+    "Delete Profile": "删除配置文件",
+    "Save current authentication state as a new profile": "将当前身份验证状态保存为新配置文件",
+    "Remove a saved profile": "删除已保存的配置文件",
+    "Select a profile to switch to or save current state": "选择要切换到的配置文件或保存当前状态",
+    "Enter profile name (e.g. \"Personal\")": "输入配置文件名称 (例如 \"Personal\")",
+    "Name cannot be empty": "名称不能为空",
+    "Profile \"{0}\" saved.": "配置文件 \"{0}\" 已保存。",
+    "Select profile to delete": "选择要删除的配置文件",
+    "Profile \"{0}\" deleted.": "配置文件 \"{0}\" 已删除。",
+    "Profile \"{0}\" applied. Reload required.": "配置文件 \"{0}\" 已应用。需要重新加载。",
+    "Failed to backup configuration: ": "无法备份配置：",
+    "Failed to restore profile: {0}": "无法恢复配置文件：{0}",
+    "Could not locate Antigravity configuration directory to back up.": "找不到要备份的Antigravity配置目录。",
+    "Could not locate Antigravity configuration directory.": "找不到Antigravity配置目录。",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "配置文件 \"{0}\" 已应用。需要重新启动。窗口重新加载后，您必须手动启动 Antigravity。"
 }

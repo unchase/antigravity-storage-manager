@@ -37,13 +37,19 @@
     "antigravity.config.quota.warningThreshold": "Процентный порог для уровня предупреждения (Желтый) квоты (0-100). Квота ниже этого значения становится желтой.",
     "antigravity.config.quota.criticalThreshold": "Процентный порог для критического уровня (Оранжевый) квоты (0-100). Квота ниже этого значения становится оранжевой.",
     "antigravity.config.quota.dangerThreshold": "Процентный порог для уровня опасности (Красный) квоты (0-100). Квота ниже этого значения становится красной.",
-    "antigravity.command.switchProfile": "Переключить профиль VS Code",
+    "antigravity.command.switchProfile": "Переключить профиль",
     "antigravity.config.sync.enableCompression": "Включить сжатие (Gzip) перед шифрованием для уменьшения размера данных на Google Drive.",
     "antigravity.command.applyProxy": "Применить настройки прокси",
     "antigravity.config.proxy.url": "URL прокси-сервера",
     "antigravity.config.proxy.strictSSL": "Включить строгую проверку SSL для прокси (по умолчанию: true)",
     "antigravity.config.proxy.username": "Имя пользователя прокси (опционально)",
     "antigravity.config.proxy.password": "Пароль прокси (опционально)",
+    "antigravity.command.saveProfile": "Сохранить профиль",
+    "antigravity.command.deleteProfile": "Удалить профиль",
     "antigravity.command.openCurrentConversation": "Просмотр текущего диалога",
-    "antigravity.command.forceSync": "Force Sync"
+    "antigravity.command.forceSync": "Force Sync",
+    "antigravity.config.profilesDirectory": "Папка для профилей",
+    "antigravity.config.profilesDirectory.md": "Абсолютный путь к папке для хранения профилей. Если пусто, используется стандартное хранилище расширения. Поддерживает `~` для домашней папки.",
+    "antigravity.auth.sessionExpired": "Сессия Google Drive истекла. Пожалуйста, войдите снова.",
+    "antigravity.auth.signIn": "Войти"
 }

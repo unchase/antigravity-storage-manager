@@ -37,13 +37,19 @@
     "antigravity.config.quota.warningThreshold": "Umbral de porcentaje para el nivel de advertencia (amarillo) de cuota (0-100). La cuota por debajo de este valor es amarilla.",
     "antigravity.config.quota.criticalThreshold": "Umbral de porcentaje para el nivel crítico (naranja) de cuota (0-100). La cuota por debajo de este valor es naranja.",
     "antigravity.config.quota.dangerThreshold": "Umbral de porcentaje para el nivel de peligro (rojo) de cuota (0-100). La cuota por debajo de este valor es roja.",
-    "antigravity.command.switchProfile": "Cambiar perfil de VS Code",
+    "antigravity.command.switchProfile": "Cambiar perfil",
     "antigravity.config.sync.enableCompression": "Habilitar compresión (Gzip) antes del cifrado para reducir el tamaño de los datos en Google Drive.",
     "antigravity.command.applyProxy": "Aplicar configuración de proxy",
     "antigravity.config.proxy.url": "URL del servidor proxy",
     "antigravity.config.proxy.strictSSL": "Habilitar SSL estricto para proxy (predeterminado: true)",
     "antigravity.config.proxy.username": "Nombre de usuario del proxy (Opcional)",
     "antigravity.config.proxy.password": "Contraseña del proxy (Opcional)",
+    "antigravity.command.saveProfile": "Guardar perfil",
+    "antigravity.command.deleteProfile": "Eliminar perfil",
     "antigravity.command.openCurrentConversation": "Ver conversación actual",
-    "antigravity.command.forceSync": "Forzar Sincronización"
+    "antigravity.command.forceSync": "Forzar Sincronización",
+    "antigravity.config.profilesDirectory": "Directorio personalizado para perfiles",
+    "antigravity.config.profilesDirectory.md": "Ruta absoluta a un directorio personalizado para almacenar perfiles. Si está vacío, se utiliza el almacenamiento predeterminado. Admite `~` para el directorio de inicio.",
+    "antigravity.auth.sessionExpired": "La sesión de Google Drive ha caducado. Por favor, inicie sesión de nuevo.",
+    "antigravity.auth.signIn": "Iniciar sesión"
 }

@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Securely sync Antigravity Conversations with Google Drive. Parallel sync, quota monitoring, local backups, and advanced export/import tools.",
-    "version": "0.10.3",
+    "version": "0.11.0",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -148,6 +148,23 @@
                 "category": "%antigravity.submenu.label%"
             },
             {
+                "command": "antigravity-storage-manager.saveProfile",
+                "title": "%antigravity.command.saveProfile%",
+                "icon": "$(save)",
+                "category": "%antigravity.submenu.label%"
+            },
+            {
+                "command": "antigravity-storage-manager.deleteProfile",
+                "title": "%antigravity.command.deleteProfile%",
+                "icon": "$(trash)",
+                "category": "%antigravity.submenu.label%"
+            },
+            {
+                "command": "antigravity-storage-manager.debugProfile",
+                "title": "Debug Profile Paths",
+                "category": "Antigravity (Debug)"
+            },
+            {
                 "command": "antigravity-storage-manager.openCurrentConversation",
                 "title": "%antigravity.command.openCurrentConversation%",
                 "icon": "$(open-preview)",
@@ -197,6 +214,12 @@
                 },
                 {
                     "command": "antigravity-storage-manager.switchProfile"
+                },
+                {
+                    "command": "antigravity-storage-manager.saveProfile"
+                },
+                {
+                    "command": "antigravity-storage-manager.deleteProfile"
                 }
             ],
             "antigravity-storage-manager.submenu": [
@@ -243,6 +266,14 @@
                 {
                     "command": "antigravity-storage-manager.switchProfile",
                     "group": "5_tools@1"
+                },
+                {
+                    "command": "antigravity-storage-manager.saveProfile",
+                    "group": "5_tools@2"
+                },
+                {
+                    "command": "antigravity-storage-manager.deleteProfile",
+                    "group": "5_tools@3"
                 }
             ],
             "view/title": [
@@ -446,6 +477,12 @@
                     "type": "boolean",
                     "default": false,
                     "description": "%antigravity.config.showCreditsBalance%"
+                },
+                "antigravity-storage-manager.profilesDirectory": {
+                    "type": "string",
+                    "default": "",
+                    "description": "%antigravity.config.profilesDirectory%",
+                    "markdownDescription": "%antigravity.config.profilesDirectory.md%"
                 },
                 "antigravity-storage-manager.quota.historyRetentionDays": {
                     "type": "number",

@@ -560,5 +560,22 @@
     "No MCP servers configured": "Nie skonfigurowano serwerów MCP",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "Serwery MCP można skonfigurować w ~/.gemini/antigravity/mcp/mcp_config.json",
     "Refresh MCP Servers": "Odśwież serwery MCP",
-    "Failed to refresh MCP servers: {0}": "Nie udało się odświeżyć serwerów MCP: {0}"
+    "Failed to refresh MCP servers: {0}": "Nie udało się odświeżyć serwerów MCP: {0}",
+    "Switch between Antigravity/Codeium accounts": "Przełączaj między kontami Antigravity/Codeium",
+    "Save Current Profile": "Zapisz bieżący profil",
+    "Delete Profile": "Usuń profil",
+    "Save current authentication state as a new profile": "Zapisz bieżący stan uwierzytelniania jako nowy profil",
+    "Remove a saved profile": "Usuń zapisany profil",
+    "Select a profile to switch to or save current state": "Wybierz profil do przełączenia lub zapisz bieżący stan",
+    "Enter profile name (e.g. \"Personal\")": "Wprowadź nazwę profilu (np. \"Osobisty\")",
+    "Name cannot be empty": "Nazwa nie może być pusta",
+    "Profile \"{0}\" saved.": "Profil \"{0}\" zapisany.",
+    "Select profile to delete": "Wybierz profil do usunięcia",
+    "Profile \"{0}\" deleted.": "Profil \"{0}\" usunięty.",
+    "Profile \"{0}\" applied. Reload required.": "Profil \"{0}\" zastosowany. Wymagane przeładowanie.",
+    "Failed to backup configuration: ": "Nie udało się wykonać kopii zapasowej konfiguracji: ",
+    "Failed to restore profile: {0}": "Nie udało się przywrócić profilu: {0}",
+    "Could not locate Antigravity configuration directory to back up.": "Nie można zlokalizować katalogu konfiguracji Antigravity do kopii zapasowej.",
+    "Could not locate Antigravity configuration directory.": "Nie można zlokalizować katalogu konfiguracji Antigravity.",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Zastosowano profil \"{0}\". Wymagane ponowne uruchomienie. Musisz ręcznie uruchomić Antigravity po przeładowaniu okna."
 }

@@ -560,5 +560,22 @@
     "No MCP servers configured": "Aucun serveur MCP configuré",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "Les serveurs MCP peuvent être configurés dans ~/.gemini/antigravity/mcp/mcp_config.json",
     "Refresh MCP Servers": "Actualiser les serveurs MCP",
-    "Failed to refresh MCP servers: {0}": "Échec de l'actualisation des serveurs MCP : {0}"
+    "Failed to refresh MCP servers: {0}": "Échec de l'actualisation des serveurs MCP : {0}",
+    "Switch between Antigravity/Codeium accounts": "Basculer entre les comptes Antigravity/Codeium",
+    "Save Current Profile": "Enregistrer le profil actuel",
+    "Delete Profile": "Supprimer le profil",
+    "Save current authentication state as a new profile": "Enregistrer l'état d'authentification actuel comme nouveau profil",
+    "Remove a saved profile": "Supprimer un profil enregistré",
+    "Select a profile to switch to or save current state": "Sélectionnez un profil vers lequel basculer ou enregistrez l'état actuel",
+    "Enter profile name (e.g. \"Personal\")": "Entrez le nom du profil (ex. \"Personnel\")",
+    "Name cannot be empty": "Le nom ne peut pas être vide",
+    "Profile \"{0}\" saved.": "Profil \"{0}\" enregistré.",
+    "Select profile to delete": "Sélectionner le profil à supprimer",
+    "Profile \"{0}\" deleted.": "Profil \"{0}\" supprimé.",
+    "Profile \"{0}\" applied. Reload required.": "Profil \"{0}\" appliqué. Rechargement requis.",
+    "Failed to backup configuration: ": "Échec de la sauvegarde de la configuration : ",
+    "Failed to restore profile: {0}": "Échec de la restauration du profil : {0}",
+    "Could not locate Antigravity configuration directory to back up.": "Impossible de localiser le répertoire de configuration Antigravity pour la sauvegarde.",
+    "Could not locate Antigravity configuration directory.": "Impossible de localiser le répertoire de configuration Antigravity.",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Profil \"{0}\" appliqué. Redémarrage requis. Vous devez démarrer manuellement Antigravity après le rechargement de la fenêtre."
 }

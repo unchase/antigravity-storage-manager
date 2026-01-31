@@ -293,6 +293,17 @@ export class SyncStatsWebview {
                     </div>
                 </div>
 
+                <div class="section-title">${lm.t('MCP Servers')}</div>
+                <div class="storage-section" style="margin-bottom: 40px; min-height: 100px;">
+                     <div class="skeleton-row">
+                        <div class="skeleton" style="width: 40px; height: 40px; border-radius: 50%;"></div>
+                        <div style="flex: 1;">
+                            <div class="skeleton skeleton-text" style="width: 30%;"></div>
+                            <div class="skeleton skeleton-text sm" style="width: 60%;"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="section-title">${lm.t('Devices & Active Sessions')}</div>
                 <div class="data-container">
                     ${[1, 2, 3].map(() => `
@@ -851,13 +862,17 @@ export class SyncStatsWebview {
                 ` : ''}
 
                 ${data.mcpServerStates && data.mcpServerStates.length > 0 ? `
-                <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
-                    <span>🔌 ${lm.t('MCP Servers')}</span>
-                    <button class="btn" onclick="postCommand('refreshMcp')" title="${lm.t('Refresh MCP Servers')}" style="padding: 4px 10px; font-size: 11px;">
+                <div id="mcp-header" class="group-header" onclick="toggleMcp(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 16px;">
+                    <span style="display: flex; align-items: center;">
+                        <span class="collapse-icon">▼</span>
+                        🔌 ${lm.t('MCP Servers')}
+                    </span>
+                    <button class="btn" onclick="event.stopPropagation(); postCommand('refreshMcp')" title="${lm.t('Refresh MCP Servers')}" style="padding: 4px 10px; font-size: 11px;">
                         🔄 ${lm.t('Refresh')}
                     </button>
                 </div>
-                <div class="data-container" style="background: linear-gradient(135deg, var(--card-bg), rgba(138,43,226,0.05)); border: 1px solid rgba(138,43,226,0.2);">
+                <div id="mcp-container-wrapper" style="display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s ease-out; overflow: hidden;">
+                    <div id="mcp-container" class="data-container" style="min-height: 0; background: linear-gradient(135deg, var(--card-bg), rgba(138,43,226,0.05)); border: 1px solid rgba(138,43,226,0.2); margin-bottom: 16px;">
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; padding: 16px;">
                         ${data.mcpServerStates.map(server => {
                     const isConnected = server.status === 'CONNECTED' || server.status === 'connected';
@@ -969,13 +984,17 @@ export class SyncStatsWebview {
                     </div>
                 </div>
                 ` : data.mcpServerStates !== undefined ? `
-                <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
-                    <span>🔌 ${lm.t('MCP Servers')}</span>
-                    <button class="btn" onclick="postCommand('refreshMcp')" title="${lm.t('Refresh MCP Servers')}" style="padding: 4px 10px; font-size: 11px;">
+                <div id="mcp-header" class="group-header" onclick="toggleMcp(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 16px;">
+                    <span style="display: flex; align-items: center;">
+                        <span class="collapse-icon">▼</span>
+                        🔌 ${lm.t('MCP Servers')}
+                    </span>
+                    <button class="btn" onclick="event.stopPropagation(); postCommand('refreshMcp')" title="${lm.t('Refresh MCP Servers')}" style="padding: 4px 10px; font-size: 11px;">
                         🔄 ${lm.t('Refresh')}
                     </button>
                 </div>
-                <div class="data-container" style="padding: 24px; text-align: center; opacity: 0.6;">
+                <div id="mcp-container-wrapper" style="display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s ease-out; overflow: hidden;">
+                    <div id="mcp-container" class="data-container" style="min-height: 0; padding: 24px; text-align: center; opacity: 0.6; margin-bottom: 16px;">
                     <div style="font-size: 32px; margin-bottom: 8px;">🔌</div>
                     <div>${lm.t('No MCP servers configured')}</div>
                     <div style="font-size: 11px; margin-top: 8px; opacity: 0.7;">
@@ -1577,6 +1596,9 @@ export class SyncStatsWebview {
                     } catch (e) { console.warn('Failed to restore collapse state', e); }
                 })();
                 
+
+
+                
                 function toggleFiles(id) {
                     const el = document.getElementById('files-' + id);
                     if (el) {
@@ -1652,6 +1674,45 @@ export class SyncStatsWebview {
                     tooltip.style.left = left + 'px';
                     tooltip.style.top = top + 'px';
                 }
+
+                function toggleMcp(header) {
+                    const wrapper = document.getElementById('mcp-container-wrapper');
+                    
+                    if (header && wrapper) {
+                        const isCurrentlyVisible = wrapper.style.gridTemplateRows !== '0fr';
+                        
+                        if (isCurrentlyVisible) {
+                            // Collapse
+                            header.classList.add('collapsed');
+                            wrapper.style.gridTemplateRows = '0fr';
+                            localStorage.setItem('syncStats_mcpState', 'collapsed');
+                        } else {
+                            // Expand
+                            header.classList.remove('collapsed');
+                            wrapper.style.gridTemplateRows = '1fr';
+                            localStorage.setItem('syncStats_mcpState', 'expanded');
+                        }
+                    }
+                }
+
+                // Restore MCP state
+                (function restoreMcpState() {
+                    const state = localStorage.getItem('syncStats_mcpState');
+                    const wrapper = document.getElementById('mcp-container-wrapper');
+                    const header = document.getElementById('mcp-header');
+                    
+                    // Logic: Default is Expanded (No 'collapsed' class).
+                    if (state === 'collapsed') {
+                        if (header) header.classList.add('collapsed');
+                        if (wrapper) wrapper.style.gridTemplateRows = '0fr';
+                    } else {
+                        // Expanded (Default).
+                        if (state === 'expanded') {
+                             if (header) header.classList.remove('collapsed');
+                             if (wrapper) wrapper.style.gridTemplateRows = '1fr';
+                        }
+                    }
+                })();
             </script>
         </body>
         </html>`;

@@ -37,13 +37,19 @@
     "antigravity.config.quota.warningThreshold": "Prozentschwelle für Warnstufe (Gelb) der Quote (0-100). Quote unter diesem Wert ist Gelb.",
     "antigravity.config.quota.criticalThreshold": "Prozentschwelle für kritische Stufe (Orange) der Quote (0-100). Quote unter diesem Wert ist Orange.",
     "antigravity.config.quota.dangerThreshold": "Prozentschwelle für Gefahrenstufe (Rot) der Quote (0-100). Quote unter diesem Wert ist Rot.",
-    "antigravity.command.switchProfile": "VS Code Profil wechseln",
+    "antigravity.command.switchProfile": "Profil wechseln",
     "antigravity.config.sync.enableCompression": "Komprimierung (Gzip) vor der Verschlüsselung aktivieren, um die Datengröße auf Google Drive zu reduzieren.",
     "antigravity.command.applyProxy": "Proxy-Einstellungen anwenden",
     "antigravity.config.proxy.url": "Proxy-Server-URL",
     "antigravity.config.proxy.strictSSL": "Strenge SSL-Prüfung für Proxy aktivieren (Standard: true)",
     "antigravity.config.proxy.username": "Proxy-Benutzername (Optional)",
     "antigravity.config.proxy.password": "Proxy-Passwort (Optional)",
+    "antigravity.command.saveProfile": "Profil speichern",
+    "antigravity.command.deleteProfile": "Profil löschen",
     "antigravity.command.openCurrentConversation": "Aktuelle Konversation anzeigen",
-    "antigravity.command.forceSync": "Synchronisierung erzwingen"
+    "antigravity.command.forceSync": "Synchronisierung erzwingen",
+    "antigravity.config.profilesDirectory": "Benutzerdefinierter Pfad für Profile",
+    "antigravity.config.profilesDirectory.md": "Absoluter Pfad zu einem benutzerdefinierten Verzeichnis zum Speichern von Profilen. Wenn leer, wird der Standardspeicher verwendet. Unterstützt `~` für das Home-Verzeichnis.",
+    "antigravity.auth.sessionExpired": "Google Drive-Sitzung abgelaufen. Bitte melden Sie sich erneut an.",
+    "antigravity.auth.signIn": "Anmelden"
 }

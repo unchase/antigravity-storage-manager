@@ -178,6 +178,32 @@ If you are behind a corporate proxy, you can configure Antigravity to route its 
 
 ---
 
+## Profile Switching (New!)
+
+![Profile Settings](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/profile_settings.png)
+
+*(Fig. 6: Custom Profile Storage Setting)*
+
+Easily switch between different Antigravity accounts (e.g., Personal vs Work) with separate quotas, limits, and authentication states.
+
+### Features
+- **Multi-Account Support**: Maintain distinct authentication sessions for different Google accounts.
+- **Persistent Storage**: Configure a custom directory to store your profiles, ensuring they survive extension updates or uninstalls.
+- **Quick Switch**: Use the `Antigravity Storage: Switch Profile` command to instantly toggle between environments.
+
+### Usage
+1. Run `Antigravity Storage: Switch Profile` from the Command Palette.
+2. Select **"Save Current Profile"** to store your current session.
+3. Select **"Create New Profile"** (or switch to an existing one) to start fresh.
+4. **Note**: A window reload is required to apply the profile switch.
+
+### Configuration
+By default, profiles are stored in the extension's global storage. To prevent data loss upon uninstallation, set a custom path in settings:
+- **Setting**: `antigravity.profiles.profilesDirectory`
+- **Value**: Absolute path to your desired folder (e.g., `C:\MyProfiles\Antigravity`).
+
+---
+
 ## Google Account Data (Advanced)
 
 ![Google Account Data](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/google_account_data.png)

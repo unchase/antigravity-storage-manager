@@ -560,5 +560,22 @@
     "No MCP servers configured": "Nessun server MCP configurato",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "I server MCP possono essere configurati in ~/.gemini/antigravity/mcp/mcp_config.json",
     "Refresh MCP Servers": "Aggiorna server MCP",
-    "Failed to refresh MCP servers: {0}": "Impossibile aggiornare i server MCP: {0}"
+    "Failed to refresh MCP servers: {0}": "Impossibile aggiornare i server MCP: {0}",
+    "Switch between Antigravity/Codeium accounts": "Passa tra account Antigravity/Codeium",
+    "Save Current Profile": "Salva profilo corrente",
+    "Delete Profile": "Elimina profilo",
+    "Save current authentication state as a new profile": "Salva lo stato di autenticazione corrente come nuovo profilo",
+    "Remove a saved profile": "Rimuovi un profilo salvato",
+    "Select a profile to switch to or save current state": "Seleziona un profilo a cui passare o salva lo stato corrente",
+    "Enter profile name (e.g. \"Personal\")": "Inserisci nome profilo (es. \"Personale\")",
+    "Name cannot be empty": "Il nome non può essere vuoto",
+    "Profile \"{0}\" saved.": "Profilo \"{0}\" salvato.",
+    "Select profile to delete": "Seleziona profilo da eliminare",
+    "Profile \"{0}\" deleted.": "Profilo \"{0}\" eliminato.",
+    "Profile \"{0}\" applied. Reload required.": "Profilo \"{0}\" applicato. Ricarica richiesta.",
+    "Failed to backup configuration: ": "Impossibile eseguire il backup della configurazione: ",
+    "Failed to restore profile: {0}": "Impossibile ripristinare il profilo: {0}",
+    "Could not locate Antigravity configuration directory to back up.": "Impossibile individuare la directory di configurazione Antigravity per il backup.",
+    "Could not locate Antigravity configuration directory.": "Impossibile individuare la directory di configurazione Antigravity.",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Profilo \"{0}\" applicato. Riavvio richiesto. È necessario avviare manualmente Antigravity dopo il ricaricamento della finestra."
 }

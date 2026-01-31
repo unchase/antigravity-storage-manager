@@ -560,5 +560,22 @@
     "No MCP servers configured": "MCP серверы не настроены",
     "MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json": "MCP серверы можно настроить в ~/.gemini/antigravity/mcp/mcp_config.json",
     "Refresh MCP Servers": "Обновить MCP серверы",
-    "Failed to refresh MCP servers: {0}": "Не удалось обновить MCP серверы: {0}"
+    "Failed to refresh MCP servers: {0}": "Не удалось обновить MCP серверы: {0}",
+    "Switch between Antigravity/Codeium accounts": "Переключение между аккаунтами Antigravity/Codeium",
+    "Save Current Profile": "Сохранить текущий профиль",
+    "Delete Profile": "Удалить профиль",
+    "Save current authentication state as a new profile": "Сохранить текущее состояние аутентификации как новый профиль",
+    "Remove a saved profile": "Удалить сохраненный профиль",
+    "Select a profile to switch to or save current state": "Выберите профиль для переключения или сохраните текущее состояние",
+    "Enter profile name (e.g. \"Personal\")": "Введите имя профиля (например, \"Личный\")",
+    "Name cannot be empty": "Имя не может быть пустым",
+    "Profile \"{0}\" saved.": "Профиль \"{0}\" сохранен.",
+    "Select profile to delete": "Выберите профиль для удаления",
+    "Profile \"{0}\" deleted.": "Профиль \"{0}\" удален.",
+    "Profile \"{0}\" applied. Reload required.": "Профиль \"{0}\" применен. Требуется перезагрузка.",
+    "Failed to backup configuration: ": "Не удалось создать резервную копию конфигурации: ",
+    "Failed to restore profile: {0}": "Не удалось восстановить профиль: {0}",
+    "Could not locate Antigravity configuration directory to back up.": "Не удалось найти каталог конфигурации Antigravity для резервного копирования.",
+    "Could not locate Antigravity configuration directory.": "Не удалось найти каталог конфигурации Antigravity.",
+    "Profile \"{0}\" applied. Restart required. You must manually start Antigravity after the window reloads.": "Профиль \"{0}\" применен. Требуется перезагрузка. Необходимо вручную запустить Antigravity после перезагрузки окна."
 }
