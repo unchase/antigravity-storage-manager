@@ -128,13 +128,22 @@ export class QuotaManager {
             await this.updateWebview(snapshot);
 
             return snapshot;
-        } catch {
-            // const lm = LocalizationManager.getInstance();
-            // Don't spam notifications on auto-poll, but show on initial or manual
-            // Actually usually we just log or show indicator
-            // vscode.window.showErrorMessage(lm.t('QuotaManager: Fetch failed ({0})', error.message));
+        } catch (error: any) {
+            const msg = error?.message || String(error);
+            console.error('QuotaManager error:', msg);
+
             if (isInitial) {
-                this.statusBar.showError('Fetch failed');
+                let userMsg = 'Fetch failed';
+                if (msg.includes('Antigravity Language Server not found')) {
+                    userMsg = 'Antigravity not found';
+                } else if (msg.includes('ECONNREFUSED')) {
+                    userMsg = 'Connection refused';
+                } else if (msg.includes('HTTP error')) {
+                    userMsg = 'Server error';
+                } else if (msg.includes('timeout')) {
+                    userMsg = 'Timeout';
+                }
+                this.statusBar.showError(userMsg);
             }
             return null;
         }

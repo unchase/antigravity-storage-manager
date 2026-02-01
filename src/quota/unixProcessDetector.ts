@@ -142,7 +142,7 @@ export class UnixProcessDetector implements IPlatformStrategy {
         }
     }
 
-    parseListeningPorts(stdout: string): number[] {
+    parseListeningPorts(stdout: string, _pid: number): number[] {
         const ports: number[] = [];
 
         if (!stdout || stdout.trim().length === 0) {

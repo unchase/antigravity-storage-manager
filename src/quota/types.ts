@@ -60,7 +60,8 @@ export interface IPlatformStrategy {
     getProcessListCommand(processName: string): string;
     parseProcessInfo(stdout: string): { pid: number; extensionPort: number; csrfToken: string } | null;
     getPortListCommand(pid: number): string;
-    parseListeningPorts(stdout: string): number[];
+    getFallbackPortListCommand?(pid: number): string;
+    parseListeningPorts(stdout: string, pid: number): number[];
     getErrorMessages(): { processNotFound: string; commandNotAvailable: string; requirements: string[] };
     ensurePortCommandAvailable(): Promise<void>;
 }

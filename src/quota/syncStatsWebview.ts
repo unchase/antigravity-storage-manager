@@ -374,6 +374,12 @@ export class SyncStatsWebview {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizeUnits[i];
         };
 
+        const shortenTitle = (title: string, length: number = 100) => {
+            if (!title) return '';
+            if (title.length <= length) return title;
+            return title.substring(0, length).trim() + '...';
+        };
+
         const syncedCount = data.localConversations.filter(l => data.remoteManifest.conversations.some(r => r.id === l.id)).length;
         const localPct = data.localCount > 0 ? (syncedCount / data.localCount) * 100 : 0;
         const remotePct = data.remoteCount > 0 ? (syncedCount / data.remoteCount) * 100 : 0;
@@ -518,7 +524,7 @@ export class SyncStatsWebview {
                 .storage-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); transition: width 1s; }
 
                 /* Tables & Lists */
-                .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: var(--fg); opacity: 0.9; }
+                .section-title { font-size: 18px; font-weight: 600; margin: 40px 0 20px 0; color: var(--fg); opacity: 0.9; }
 
                 .data-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 40px; }
                 
@@ -598,7 +604,17 @@ export class SyncStatsWebview {
                 .skeleton-row { display: flex; gap: 24px; margin-bottom: 24px; }
                 .skeleton-table-row { height: 60px; border-bottom: 1px solid var(--border); }
 
-                .link { color: var(--link); text-decoration: none; font-weight: 600; cursor: pointer; }
+                .link { 
+                    color: var(--link); 
+                    text-decoration: none; 
+                    font-weight: 600; 
+                    cursor: pointer; 
+                    display: block;
+                    max-width: 600px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
                 .link:hover { text-decoration: underline; }
 
                 .file-list-row { display: none; background: rgba(0,0,0,0.1); }
@@ -862,7 +878,7 @@ export class SyncStatsWebview {
                 ` : ''}
 
                 ${data.mcpServerStates && data.mcpServerStates.length > 0 ? `
-                <div id="mcp-header" class="group-header" onclick="toggleMcp(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 16px;">
+                <div id="mcp-header" class="group-header" onclick="toggleMcp(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border); margin-top: 40px;">
                     <span style="display: flex; align-items: center;">
                         <span class="collapse-icon">▼</span>
                         🔌 ${lm.t('MCP Servers')}
@@ -871,10 +887,11 @@ export class SyncStatsWebview {
                         🔄 ${lm.t('Refresh')}
                     </button>
                 </div>
-                <div id="mcp-container-wrapper" style="display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s ease-out; overflow: hidden;">
-                    <div id="mcp-container" class="data-container" style="min-height: 0; background: linear-gradient(135deg, var(--card-bg), rgba(138,43,226,0.05)); border: 1px solid rgba(138,43,226,0.2); margin-bottom: 16px;">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; padding: 16px;">
-                        ${data.mcpServerStates.map(server => {
+                <div id="mcp-container-wrapper" style="display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s ease-out; overflow: hidden; margin-bottom: 40px;">
+                    <div style="min-height: 0;">
+                        <div id="mcp-container" class="data-container" style="background: linear-gradient(135deg, var(--card-bg), rgba(138,43,226,0.05)); border: 1px solid rgba(138,43,226,0.2); margin-top: 16px; margin-bottom: 0;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; padding: 16px;">
+                                ${data.mcpServerStates.map(server => {
                     const isConnected = server.status === 'CONNECTED' || server.status === 'connected';
                     const isPending = server.status === 'PENDING' || server.status === 'pending';
                     const isError = server.status === 'ERROR' || server.status === 'error';
@@ -883,108 +900,56 @@ export class SyncStatsWebview {
                     const resourcesCount = server.resources?.length || 0;
 
                     return `
-                        <div class="mcp-server-card" style="
-                            background: rgba(255,255,255,0.03);
-                            border: 1px solid rgba(255,255,255,0.08);
-                            border-radius: 10px;
-                            padding: 16px;
-                            transition: all 0.2s;
-                            cursor: default;
-                        " onmouseover="this.style.background='rgba(255,255,255,0.06)'; this.style.transform='translateY(-2px)';" 
-                           onmouseout="this.style.background='rgba(255,255,255,0.03)'; this.style.transform='translateY(0)';">
-                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                                <span style="font-size: 18px;">${statusIcon}</span>
-                                <div style="flex: 1; min-width: 0;">
-                                    <div style="font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                        ${server.serverName || server.serverId}
-                                    </div>
-                                    <div style="font-size: 10px; opacity: 0.5; font-family: monospace;">
-                                        ${server.serverId.length > 24 ? server.serverId.substring(0, 24) + '...' : server.serverId}
-                                    </div>
-                                </div>
-                                <span class="badge ${isConnected ? 'success' : isError ? '' : ''}" style="
-                                    background: ${isConnected ? 'var(--success)' : isError ? 'var(--error)' : 'rgba(255,255,255,0.1)'};
-                                    color: ${isConnected || isError ? '#fff' : 'inherit'};
-                                    font-size: 9px;
-                                    padding: 2px 6px;
-                                ">${isConnected ? lm.t('Connected') : isError ? lm.t('Error') : isPending ? lm.t('Pending') : lm.t('Disconnected')}</span>
-                            </div>
-                            
-                            <div style="display: flex; gap: 16px; margin-bottom: ${server.lastError ? '12px' : '0'};">
-                                <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.7;">
-                                    <span>🛠️</span>
-                                    <span><strong>${toolsCount}</strong> ${lm.t('tools')}</span>
-                                </div>
-                                ${resourcesCount > 0 ? `
-                                <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.7;">
-                                    <span>📦</span>
-                                    <span><strong>${resourcesCount}</strong> ${lm.t('resources')}</span>
-                                </div>
-                                ` : ''}
-                            </div>
-                            
-                            ${server.lastError ? `
-                            <div style="
-                                font-size: 11px;
-                                color: var(--error);
-                                background: rgba(255,0,0,0.1);
-                                padding: 8px 10px;
-                                border-radius: 6px;
-                                border-left: 3px solid var(--error);
-                                word-break: break-word;
-                            ">
-                                ⚠️ ${server.lastError}
-                            </div>
-                            ` : ''}
-                            
-                            ${toolsCount > 0 && server.tools ? `
-                            <details style="margin-top: 12px;">
-                                <summary style="
-                                    cursor: pointer; 
-                                    font-size: 11px; 
-                                    opacity: 0.7; 
-                                    user-select: none;
-                                    padding: 4px 0;
-                                ">${lm.t('Show Tools')}</summary>
-                                <div style="
-                                    margin-top: 8px;
-                                    padding: 8px;
-                                    background: rgba(0,0,0,0.15);
-                                    border-radius: 6px;
-                                    max-height: 150px;
-                                    overflow-y: auto;
-                                ">
-                                    ${server.tools.slice(0, 15).map(tool => `
-                                        <div style="
-                                            display: flex;
-                                            align-items: flex-start;
-                                            gap: 8px;
-                                            padding: 4px 0;
-                                            border-bottom: 1px solid rgba(255,255,255,0.05);
-                                            font-size: 11px;
-                                        ">
-                                            <span style="opacity: 0.5;">•</span>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <div style="font-weight: 500; color: var(--link);">${tool.name}</div>
-                                                ${tool.description ? `<div style="opacity: 0.5; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${tool.description}</div>` : ''}
-                                            </div>
+                                <div class="mcp-server-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 16px; transition: all 0.2s; cursor: default;" onmouseover="this.style.background='rgba(255,255,255,0.06)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.background='rgba(255,255,255,0.03)'; this.style.transform='translateY(0)';">
+                                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                        <span style="font-size: 18px;">${statusIcon}</span>
+                                        <div style="flex: 1; min-width: 0;">
+                                            <div style="font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${server.serverName || server.serverId}</div>
+                                            <div style="font-size: 10px; opacity: 0.5; font-family: monospace;">${server.serverId.length > 24 ? server.serverId.substring(0, 24) + '...' : server.serverId}</div>
                                         </div>
-                                    `).join('')}
-                                    ${server.tools.length > 15 ? `
-                                        <div style="font-size: 10px; opacity: 0.5; padding-top: 6px; text-align: center;">
-                                            +${server.tools.length - 15} ${lm.t('more')}...
+                                        <span class="badge ${isConnected ? 'success' : isError ? '' : ''}" style="background: ${isConnected ? 'var(--success)' : isError ? 'var(--error)' : 'rgba(255,255,255,0.1)'}; color: ${isConnected || isError ? '#fff' : 'inherit'}; font-size: 9px; padding: 2px 6px;">${isConnected ? lm.t('Connected') : isError ? lm.t('Error') : isPending ? lm.t('Pending') : lm.t('Disconnected')}</span>
+                                    </div>
+                                    <div style="display: flex; gap: 16px; margin-bottom: ${server.lastError ? '12px' : '0'};">
+                                        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.7;">
+                                            <span>🛠️</span>
+                                            <span><strong>${toolsCount}</strong> ${lm.t('tools')}</span>
                                         </div>
+                                        ${resourcesCount > 0 ? `
+                                        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.7;">
+                                            <span>📦</span>
+                                            <span><strong>${resourcesCount}</strong> ${lm.t('resources')}</span>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                    ${server.lastError ? `
+                                    <div style="font-size: 11px; color: var(--error); background: rgba(255,0,0,0.1); padding: 8px 10px; border-radius: 6px; border-left: 3px solid var(--error); word-break: break-word;">⚠️ ${server.lastError}</div>
+                                    ` : ''}
+                                    ${toolsCount > 0 && server.tools ? `
+                                    <details style="margin-top: 12px;">
+                                        <summary style="cursor: pointer; font-size: 11px; opacity: 0.7; user-select: none; padding: 4px 0;">${lm.t('Show Tools')}</summary>
+                                        <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.15); border-radius: 6px; max-height: 150px; overflow-y: auto;">
+                                            ${server.tools.slice(0, 15).map(tool => `
+                                                <div style="display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 11px;">
+                                                    <span style="opacity: 0.5;">•</span>
+                                                    <div style="flex: 1; min-width: 0;">
+                                                        <div style="font-weight: 500; color: var(--link);">${tool.name}</div>
+                                                        ${tool.description ? `<div style="opacity: 0.5; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${tool.description}</div>` : ''}
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                            ${server.tools.length > 15 ? `<div style="font-size: 10px; opacity: 0.5; padding-top: 6px; text-align: center;">+${server.tools.length - 15} ${lm.t('more')}...</div>` : ''}
+                                        </div>
+                                    </details>
                                     ` : ''}
                                 </div>
-                            </details>
-                            ` : ''}
-                        </div>
-                    `;
+                                `;
                 }).join('')}
+                            </div>
+                        </div>
                     </div>
                 </div>
                 ` : data.mcpServerStates !== undefined ? `
-                <div id="mcp-header" class="group-header" onclick="toggleMcp(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 16px;">
+                <div id="mcp-header" class="group-header" onclick="toggleMcp(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border); margin-top: 40px;">
                     <span style="display: flex; align-items: center;">
                         <span class="collapse-icon">▼</span>
                         🔌 ${lm.t('MCP Servers')}
@@ -993,15 +958,20 @@ export class SyncStatsWebview {
                         🔄 ${lm.t('Refresh')}
                     </button>
                 </div>
-                <div id="mcp-container-wrapper" style="display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s ease-out; overflow: hidden;">
-                    <div id="mcp-container" class="data-container" style="min-height: 0; padding: 24px; text-align: center; opacity: 0.6; margin-bottom: 16px;">
-                    <div style="font-size: 32px; margin-bottom: 8px;">🔌</div>
-                    <div>${lm.t('No MCP servers configured')}</div>
-                    <div style="font-size: 11px; margin-top: 8px; opacity: 0.7;">
-                        ${lm.t('MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json')}
+                <div id="mcp-container-wrapper" style="display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s ease-out; overflow: hidden; margin-bottom: 40px;">
+                    <div style="min-height: 0;">
+                        <div id="mcp-container" class="data-container" style="padding: 24px; text-align: center; opacity: 0.6; margin-top: 16px; margin-bottom: 0;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">🔌</div>
+                            <div>${lm.t('No MCP servers configured')}</div>
+                            <div style="font-size: 11px; margin-top: 8px; opacity: 0.7;">
+                                ${lm.t('MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json')}
+                            </div>
+                        </div>
                     </div>
                 </div>
                 ` : ''}
+
+
 
                 <div class="section-title">${lm.t('Devices & Active Sessions')}</div>
                 <div class="data-container">
@@ -1461,7 +1431,7 @@ export class SyncStatsWebview {
                     return `
                                         <tr class="${id === data.activeConversationId ? 'active-conversation' : ''}" onclick="toggleFiles('${id}')" style="cursor: pointer">
                                             <td>
-                                                <div class="link" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})">${title}</div>
+                                                <div class="link" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})" title="${title}">${shortenTitle(title)}</div>
                                                 <div title="${id}" style="font-size:11px; opacity:0.5; font-family:monospace; display: inline-block;">
                                                     ${id.substring(0, 8)}... <span style="margin-left:8px; opacity:0.8">💾 ${formatBytes(totalSize)}</span>
                                                 </div>

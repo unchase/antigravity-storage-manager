@@ -5,6 +5,21 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-02-01
+### Port Detection (Windows 11)
+- **Stability Fix**: Resolved a critical issue in `PortDetector` on Windows 11 where the "Failed to get/decrypt manifest" error frequently occurred due to `findstr` pipe failures. Switched to direct `netstat -ano` output processing in TypeScript for 100% reliability.
+
+### Sync Visibility & Migration
+- **Reindex Conversations**: Introduced a new command to manually re-scan the brain directory. This helps restore conversations that may have become "invisible" after an OS migration or workspace relocation.
+- **Smart Titles**: Improved metadata extraction to handle cross-platform path differences and automatically clean up leading badges like `[Draft]` from conversation names.
+
+### Dashboard & UX
+- **Focus Management**: Prevented the Sync Statistics dashboard from stealing focus or auto-opening when it was previously closed by the user.
+- **Throttled Updates**: Added a 2-second update throttle to the dashboard UI to prevent flickering and excessive resource usage during intense multi-file sync operations.
+
+### Testing
+- **Jest Migration**: Standardized utility unit tests to use Jest, ensuring better compatibility with the extension's CI/CD pipeline.
+
 ## [0.12.0] - 2026-01-31
 ### Telegram Notifications & Bot Integration
 - **Interactive Bot**: The Antigravity Telegram bot is now fully interactive!

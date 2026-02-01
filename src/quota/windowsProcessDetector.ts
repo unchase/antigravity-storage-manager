@@ -130,21 +130,44 @@ export class WindowsProcessDetector implements IPlatformStrategy {
         return;
     }
 
-    getPortListCommand(pid: number): string {
+    getPortListCommand(_pid: number): string {
+        return `${WindowsProcessDetector.NETSTAT_PATH} -ano`;
+    }
+
+    getFallbackPortListCommand(pid: number): string {
         const netstat = WindowsProcessDetector.NETSTAT_PATH;
         const findstr = WindowsProcessDetector.FINDSTR_PATH;
         return `${netstat} -ano | ${findstr} "${pid}" | ${findstr} "LISTENING"`;
     }
 
-    parseListeningPorts(stdout: string): number[] {
-        const portRegex = /(?:127\.0\.0\.1|0\.0\.0\.0|\[::1?]):(\d+)\s+\S+\s+LISTENING/gi;
+    parseListeningPorts(stdout: string, targetPid: number): number[] {
         const ports: number[] = [];
-        let match;
+        // Regex to match lines like:
+        //   TCP    127.0.0.1:51212        0.0.0.0:0              LISTENING       25324
+        // Group 1: IP:Port, Group 2: PID (at end of line)
 
-        while ((match = portRegex.exec(stdout)) !== null) {
-            const port = parseInt(match[1], 10);
-            if (!ports.includes(port)) {
-                ports.push(port);
+        const lines = stdout.split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            // Check if line contains LISTENING (case insensitive)
+            if (!/LISTENING/i.test(trimmed)) continue;
+
+            // Extract PID from end of line
+            const pidMatch = trimmed.match(/\s+(\d+)$/);
+            if (!pidMatch) continue;
+
+            const pid = parseInt(pidMatch[1], 10);
+            if (pid !== targetPid) continue;
+
+            // Extract Port
+            const portMatch = trimmed.match(/(?:127\.0\.0\.1|0\.0\.0\.0|\[::1?]):(\d+)/);
+            if (portMatch && portMatch[1]) {
+                const port = parseInt(portMatch[1], 10);
+                if (!ports.includes(port)) {
+                    ports.push(port);
+                }
             }
         }
 

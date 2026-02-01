@@ -66,6 +66,7 @@ type ConflictResolution = 'keepLocal' | 'keepRemote' | 'keepBoth';
  * Main sync manager for coordinating conversation synchronization
  */
 export class SyncManager {
+    private lastDashboardUpdate: number = 0;
     private context: vscode.ExtensionContext;
     private authProvider: GoogleAuthProvider;
     private driveService: GoogleDriveService;
@@ -372,7 +373,7 @@ export class SyncManager {
 
             // Auto-update statistics dashboard if ALREADY open (do not open it automatically)
             if (SyncStatsWebview.isVisible()) {
-                this.showStatistics();
+                this.updateDashboardIfVisible();
             }
 
             // Error suggestions
@@ -603,6 +604,55 @@ export class SyncManager {
             this.activeTransfers.delete(conversationId);
             this.updateDashboardIfVisible();
         }
+    }
+
+    async reindexConversations(): Promise<void> {
+        const lm = LocalizationManager.getInstance();
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: lm.t('Reindexing conversations...'),
+            cancellable: false
+        }, async () => {
+            // 1. Force refresh of local conversation list
+            const localConversations = await getConversationsAsync(BRAIN_DIR);
+
+            // 2. Check for "orphaned" folders that might be valid conversations but missing metadata
+            try {
+                const entries = await fs.promises.readdir(BRAIN_DIR);
+                let recovered = 0;
+
+                for (const id of entries) {
+                    // If not in localConversations, check if it looks like a conversation
+                    if (!localConversations.find(c => c.id === id)) {
+                        const dirPath = path.join(BRAIN_DIR, id);
+                        const stats = await fs.promises.stat(dirPath);
+                        if (stats.isDirectory()) {
+                            // It's a directory but not recognized. 
+                            // Maybe missing .pb file? Or just no recognizable title?
+                            // We can try to "adopt" it by creating a minimal metadata marker if needed, 
+                            // but for now let's just log it.
+                            console.log(`[Reindex] Found potential orphan: ${id}`);
+                            // If it has files, we count it.
+                            const files = await fs.promises.readdir(dirPath);
+                            if (files.length > 0) recovered++;
+                        }
+                    }
+                }
+
+                if (recovered > 0) {
+                    vscode.window.showInformationMessage(lm.t('Found {0} potential orphaned conversations. Please check specific folders in {1}.', recovered, BRAIN_DIR));
+                } else {
+                    vscode.window.showInformationMessage(lm.t('Reindex complete. Found {0} conversations.', localConversations.length));
+                }
+
+                // Trigger a refresh of the Sidebar / UI if we have a way to do it.
+                // Usually this happens via file watcher or command. 
+                // We'll trust that getConversationsAsync being called later (by UI) will see them.
+
+            } catch (e: any) {
+                vscode.window.showErrorMessage(lm.t('Reindex failed: {0}', e.message));
+            }
+        });
     }
 
     /**
@@ -2644,7 +2694,7 @@ export class SyncManager {
         }
     }
 
-    private async refreshStatistics(preserveFocus: boolean = true, showProgress: boolean = true) {
+    private async refreshStatistics(preserveFocus: boolean = true, showProgress: boolean = true, updateOnly: boolean = false) {
         const lm = LocalizationManager.getInstance();
 
         const loadTask = async () => {
@@ -2866,7 +2916,7 @@ export class SyncManager {
                 this.lastStatsData = statsData;
                 if (SyncStatsWebview.isVisible()) {
                     SyncStatsWebview.update(statsData);
-                } else {
+                } else if (!updateOnly) {
                     SyncStatsWebview.show(this.context, statsData, (msg) => this.handleSyncStatsMessage(msg), preserveFocus);
                 }
 
@@ -3589,7 +3639,12 @@ export class SyncManager {
      */
     private updateDashboardIfVisible(): void {
         if (SyncStatsWebview.isVisible()) {
-            this.refreshStatistics();
+            const now = Date.now();
+            // Throttle updates to max once every 2 seconds
+            if (now - this.lastDashboardUpdate > 2000) {
+                this.lastDashboardUpdate = now;
+                this.refreshStatistics(true, false, true); // updateOnly=true prevents auto-open
+            }
         }
     }
     private getChatLoadingHtml(): string {

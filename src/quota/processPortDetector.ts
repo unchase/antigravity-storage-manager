@@ -29,6 +29,7 @@ export class ProcessPortDetector {
 
     async detectProcessInfo(maxRetries: number = 3, retryDelay: number = 2000): Promise<AntigravityProcessInfo | null> {
         const platformName = this.platformDetector.getPlatformName();
+        let fallbackUsed = false; // Track if we already tried fallback to prevent infinite loop
 
         console.log('PortDetector', `Starting port detection on ${platformName}, processName=${this.processName}`);
 
@@ -83,12 +84,21 @@ export class ProcessPortDetector {
                 const lm = LocalizationManager.getInstance();
                 vscode.window.showErrorMessage(lm.t('PortDetector: Attempt {0} failed ({1})', attempt, errorMsg));
 
-                if (errorMsg.includes('not found') || errorMsg.includes('unavailable')) {
-                    if (this.platformDetector.getPlatformName() === 'Windows') {
+                if (errorMsg.includes('not found') || errorMsg.includes('unavailable') || errorMsg.includes('Command failed')) {
+                    if (this.platformDetector.getPlatformName() === 'Windows' && !fallbackUsed) {
                         const windowsStrategy = this.platformStrategy as any;
-                        if (windowsStrategy.setUsePowerShell && !windowsStrategy.isUsingPowerShell()) {
-                            console.warn('PortDetector', 'WMIC command is unavailable. Switching to PowerShell mode and retrying...');
-                            windowsStrategy.setUsePowerShell(true);
+                        const isUsingPowerShell = windowsStrategy.isUsingPowerShell?.();
+
+                        if (windowsStrategy.setUsePowerShell) {
+                            // Toggle between PowerShell and WMIC
+                            if (isUsingPowerShell) {
+                                console.warn('PortDetector', 'PowerShell command failed. Switching to WMIC mode and retrying...');
+                                windowsStrategy.setUsePowerShell(false);
+                            } else {
+                                console.warn('PortDetector', 'WMIC command is unavailable. Switching to PowerShell mode and retrying...');
+                                windowsStrategy.setUsePowerShell(true);
+                            }
+                            fallbackUsed = true;
                             attempt--;
                             continue;
                         }
@@ -113,9 +123,24 @@ export class ProcessPortDetector {
             await this.platformStrategy.ensurePortCommandAvailable();
 
             const command = this.platformStrategy.getPortListCommand(pid);
-            const { stdout } = await execAsync(command, { timeout: 3000 });
+            let stdout = '';
 
-            const ports = this.platformStrategy.parseListeningPorts(stdout);
+            try {
+                const result = await execAsync(command, { timeout: 3000 });
+                stdout = result.stdout;
+            } catch (error) {
+                // Try fallback if available
+                if (this.platformStrategy.getFallbackPortListCommand) {
+                    console.warn('PortDetector', `Primary command failed, trying fallback... (${error})`);
+                    const fallbackCmd = this.platformStrategy.getFallbackPortListCommand(pid);
+                    const result = await execAsync(fallbackCmd, { timeout: 3000 });
+                    stdout = result.stdout;
+                } else {
+                    throw error;
+                }
+            }
+
+            const ports = this.platformStrategy.parseListeningPorts(stdout, pid);
             return ports;
         } catch (error: any) {
             const lm = LocalizationManager.getInstance();

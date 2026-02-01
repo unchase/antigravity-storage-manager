@@ -76,7 +76,7 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                         // Also cleanup some common suffixes if needed, but keeping it simple for now
                         const match = content.match(/^#\s*(?:Task:?\s*)?(.+)$/im);
                         if (match && match[1]) {
-                            return match[1].trim();
+                            return match[1].trim().replace(/^\[.*?\]\s*/, ''); // Remove leading badges like [Draft]
                         }
                     } catch {
                         // Ignore errors

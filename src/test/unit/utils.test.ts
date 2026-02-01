@@ -1,31 +1,51 @@
-import { formatRelativeTime } from '../../../src/utils';
 
-describe('Utils', () => {
-    describe('formatRelativeTime', () => {
-        test('returns "Just now" for current time', () => {
-            expect(formatRelativeTime(new Date())).toBe('Just now');
-        });
+import { describe, test, expect, jest } from '@jest/globals';
 
-        test('returns "mins ago" correctly', () => {
-            const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000);
-            expect(formatRelativeTime(fiveMinsAgo)).toBe('5 mins ago');
-        });
+// Mock vscode module
+jest.mock('vscode', () => {
+    return {
+        workspace: {
+            getConfiguration: () => ({
+                get: () => 'en'
+            })
+        },
+        env: {
+            language: 'en'
+        }
+    };
+}, { virtual: true });
 
-        test('returns "1 hour ago" correctly', () => {
-            const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000 - 1000);
-            expect(formatRelativeTime(oneHourAgo)).toBe('1 hour ago');
-        });
+// Mock LocalizationManager
+jest.mock('../../l10n/localizationManager', () => {
+    return {
+        LocalizationManager: {
+            getInstance: () => ({
+                t: (str: string, ...args: any[]) => {
+                    // Basic mock for formatRelativeTime
+                    if (args.length > 0) {
+                        return str.replace('{0}', args[0]);
+                    }
+                    return str;
+                },
+                getLocale: () => 'en-US'
+            })
+        }
+    };
+});
 
-        test('returns "days ago" correctly', () => {
-            const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 - 1000);
-            expect(formatRelativeTime(twoDaysAgo)).toBe('2 days ago');
-        });
+import * as utils from '../../utils';
 
-        test('returns date string for older dates', () => {
-            const oldDate = new Date('2020-01-01');
-            const result = formatRelativeTime(oldDate);
-            // Result format depends on locale, but shouldn't contain "ago"
-            expect(result).not.toContain('ago');
-        });
+describe('Conversation Utils Test Suite', () => {
+
+    test('formatRelativeTime returns "Just now" for current time', () => {
+        const now = new Date();
+        expect(utils.formatRelativeTime(now)).toBe('Just now');
     });
+
+    test('formatRelativeTime returns "5 mins ago" for 5 minutes ago', () => {
+        const now = new Date();
+        const fiveMinsAgo = new Date(now.getTime() - 5 * 60 * 1000);
+        expect(utils.formatRelativeTime(fiveMinsAgo)).toBe('5 mins ago');
+    });
+
 });

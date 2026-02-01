@@ -165,6 +165,11 @@ export async function activate(context: vscode.ExtensionContext) {
                     command: `${EXT_NAME}.forceSync`
                 },
                 {
+                    label: `$(search) ${lm.t('Reindex Conversations')}`,
+                    description: lm.t('Fix missing conversations from other devices'),
+                    command: `${EXT_NAME}.reindexConversations`
+                },
+                {
                     label: `$(graph) ${lm.t('Show Statistics')}`,
                     description: `${lm.t('View detailed sync status and history')} ${getKeybindingLabel(`${EXT_NAME}.showSyncStats`)}`,
                     command: `${EXT_NAME}.showSyncStats`,
@@ -433,6 +438,9 @@ export async function activate(context: vscode.ExtensionContext) {
             if (confirm === lm.t('Disconnect')) {
                 await syncManager.disconnect();
             }
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.reindexConversations`, async () => {
+            await syncManager.reindexConversations();
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.showSyncStats`, async () => {
             await syncManager.showStatistics();
