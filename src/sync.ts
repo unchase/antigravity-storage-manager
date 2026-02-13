@@ -130,7 +130,7 @@ export class SyncManager {
         await this.loadConfig();
 
         // Load master password from secrets
-        const storedPassword = await this.context.secrets.get(`${EXT_NAME}.sync.masterPassword`);
+        const storedPassword = await this.context.secrets.get('ag-sync-master-password');
         if (storedPassword) {
             this.masterPassword = storedPassword;
         }
