@@ -8,6 +8,7 @@ export interface ConversationItem extends vscode.QuickPickItem {
     lastModified: Date;
     createdAt: Date;
     status?: 'synced' | 'imported' | 'local' | 'conflict';
+    text?: string;
 }
 
 /**

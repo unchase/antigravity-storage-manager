@@ -13,6 +13,7 @@ import { AccountInfoWebview } from './accountInfoWebview';
 import { GoogleAuthProvider } from '../googleAuth';
 
 import { TelegramService } from '../telegram/telegramService';
+import { ProfileManager } from '../profileManager';
 
 export class QuotaManager {
     private context: vscode.ExtensionContext;
@@ -21,6 +22,7 @@ export class QuotaManager {
     private statusBar: QuotaStatusBar;
     private usageTracker: QuotaUsageTracker;
     private authProvider: GoogleAuthProvider; // New dependency
+    private profileManager: ProfileManager | null = null;
     private isEnabled: boolean = true;
     private pollingTimer: NodeJS.Timeout | undefined;
     private readonly POLLING_INTERVAL = 60 * 1000; // 1 minute
@@ -65,6 +67,10 @@ export class QuotaManager {
         this.syncManager = syncManager;
     }
 
+    public setProfileManager(profileManager: ProfileManager) {
+        this.profileManager = profileManager;
+    }
+
     private updateEnabledState() {
         this.isEnabled = vscode.workspace.getConfiguration('antigravity-storage-manager').get('enableQuota', true);
         if (this.isEnabled) {
@@ -93,6 +99,10 @@ export class QuotaManager {
             clearInterval(this.pollingTimer);
             this.pollingTimer = undefined;
         }
+    }
+
+    public async refresh(): Promise<void> {
+        await this.fetchAndUpdate(true);
     }
 
     private async updateWebview(snapshot: QuotaSnapshot) {
@@ -126,6 +136,13 @@ export class QuotaManager {
             this.statusBar.update(snapshot, undefined, this.usageTracker);
 
             await this.updateWebview(snapshot);
+
+            // Update Profile Quota Cache
+            if (this.profileManager && this.profileManager.activeProfile) {
+                this.profileManager.updateProfileQuota(this.profileManager.activeProfile, snapshot).catch(err => {
+                    console.warn('Failed to update profile quota cache:', err);
+                });
+            }
 
             return snapshot;
         } catch (error: any) {
@@ -334,7 +351,7 @@ export class QuotaManager {
                         let desc = `${bar} ${pct.toFixed(1)}%`;
                         if (model.timeUntilReset > 0) {
                             const timeUntil = formatDuration(model.timeUntilReset);
-                            desc += ` • ${lm.t('Resets')} ${formatResetTime(model.resetTime)} (${lm.t('in')} ${timeUntil})`;
+                            desc += ` • ${lm.t('Reset at {0}', formatResetTime(model.resetTime))} (${lm.t('in')} ${timeUntil})`;
                         }
                         let details = '';
                         if (model.requestLimit && model.requestUsage !== undefined) details += `${lm.t('Requests')}: ${model.requestUsage} / ${model.requestLimit}  `;

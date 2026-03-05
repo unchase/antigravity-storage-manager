@@ -143,10 +143,30 @@ export class AntigravityClient {
 
                             if (step.type === 'CORTEX_STEP_TYPE_USER_INPUT') {
                                 role = 'user';
-                                if (step.userInput && Array.isArray(step.userInput.items) && step.userInput.items.length > 0) {
-                                    text = step.userInput.items[0].text?.content || '';
-                                } else if (step.userInput?.userResponse) {
+                                // 1. Text extraction logic
+                                if (step.userInput?.userResponse) {
+                                    // Priority: userResponse
                                     text = step.userInput.userResponse;
+                                } else if (step.userInput && Array.isArray(step.userInput.items) && step.userInput.items.length > 0) {
+                                    // Fallback: items
+                                    text = step.userInput.items
+                                        .map((item: any) => item.text?.content || item.code?.value || '')
+                                        .filter((t: string) => t.length > 0)
+                                        .join('\n\n');
+                                }
+
+                                // 2. Media (Images) logic
+                                if (step.userInput?.media && Array.isArray(step.userInput.media)) {
+                                    for (const media of step.userInput.media) {
+                                        if (media.mimeType === 'image/png') {
+                                            if (media.content) {
+                                                // data:image/png;base64,...
+                                                text += `\n\n![Image](data:image/png;base64,${media.content})`;
+                                            } else if (media.path) {
+                                                text += `\n\n![Image](${media.path})`;
+                                            }
+                                        }
+                                    }
                                 }
                             } else if (step.type === 'CORTEX_STEP_TYPE_MODEL_RESPONSE') {
                                 role = 'model';

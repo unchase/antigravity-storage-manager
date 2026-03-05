@@ -94,18 +94,18 @@ export function generateQuotaReportMarkdown(snapshot: QuotaSnapshot, pinnedModel
                         const mins = Math.floor(msUntilReset / 60000);
                         const secs = Math.floor((msUntilReset % 60000) / 1000);
                         const countdown = `${mins}:${secs.toString().padStart(2, '0')}`;
-                        md += `${lm.t('Resets')}: ${formatResetTime(m.resetTime)} (⏱️ ${countdown})\n`;
+                        md += `${lm.t('Reset at {0}', formatResetTime(m.resetTime))} (⏱️ ${countdown})\n`;
                     } else {
-                        md += `${lm.t('Resets')}: ${formatResetTime(m.resetTime)}\n`;
+                        md += `${lm.t('Reset at {0}', formatResetTime(m.resetTime))}\n`;
                     }
                 } else {
                     if (msUntilReset < 60 * 60 * 1000) {
                         const mins = Math.floor(msUntilReset / 60000);
                         const secs = Math.floor((msUntilReset % 60000) / 1000);
                         const countdown = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
-                        md += `- ${lm.t('Resets')}: ${formatResetTime(m.resetTime)} ${countdown}\n`;
+                        md += `- ${lm.t('Reset at {0}', formatResetTime(m.resetTime))} ${countdown}\n`;
                     } else {
-                        md += `- ${lm.t('Resets')}: ${formatResetTime(m.resetTime)}\n`;
+                        md += `- ${lm.t('Reset at {0}', formatResetTime(m.resetTime))}\n`;
                     }
                 }
 

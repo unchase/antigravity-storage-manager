@@ -39,6 +39,7 @@ export interface SyncStatsData {
     activeConversationId?: string;
     // MCP Servers data
     mcpServerStates?: McpServerStateData[];
+    isSyncEnabled?: boolean;
 }
 
 export interface McpServerStateData {
@@ -74,6 +75,11 @@ export class SyncStatsWebview {
                 console.error('Failed to initialize MarkdownIt in SyncStatsWebview:', e);
             }
         }
+    }
+
+    public static renderMarkdown(text: string): string {
+        SyncStatsWebview.initializeMd();
+        return SyncStatsWebview.md.render(text);
     }
 
     public static isUserSearching(): boolean {
@@ -203,6 +209,12 @@ export class SyncStatsWebview {
 
     public static isVisible(): boolean {
         return !!SyncStatsWebview.currentPanel;
+    }
+
+    public static postMessage(message: any): void {
+        if (SyncStatsWebview.currentPanel) {
+            SyncStatsWebview.currentPanel.webview.postMessage(message);
+        }
     }
 
     private static getSkeletonHtml(): string {
@@ -745,6 +757,50 @@ export class SyncStatsWebview {
                     font-family: monospace;
                     pointer-events: none;
                 }
+
+                /* Toggle Switch */
+                .toggle-switch {
+                    position: relative;
+                    display: inline-block;
+                    width: 32px;
+                    height: 18px;
+                    margin-right: 8px;
+                    vertical-align: middle;
+                }
+                .toggle-switch input { 
+                    opacity: 0;
+                    width: 0;
+                    height: 0;
+                }
+                .slider {
+                    position: absolute;
+                    cursor: pointer;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background-color: rgba(255,255,255,0.2);
+                    transition: .2s;
+                    border-radius: 18px;
+                }
+                .slider:before {
+                    position: absolute;
+                    content: "";
+                    height: 14px;
+                    width: 14px;
+                    left: 2px;
+                    bottom: 2px;
+                    background-color: var(--fg);
+                    transition: .2s;
+                    border-radius: 50%;
+                }
+                input:checked + .slider {
+                    background-color: var(--success);
+                }
+                input:checked + .slider:before {
+                    transform: translateX(14px);
+                    background-color: #fff;
+                }
             </style>
         </head>
         <body>
@@ -768,6 +824,13 @@ export class SyncStatsWebview {
                         ` : ''}
                     </div>
                     <div class="header-actions">
+                        <div style="display: flex; align-items: center; margin-right: 12px;" title="${lm.t('Enable/Disable Auto-Sync')}">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="syncToggle" ${data.isSyncEnabled !== false ? 'checked' : ''} onchange="toggleSync(this.checked)">
+                                <span class="slider"></span>
+                            </label>
+                            <span style="font-size: 11px; opacity: 0.7; font-weight: 600;">${lm.t('Auto-Sync')}</span>
+                        </div>
 
                         <button class="btn" onclick="postCommand('openPatreon')" title="${lm.t('Support on Patreon')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">🧡</button>
                         <button class="btn" onclick="postCommand('openCoffee')" title="${lm.t('Buy Me a Coffee')}" style="padding: 8px 12px; min-width: 40px; justify-content: center;">☕</button>
@@ -964,7 +1027,7 @@ export class SyncStatsWebview {
                             <div style="font-size: 32px; margin-bottom: 8px;">🔌</div>
                             <div>${lm.t('No MCP servers configured')}</div>
                             <div style="font-size: 11px; margin-top: 8px; opacity: 0.7;">
-                                ${lm.t('MCP servers can be configured in ~/.gemini/antigravity/mcp/mcp_config.json')}
+                                ${lm.t('MCP servers can be configured in ~/.gemini/antigravity/mcp_config.json')}
                             </div>
                         </div>
                     </div>
@@ -1226,7 +1289,7 @@ export class SyncStatsWebview {
                                                     </div>
                                                 </div>
 
-                                                ${resetTimeStr ? `<div class="reset-info">${lm.t('Resets')} ${resetTimeStr}</div>` : ''}
+                                                ${resetTimeStr ? `<div class="reset-info">${lm.t('Reset at {0}', resetTimeStr)}</div>` : ''}
 
                                                 ${cycleHtml}
                                             </div>`;
@@ -1447,10 +1510,18 @@ export class SyncStatsWebview {
                                                 <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Delete')}">🗑️</button>
                                             </td>
                                         </tr>
-                                        ${fileListHtml ? `
+                                        ${(fileListHtml || (local && local.text)) ? `
                                         <tr id="files-${id}" class="file-list-row" style="${data.searchResults?.some(r => r.cascadeId === id) ? 'display: table-row' : ''}">
                                             <td colspan="5" style="padding: 0;">
                                                 <div class="file-list-wrapper">
+                                                    ${local ? `
+                                                        <div style="padding: 12px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                                            <div style="font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 8px;">${lm.t('Conversation Preview')}:</div>
+                                                            <div id="preview-${id}" data-loaded="${!!local.text}" class="markdown-body" style="font-family: monospace; white-space: pre-wrap; word-break: break-all; opacity: 0.9; max-height: 500px; overflow-y: auto;">
+                                                                ${local.text ? (SyncStatsWebview.md ? SyncStatsWebview.md.render(local.text) : local.text) : '<i>Click to load preview</i>'}
+                                                            </div>
+                                                        </div>
+                                                    ` : ''}
                                                     ${fileListHtml}
                                                 </div>
                                             </td>
@@ -1471,6 +1542,10 @@ export class SyncStatsWebview {
 
                 function postCommand(command, data = {}) {
                     vscode.postMessage({ command, ...data });
+                }
+
+                function toggleSync(enabled) {
+                    postCommand('toggleSync', { enabled });
                 }
 
                 function performSearch() {
@@ -1569,10 +1644,34 @@ export class SyncStatsWebview {
 
 
                 
+                // Message listener
+                window.addEventListener('message', event => {
+                    const message = event.data;
+                    switch (message.command) {
+                        case 'conversationDetails':
+                            const el = document.getElementById('preview-' + message.id);
+                            if (el) {
+                                el.innerHTML = message.html;
+                                el.dataset.loaded = 'true';
+                            }
+                            break;
+                    }
+                });
+
                 function toggleFiles(id) {
                     const el = document.getElementById('files-' + id);
                     if (el) {
-                        el.style.display = el.style.display === 'table-row' ? 'none' : 'table-row';
+                        const isHidden = el.style.display === 'none' || el.style.display === '';
+                        el.style.display = isHidden ? 'table-row' : 'none';
+                        
+                        if (isHidden) {
+                             // Check if content is loaded
+                             const contentDiv = document.getElementById('preview-' + id);
+                             if (contentDiv && contentDiv.dataset.loaded === 'false') {
+                                 contentDiv.innerHTML = '<div style="display:flex; align-items:center; gap:8px;"><span>Loading preview...</span><div class="skeleton" style="width:20px; height:20px; border-radius:50%"></div></div>';
+                                 postCommand('getConversationDetails', { id: id });
+                             }
+                        }
                     }
                 }
                 
@@ -1594,8 +1693,7 @@ export class SyncStatsWebview {
                     // Reset
                     if (reset) {
                         content += '<div style="font-size:11px; display:flex; justify-content:space-between; gap:12px; margin-bottom:2px;">' +
-                                   '<span style="opacity:0.7">${lm.t('Resets')}</span>' +
-                                   '<span>' + reset + '</span>' +
+                                   '<span style="opacity:0.7">' + lm.t('Reset at {0}', reset) + '</span>' +
                                    '</div>';
                     }
                     

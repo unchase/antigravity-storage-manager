@@ -17,12 +17,16 @@ import { SyncStatsWebview, SyncStatsData } from './quota/syncStatsWebview';
 import { QuotaManager } from './quota/quotaManager';
 import { drawProgressBar } from './quota/utils';
 import { AntigravityClient } from './quota/antigravityClient';
+import { PbParser } from './quota/pbParser';
 import { getFileIconSvg } from './quota/fileIcons';
 
 const EXT_NAME = 'antigravity-storage-manager';
 const STORAGE_ROOT = path.join(os.homedir(), '.gemini', 'antigravity');
 const BRAIN_DIR = path.join(STORAGE_ROOT, 'brain');
 const CONV_DIR = path.join(STORAGE_ROOT, 'conversations');
+const DEFAULT_SYNC_BACKUP_DIR = path.join(STORAGE_ROOT, 'sync-backups');
+const SECRET_KEY = `${EXT_NAME}.sync.masterPassword`;
+const LEGACY_SECRET_KEY = 'ag-sync-master-password';
 
 export interface SyncConfig {
     enabled: boolean; // Deprecated, use autoSync? No, enabled is overall switch
@@ -90,10 +94,15 @@ export class SyncManager {
     private quotaManager: QuotaManager | null = null;
     private lastActiveConversationId?: string;
 
+    // Concurrency control and Sync Toggle
+    private isRefreshing: boolean = false;
+    private isSyncEnabled: boolean = true;
+
     // Status bar item for sync status
     private statusBarItem: vscode.StatusBarItem | null = null;
     private apiClient = new AntigravityClient();
     private md: any;
+    private preSyncBackupCount: number = 0;
 
     constructor(
         context: vscode.ExtensionContext,
@@ -130,7 +139,16 @@ export class SyncManager {
         await this.loadConfig();
 
         // Load master password from secrets
-        const storedPassword = await this.context.secrets.get(`${EXT_NAME}.sync.masterPassword`);
+        let storedPassword = await this.context.secrets.get(SECRET_KEY);
+        if (!storedPassword) {
+            // Migration: check legacy key (fixes #7 — key mismatch)
+            storedPassword = await this.context.secrets.get(LEGACY_SECRET_KEY);
+            if (storedPassword) {
+                await this.context.secrets.store(SECRET_KEY, storedPassword);
+                await this.context.secrets.delete(LEGACY_SECRET_KEY);
+                console.log('[SyncManager] Migrated master password from legacy key');
+            }
+        }
         if (storedPassword) {
             this.masterPassword = storedPassword;
         }
@@ -735,13 +753,28 @@ export class SyncManager {
         // Determine which files need to be downloaded
         const filesToDownload: string[] = [];
         const filesToDelete: string[] = [];
+        let skippedOlderCount = 0;
 
         // Files that are new or changed remotely
         for (const [relativePath, remoteInfo] of Object.entries(remoteHashes)) {
             const localInfo = localHashes[relativePath];
             if (!localInfo || localInfo.hash !== remoteInfo.hash) {
+                // Timestamp safety check: skip if remote file is older than local
+                if (localInfo && remoteInfo.lastModified && localInfo.lastModified) {
+                    const remoteDate = new Date(remoteInfo.lastModified).getTime();
+                    const localDate = new Date(localInfo.lastModified).getTime();
+                    if (remoteDate < localDate) {
+                        console.warn(`[Pull] Skipping ${relativePath}: remote version is older than local (${remoteInfo.lastModified} < ${localInfo.lastModified})`);
+                        skippedOlderCount++;
+                        continue;
+                    }
+                }
                 filesToDownload.push(relativePath);
             }
+        }
+
+        if (skippedOlderCount > 0) {
+            console.warn(`[Pull] Skipped ${skippedOlderCount} file(s) for ${conversationId}: remote version is older than local`);
         }
 
         // Files that exist locally but not remotely (deleted remotely)
@@ -752,6 +785,11 @@ export class SyncManager {
         }
 
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
+        // Create pre-sync backup before overwriting any local files
+        if (filesToDownload.length > 0 || filesToDelete.length > 0) {
+            await this.backupConversationBeforePull(conversationId, convTitle, progress);
+        }
 
         // Download changed files
         let downloadedCount = 0;
@@ -829,6 +867,9 @@ export class SyncManager {
             if (token?.isCancellationRequested) throw new vscode.CancellationError();
             fs.writeFileSync(zipPath, zipData);
             await extract(zipPath, { dir: tempDir });
+
+            // Create pre-sync backup before overwriting local data
+            await this.backupConversationBeforePull(conversationId, convTitle, progress);
 
             // Copy brain directory
             const sourceBrain = path.join(tempDir, 'brain', conversationId);
@@ -932,6 +973,111 @@ export class SyncManager {
             console.log(`[Cache] Cleared internal caches and deleted ${deletedCount} temp files/dirs.`);
         } catch (e) {
             console.error('Failed to cleanup temp files:', e);
+        }
+    }
+
+    /**
+     * Create a backup of a conversation before it is overwritten during sync pull.
+     * This is a targeted backup of a single conversation, not a full backup.
+     */
+    private async backupConversationBeforePull(
+        conversationId: string,
+        convTitle: string,
+        progress?: vscode.Progress<{ message?: string; increment?: number }>
+    ): Promise<string | null> {
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
+        const enabled = config.get<boolean>('sync.preSyncBackup', true);
+        if (!enabled) return null;
+
+        const lm = LocalizationManager.getInstance();
+        this.reportProgress(progress, lm.t('Creating backup before sync for "{0}"...', convTitle));
+
+        try {
+            const backupBaseDir = config.get<string>('sync.preSyncBackupPath', '') || DEFAULT_SYNC_BACKUP_DIR;
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupDir = path.join(backupBaseDir, conversationId, timestamp);
+
+            await fs.promises.mkdir(backupDir, { recursive: true });
+
+            let backedUpFiles = 0;
+
+            // Backup brain directory
+            const brainDir = path.join(BRAIN_DIR, conversationId);
+            if (fs.existsSync(brainDir)) {
+                const destBrain = path.join(backupDir, 'brain', conversationId);
+                fs.cpSync(brainDir, destBrain, { recursive: true });
+                backedUpFiles++;
+            }
+
+            // Backup .pb file
+            const pbPath = path.join(CONV_DIR, `${conversationId}.pb`);
+            if (fs.existsSync(pbPath)) {
+                const destConv = path.join(backupDir, 'conversations');
+                await fs.promises.mkdir(destConv, { recursive: true });
+                fs.copyFileSync(pbPath, path.join(destConv, `${conversationId}.pb`));
+                backedUpFiles++;
+            }
+
+            // Write metadata
+            const metadata = {
+                conversationId,
+                title: convTitle,
+                timestamp: new Date().toISOString(),
+                reason: 'pre-sync-pull',
+                backedUpFiles
+            };
+            await fs.promises.writeFile(
+                path.join(backupDir, 'metadata.json'),
+                JSON.stringify(metadata, null, 2)
+            );
+
+            this.preSyncBackupCount++;
+            console.log(`[Backup] Pre-sync backup created for ${conversationId} at ${backupDir}`);
+
+            // Clean old backups for this conversation
+            const retention = config.get<number>('sync.preSyncBackupRetention', 20);
+            await this.cleanOldSyncBackups(conversationId, retention, backupBaseDir);
+
+            return backupDir;
+        } catch (e: any) {
+            // Backup failure should not prevent sync from proceeding
+            console.error(`[Backup] Failed to create pre-sync backup for ${conversationId}:`, e);
+            return null;
+        }
+    }
+
+    /**
+     * Clean old pre-sync backups for a specific conversation, keeping only the most recent ones.
+     */
+    private async cleanOldSyncBackups(conversationId: string, retention: number, backupBaseDir: string): Promise<void> {
+        if (retention <= 0) return;
+
+        try {
+            const convBackupDir = path.join(backupBaseDir, conversationId);
+            if (!fs.existsSync(convBackupDir)) return;
+
+            const entries = await fs.promises.readdir(convBackupDir);
+            if (entries.length <= retention) return;
+
+            // Sort by name (which is ISO timestamp) descending (newest first)
+            const sorted = entries.sort((a, b) => b.localeCompare(a));
+            const toDelete = sorted.slice(retention);
+
+            for (const entry of toDelete) {
+                const fullPath = path.join(convBackupDir, entry);
+                try {
+                    await fs.promises.rm(fullPath, { recursive: true, force: true });
+                    console.log(`[Backup] Deleted old pre-sync backup: ${entry}`);
+                } catch (e) {
+                    console.error(`[Backup] Failed to delete old backup ${entry}:`, e);
+                }
+            }
+
+            if (toDelete.length > 0) {
+                console.log(`[Backup] Cleaned ${toDelete.length} old pre-sync backup(s) for ${conversationId}`);
+            }
+        } catch (e: any) {
+            console.error(`[Backup] Failed to clean old backups for ${conversationId}:`, e);
         }
     }
 
@@ -1634,7 +1780,7 @@ export class SyncManager {
 
         if (this.config?.syncInterval) {
             this.autoSyncTimer = setInterval(async () => {
-                if (this.isReady() && !this.isSyncing) {
+                if (this.isReady() && !this.isSyncing && this.isSyncEnabled) {
                     const result = await this.syncNow();
                     if (result.pushed.length || result.pulled.length || result.conflicts.length) {
                         const silent = vscode.workspace.getConfiguration(EXT_NAME).get('sync.silent', false);
@@ -1730,7 +1876,7 @@ export class SyncManager {
         if (!confirm) return;
 
         // Save password securely
-        await this.context.secrets.store('ag-sync-master-password', password);
+        await this.context.secrets.store(SECRET_KEY, password);
         this.masterPassword = password; // Set local instance for immediate use to avoid race condition/null error
 
         // NOTE: Machine name and config initialization moved inside withProgress
@@ -2088,7 +2234,8 @@ export class SyncManager {
         this.stopAutoSync();
         this.config = null;
         await this.context.globalState.update('ag-sync-config', undefined);
-        await this.context.secrets.delete('ag-sync-master-password');
+        await this.context.secrets.delete(SECRET_KEY);
+        await this.context.secrets.delete(LEGACY_SECRET_KEY); // cleanup legacy key
         // Keep status bar visible with disconnected state (updateStatusBar shows warning icon)
         this.updateStatusBar('idle');
 
@@ -2258,12 +2405,33 @@ export class SyncManager {
                 }
             } else if (removeChanged && !localChanged) {
                 // Only remote changed -> Pull
-                try {
-                    await this.pullConversation(convId, progress, token);
-                    result.pulled.push(convId);
-                } catch (error: any) {
-                    if (error instanceof vscode.CancellationError) throw error;
-                    result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+                // Safety check: if remote lastModified is older than local, treat as conflict
+                // This prevents overwriting newer local data with stale remote versions
+                const remoteTime = new Date(remote.lastModified).getTime();
+                const localTime = new Date(local.lastModified).getTime();
+                if (remoteTime < localTime) {
+                    console.warn(`[Sync] Remote is older than local for ${convId} (${remote.lastModified} < ${local.lastModified}), treating as conflict instead of pull`);
+                    const remoteMachine = remoteManifest.machines?.find(m => m.id === remote.modifiedBy);
+                    result.conflicts.push({
+                        conversationId: convId,
+                        conversationTitle: title,
+                        localModified: local.lastModified,
+                        remoteModified: remote.lastModified,
+                        localHash: local.hash,
+                        remoteHash: remote.hash,
+                        localSize: local.size,
+                        remoteSize: remote.size,
+                        remoteModifiedBy: remote.modifiedBy,
+                        remoteModifiedByName: remoteMachine?.name || remote.createdByName
+                    });
+                } else {
+                    try {
+                        await this.pullConversation(convId, progress, token);
+                        result.pulled.push(convId);
+                    } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
+                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+                    }
                 }
             } else {
                 // Both changed (and hashes differ) -> Conflict
@@ -2749,6 +2917,93 @@ export class SyncManager {
                     this.driveService.listMachineStates()
                 ]);
 
+                // Populate text for local conversations (limit concurrency)
+                // OPTIMIZATION: Removed pre-fetching to improve load time.
+                // Text is now fetched on-demand via 'getConversationDetails' command.
+                /*
+               await limitConcurrency(localConversations, 5, async (c: any) => {
+                   try {
+                       const steps = await this.apiClient.getConversationMessages(c.id);
+
+                       // Process steps to generate preview text
+                       if (steps && steps.length > 0) {
+                           const textParts: string[] = [];
+                           for (const step of steps) {
+                               let text = '';
+
+                               if (step.type === 'CORTEX_STEP_TYPE_USER_INPUT') {
+                                   // 1. Text extraction logic
+                                   if (step.userInput?.userResponse) {
+                                       // Priority: userResponse
+                                       text = step.userInput.userResponse;
+                                   } else if (step.userInput?.items && Array.isArray(step.userInput.items)) {
+                                       // Fallback: items
+                                       text = step.userInput.items
+                                           .map((item: any) => item.text?.content || item.code?.value || '')
+                                           .filter((t: string) => t.length > 0)
+                                           .join('\n\n');
+                                   }
+
+                                   // 2. Media (Images) logic
+                                   if (step.userInput?.media && Array.isArray(step.userInput.media)) {
+                                       for (const media of step.userInput.media) {
+                                           if (media.mimeType === 'image/png') {
+                                               if (media.content) {
+                                                   // data:image/png;base64,...
+                                                   text += `\n\n![Image](data:image/png;base64,${media.content})`;
+                                               } else if (media.path) {
+                                                   // Local path (less common in webview, but handle if present)
+                                                   // For webview, paths usually need vscode-resource scheme, but simple path for now
+                                                   text += `\n\n![Image](${media.path})`;
+                                               }
+                                           }
+                                       }
+                                   }
+                               } else if (step.type === 'CORTEX_STEP_TYPE_MODEL_RESPONSE') {
+                                   if (step.modelResponse && step.modelResponse.content && Array.isArray(step.modelResponse.content)) {
+                                       text = step.modelResponse.content.map((c: any) => c.text?.content || '').join('\n');
+                                   } else if (step.modelResponse?.text) {
+                                       text = step.modelResponse.text;
+                                   }
+                               } else if (step.type === 'CORTEX_STEP_TYPE_PLANNER_RESPONSE') {
+                                   text = step.plannerResponse?.thinking || '';
+                               } else {
+                                   text = step.message?.text || step.text || '';
+                               }
+
+                               if (text) {
+                                   textParts.push(text);
+                               }
+                           }
+                           c.text = textParts.join('\n\n');
+                       } else {
+                           // Fallback to PbParser if API returns empty but file exists?
+                           // Or just leave empty.
+                           const filePath = path.join(BRAIN_DIR, c.id + '.pb');
+                           if (fs.existsSync(filePath)) {
+                               const strings = await PbParser.extractStrings(filePath);
+                               if (strings.length > 0) {
+                                   c.text = strings.join('\n\n').substring(0, 5000);
+                               }
+                           }
+                       }
+                   } catch (e) {
+                       // Fallback to PbParser on error
+                       try {
+                           const filePath = path.join(BRAIN_DIR, c.id + '.pb');
+                           if (fs.existsSync(filePath)) {
+                               const strings = await PbParser.extractStrings(filePath);
+                               if (strings.length > 0) {
+                                   c.text = strings.join('\n\n').substring(0, 5000);
+                               }
+                           }
+                       } catch (err) {
+                           // ignore
+                       }
+                   }
+               });
+               */
+
                 const configName = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.machineName');
                 const currentMachineName = (configName || this.config?.machineName || os.hostname()).trim();
 
@@ -2950,7 +3205,8 @@ export class SyncManager {
                     driveEmail: userInfo?.email, // Specific for Drive Storage
                     usageHistory: usageHistory.size > 0 ? usageHistory : undefined,
                     activeConversationId: this.getActiveConversationId(this.config!.machineId, (await this.getServerLatestTrajectoryId())?.id),
-                    mcpServerStates: await this.getMcpServerStates()
+                    mcpServerStates: await this.getMcpServerStates(),
+                    isSyncEnabled: this.isSyncEnabled // Pass sync state to webview
                 };
 
                 this.lastStatsData = statsData;
@@ -2962,8 +3218,17 @@ export class SyncManager {
 
             } catch (error: any) {
                 vscode.window.showErrorMessage(`${lm.t('Error loading statistics')}: ${error.message}`);
+            } finally {
+                this.isRefreshing = false; // Release lock
             }
         };
+
+        if (this.isRefreshing) {
+            console.log('Sync statistics refresh already in progress, skipping...');
+            return;
+        }
+
+        this.isRefreshing = true;
 
         if (showProgress) {
             await vscode.window.withProgress({
@@ -2979,6 +3244,30 @@ export class SyncManager {
     private async handleSyncStatsMessage(message: any) {
         const lm = LocalizationManager.getInstance();
         switch (message.command) {
+            case 'toggleSync': {
+                this.isSyncEnabled = message.enabled;
+                if (this.isSyncEnabled) {
+                    // If enabling, trigger a refresh immediately (or start timer)
+                    this.refreshStatistics(false);
+                    // Also ensure auto-sync timer is restarted if it was stopped
+                    if (this.config?.autoSync) {
+                        this.startAutoSync();
+                    }
+                } else {
+                    // If disabling, clear the timer
+                    if (this.autoSyncTimer) {
+                        clearInterval(this.autoSyncTimer);
+                        this.autoSyncTimer = null;
+                        this.nextAutoSyncTime = null;
+                    }
+                }
+                // Update UI to reflect state
+                if (this.lastStatsData) {
+                    this.lastStatsData.isSyncEnabled = this.isSyncEnabled;
+                    SyncStatsWebview.update(this.lastStatsData);
+                }
+                break;
+            }
             case 'sort': {
                 SyncStatsWebview.updateSort(message.table, message.col);
                 if (this.lastStatsData) {
@@ -2994,6 +3283,128 @@ export class SyncManager {
             }
             case 'forceSync': {
                 vscode.commands.executeCommand(`${EXT_NAME}.forceSync`);
+                break;
+            }
+            case 'getConversationDetails': {
+                const { id } = message;
+                try {
+                    const steps = await this.apiClient.getConversationMessages(id);
+                    let finalText = '';
+
+                    if (steps && steps.length > 0) {
+                        const textParts: string[] = [];
+                        for (const step of steps) {
+                            let text = '';
+
+                            if (step.type === 'CORTEX_STEP_TYPE_USER_INPUT') {
+                                // 1. Text extraction logic
+                                let textFromResponse = '';
+                                let textFromItems = '';
+
+                                if (step.userInput?.userResponse) {
+                                    textFromResponse = step.userInput.userResponse;
+                                }
+
+                                if (step.userInput?.items && Array.isArray(step.userInput.items)) {
+                                    textFromItems = step.userInput.items
+                                        .map((item: any) => item.text?.content || item.code?.value || '')
+                                        .filter((t: string) => t.length > 0)
+                                        .join('\n\n');
+                                }
+
+                                // Use the longer text to avoid truncation
+                                text = textFromResponse.length >= textFromItems.length ? textFromResponse : textFromItems;
+
+                                // 2. Media (Images) logic
+                                if (step.userInput?.media && Array.isArray(step.userInput.media)) {
+                                    for (const media of step.userInput.media) {
+                                        if (media.mimeType === 'image/png') {
+                                            if (media.content) {
+                                                text += `\n\n![Image](data:image/png;base64,${media.content})`;
+                                            } else if (media.path) {
+                                                text += `\n\n![Image](${media.path})`;
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if (step.type === 'CORTEX_STEP_TYPE_MODEL_RESPONSE') {
+                                if (step.modelResponse && step.modelResponse.content && Array.isArray(step.modelResponse.content)) {
+                                    text = step.modelResponse.content.map((c: any) => c.text?.content || '').join('\n');
+                                } else if (step.modelResponse?.text) {
+                                    text = step.modelResponse.text;
+                                }
+                            } else if (step.type === 'CORTEX_STEP_TYPE_PLANNER_RESPONSE') {
+                                text = step.plannerResponse?.thinking || '';
+                            } else {
+                                text = step.message?.text || step.text || '';
+                            }
+
+                            if (text) {
+                                textParts.push(text);
+                            }
+                        }
+                        finalText = textParts.join('\n\n');
+                    }
+
+                    // HYBRID STRATEGY: Fetch from local PB as well and compare
+                    let pbText = '';
+                    const filePath = path.join(BRAIN_DIR, id + '.pb');
+                    if (fs.existsSync(filePath)) {
+                        try {
+                            const strings = await PbParser.extractStrings(filePath);
+                            if (strings.length > 0) {
+                                pbText = strings.join('\n\n').substring(0, 5000); // Reasonable limit
+                            }
+                        } catch (e) {
+                            console.warn('Hybrid: PbParser failed', e);
+                        }
+                    }
+
+                    // Compare and select best text
+                    // If PB text is significantly longer, prefer it (API might be truncated)
+                    // If API text is roughly same or longer, prefer it (often better formatting/structure)
+                    if (pbText.length > finalText.length + 20) {
+                        // PB wins
+                        finalText = pbText;
+
+                        // BUT: We need to preserve images from API if they exist!
+                        // We can re-scan steps for images and append them to pbText
+                        if (steps && steps.length > 0) {
+                            for (const step of steps) {
+                                if (step.type === 'CORTEX_STEP_TYPE_USER_INPUT' && step.userInput?.media && Array.isArray(step.userInput.media)) {
+                                    for (const media of step.userInput.media) {
+                                        if (media.mimeType === 'image/png') {
+                                            if (media.content) {
+                                                finalText += `\n\n![Image](data:image/png;base64,${media.content})`;
+                                            } else if (media.path) {
+                                                finalText += `\n\n![Image](${media.path})`;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (!finalText && !pbText) {
+                        finalText = '<i>No content available.</i>';
+                    }
+
+                    // Render to Markdown HTML
+                    const html = SyncStatsWebview.renderMarkdown(finalText);
+
+                    SyncStatsWebview.postMessage({
+                        command: 'conversationDetails',
+                        id: id,
+                        html: html
+                    });
+
+                } catch (e) {
+                    console.error('Failed to get conversation details', e);
+                    SyncStatsWebview.postMessage({
+                        command: 'conversationDetails',
+                        id: id,
+                        html: '<i>Failed to load content.</i>'
+                    });
+                }
                 break;
             }
             case 'viewPb': {

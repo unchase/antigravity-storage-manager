@@ -105,12 +105,9 @@ export class LocalizationManager {
         return this.currentLanguage;
     }
 
-    /**
-     * Format a date according to the current locale
-     */
-    public formatDateTime(date: Date | string): string {
+    public formatDateTime(date: Date | string | number): string {
         if (!date) return '';
-        const d = typeof date === 'string' ? new Date(date) : date;
+        const d = (typeof date === 'string' || typeof date === 'number') ? new Date(date) : date;
         if (isNaN(d.getTime())) return '';
         return d.toLocaleString(this.currentLanguage, {
             year: 'numeric',
@@ -118,7 +115,6 @@ export class LocalizationManager {
             day: '2-digit',
             hour: '2-digit',
             minute: '2-digit',
-            second: '2-digit',
             hour12: false
         });
     }

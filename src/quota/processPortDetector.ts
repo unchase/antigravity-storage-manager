@@ -20,11 +20,13 @@ export class ProcessPortDetector {
     private platformDetector: PlatformDetector;
     private platformStrategy: IPlatformStrategy;
     private processName: string;
+    private processNames: string[];
 
     constructor() {
         this.platformDetector = new PlatformDetector();
         this.platformStrategy = this.platformDetector.getStrategy();
         this.processName = this.platformDetector.getProcessName();
+        this.processNames = this.platformDetector.getProcessNames();
     }
 
     async detectProcessInfo(maxRetries: number = 3, retryDelay: number = 2000): Promise<AntigravityProcessInfo | null> {
@@ -46,7 +48,26 @@ export class ProcessPortDetector {
                 const command = this.platformStrategy.getProcessListCommand(this.processName);
                 const { stdout } = await execAsync(command, { timeout: 15000 });
 
-                const processInfo = this.platformStrategy.parseProcessInfo(stdout);
+                let processInfo = this.platformStrategy.parseProcessInfo(stdout);
+
+                // Fallback: try alternative process names (fixes #12 — ARM64 Windows)
+                if (!processInfo && this.processNames.length > 1) {
+                    for (const altName of this.processNames) {
+                        if (altName === this.processName) continue;
+                        console.log('PortDetector', `Primary process '${this.processName}' not found, trying '${altName}'...`);
+                        try {
+                            const altCommand = this.platformStrategy.getProcessListCommand(altName);
+                            const altResult = await execAsync(altCommand, { timeout: 15000 });
+                            processInfo = this.platformStrategy.parseProcessInfo(altResult.stdout);
+                            if (processInfo) {
+                                console.log('PortDetector', `Found process using fallback name '${altName}'`);
+                                break;
+                            }
+                        } catch {
+                            // Continue to next alternative
+                        }
+                    }
+                }
 
                 if (!processInfo) {
                     throw new Error('language_server process not found');

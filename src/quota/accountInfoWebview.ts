@@ -846,7 +846,7 @@ export class AccountInfoWebview {
                 </div>
                 ${snapshot.syncStats.lastModified ? `
                 <div style="margin-left: auto;">
-                     ${l.t('Last Update')}: <span style="font-weight: 600; color: var(--text-main);">${new Date(snapshot.syncStats.lastModified).toLocaleString()}</span>
+                     ${l.t('Last Update')}: <span style="font-weight: 600; color: var(--text-main);">${l.formatDateTime(snapshot.syncStats.lastModified)}</span>
                 </div>` : ''}
             </div>` : ''}
         </div>

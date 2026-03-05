@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Unified AI Gateway with visual dashboard, secure Google Drive sync, Telegram notifications, multi-account profiles, real-time quota monitoring, MCP server validation, and advanced backup tools.</strong><br>
+  <strong>Unified AI Gateway with visual dashboard, secure Google Drive sync, Telegram notifications, multi-account profiles, real-time quota monitoring, Proxy support, MCP server, and advanced backup tools.</strong><br>
 </p>
 
 <p align="center">
@@ -214,6 +214,37 @@ The **Antigravity Proxy** is a local proxy server that unifies access to multipl
 - `Antigravity Proxy: Install` — Download and install the proxy binary.
 - `Antigravity Proxy: Show Log` — Open the proxy output channel for debugging.
 - `Antigravity Proxy: Open Config` — Edit `config.yaml` directly.
+
+---
+
+## Antigravity Proxy MCP Server (New in v0.14.0!)
+
+The extension now includes a built-in **Model Context Protocol (MCP)** server that wraps the Antigravity Proxy. This allows AI clients to directly interact with the proxy and its configured providers using standard tools.
+
+![Antigravity Proxy MCP Server](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/proxy-mcp-server.png)
+
+### Capabilities
+- **`proxy_status`**: Check status, port, and configured providers.
+- **`list_models`**: Get a list of all available AI models.
+- **`chat_completion`**: Send standard chat completion requests.
+- **`get_quota`**: View quota usage for Antigravity, Gemini CLI and Codex.
+
+### Configuration
+Add the server to your `mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "antigravity-proxy": {
+      "command": "node",
+      "args": ["<PATH_TO_EXTENSION>/dist/mcp/proxyMcpServer.js"],
+      "env": {
+        "PROXY_PORT": "8317"
+      }
+    }
+  }
+}
+```
 
 ---
 

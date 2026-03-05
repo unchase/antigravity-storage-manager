@@ -187,7 +187,7 @@ export class WindowsProcessDetector implements IPlatformStrategy {
                 : lm.t('wmic/PowerShell command unavailable; please check the system environment'),
             requirements: [
                 lm.t('Antigravity is running'),
-                lm.t('language_server_windows_x64.exe process is running'),
+                lm.t('language_server process is running'),
                 this.usePowerShell
                     ? lm.t('The system has permission to run PowerShell and netstat commands')
                     : lm.t('The system has permission to run wmic/PowerShell and netstat commands (auto-fallback supported)')

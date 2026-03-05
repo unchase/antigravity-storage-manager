@@ -26,6 +26,14 @@ export enum ProxyStatus {
     Installing = 'Installing'
 }
 
+export interface AccountDetails {
+    fileName: string;
+    lastModified: Date;
+    email?: string;
+    user?: string;
+    expired?: string;
+}
+
 export class ProxyManager {
     private _process: cp.ChildProcess | null = null;
     private _status: ProxyStatus = ProxyStatus.Stopped;
@@ -60,6 +68,14 @@ export class ProxyManager {
                 }
             })
         );
+    }
+
+    public getDashboardState(): any {
+        return this.context.globalState.get('antigravity.dashboardState', {});
+    }
+
+    public async updateDashboardState(state: any): Promise<void> {
+        await this.context.globalState.update('antigravity.dashboardState', state);
     }
 
     public get status(): ProxyStatus {
@@ -429,7 +445,7 @@ ${keyConfig}
             const configPath = path.join(this._binDir, 'config.yaml');
             if (!fs.existsSync(configPath)) return;
 
-            let content = fs.readFileSync(configPath, 'utf8');
+            const content = fs.readFileSync(configPath, 'utf8');
             const lines = content.split('\n');
             const newLines: string[] = [];
             let inApiKeys = false;
@@ -693,20 +709,26 @@ ${keyConfig}
         return keywords;
     }
 
-    private fetchJson(url: string): Promise<any> {
+    public fetchJson(url: string, headers: Record<string, string> = {}): Promise<any> {
         return new Promise((resolve, reject) => {
             const opts = {
                 headers: {
-                    'User-Agent': 'VSCode-Antigravity-Extension'
+                    'User-Agent': 'VSCode-Antigravity-Extension',
+                    ...headers
                 }
             };
-            https.get(url, opts, (res) => {
+
+            const isHttps = url.startsWith('https:');
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const requestModule = isHttps ? https : require('http');
+
+            requestModule.get(url, opts, (res: any) => {
                 if (res.statusCode !== 200) {
                     res.resume();
                     return reject(new Error(`Request failed with status ${res.statusCode}`));
                 }
                 let data = '';
-                res.on('data', chunk => data += chunk);
+                res.on('data', (chunk: any) => data += chunk);
                 res.on('end', () => {
                     try { resolve(JSON.parse(data)); }
                     catch (e) { reject(e); }
@@ -715,20 +737,25 @@ ${keyConfig}
         });
     }
 
-    private downloadFile(url: string, dest: string): Promise<void> {
+    private downloadFile(url: string, dest: string, token?: vscode.CancellationToken): Promise<void> {
         return new Promise((resolve, reject) => {
+            if (token?.isCancellationRequested) {
+                return reject(new Error('Cancelled'));
+            }
+
             const file = fs.createWriteStream(dest);
-            const opts = {
+            const opts: https.RequestOptions = {
                 headers: {
                     'User-Agent': 'VSCode-Antigravity-Extension'
                 }
             };
+
             const request = https.get(url, opts, (response) => {
                 if (response.statusCode === 302 || response.statusCode === 301) {
                     file.close();
                     fs.unlinkSync(dest);
                     if (response.headers.location) {
-                        resolve(this.downloadFile(response.headers.location, dest));
+                        resolve(this.downloadFile(response.headers.location, dest, token));
                     } else {
                         reject(new Error('Redirect location missing'));
                     }
@@ -737,15 +764,22 @@ ${keyConfig}
 
                 if (response.statusCode !== 200) {
                     file.close();
-                    fs.unlinkSync(dest);
+                    if (fs.existsSync(dest)) fs.unlinkSync(dest);
                     reject(new Error(`Download failed Status ${response.statusCode}`));
                     return;
                 }
 
                 response.pipe(file);
+
                 file.on('finish', () => {
                     file.close();
                     resolve();
+                });
+
+                file.on('error', (err) => { // Handle file errors during pipe
+                    file.close();
+                    if (fs.existsSync(dest)) fs.unlinkSync(dest);
+                    reject(err);
                 });
             });
 
@@ -754,6 +788,15 @@ ${keyConfig}
                 if (fs.existsSync(dest)) fs.unlinkSync(dest);
                 reject(err);
             });
+
+            if (token) {
+                token.onCancellationRequested(() => {
+                    request.destroy();
+                    file.close();
+                    if (fs.existsSync(dest)) fs.unlinkSync(dest);
+                    reject(new Error('Cancelled'));
+                });
+            }
         });
     }
 
@@ -1040,17 +1083,29 @@ ${keyConfig}
                     fs.writeFileSync(tokenPath, JSON.stringify(tokenData, null, 2));
 
                     // 4. Update config.yaml with github-copilot section (if needed)
-                    // We need to check for github-copilot: at root level (not inside oauth-model-alias)
-                    const tokenFileRelativePath = `~/.cli-proxy-api/github-copilot.json`;
+                    // Use absolute path to avoid issues with ~ expansion on Windows
+                    const tokenAbsPath = tokenPath.replace(/\\/g, '/'); // Ensure forward slashes for YAML
+                    // On Windows, drive letter might need handling? NodeJS path.join usually gives backslashes.
+                    // Converting to forward slashes is generally safer for YAML/Cross-platform tools if they support it.
+
                     let configChanged = false;
 
-                    // Check if github-copilot: with token-file already exists
-                    const hasGithubCopilotTokenFile = /^github-copilot:\s*\n\s+-\s+token-file:/m.test(content);
+                    // Regex to find existing github-copilot section
+                    const copilotSectionRegex = /github-copilot:\s*\n\s+-\s+token-file:\s*["']?([^"'\n\r]+)["']?/;
+                    const match = content.match(copilotSectionRegex);
 
-                    if (!hasGithubCopilotTokenFile) {
+                    if (match) {
+                        // Section exists, check if path matches
+                        const currentPath = match[1];
+                        if (currentPath !== tokenAbsPath) {
+                            // Update path
+                            content = content.replace(copilotSectionRegex, `github-copilot:\n  - token-file: "${tokenAbsPath}"`);
+                            configChanged = true;
+                        }
+                    } else {
                         // Insert github-copilot section BEFORE providers: section
                         const providersRegex = /^providers:/m;
-                        const newSection = `github-copilot:\n  - token-file: "${tokenFileRelativePath}"\n\n`;
+                        const newSection = `github-copilot:\n  - token-file: "${tokenAbsPath}"\n\n`;
 
                         if (providersRegex.test(content)) {
                             content = content.replace(providersRegex, newSection + 'providers:');
@@ -1446,6 +1501,12 @@ ${keyConfig}
         let endpoint = 'antigravity-auth-url'; // default
         if (provider === 'codex') {
             endpoint = 'codex-auth-url';
+        } else if (provider === 'claude') {
+            endpoint = 'anthropic-auth-url';
+        } else if (provider === 'qwen') {
+            endpoint = 'qwen-auth-url';
+        } else if (provider === 'kimi') {
+            endpoint = 'kimi-auth-url';
         }
         const url = `http://127.0.0.1:${port}/v0/management/${endpoint}?is_webui=true`;
         return await fetch(url, {
@@ -1677,6 +1738,47 @@ ${keyConfig}
         }
     }
 
+    public getMcpCommands(): { name: string, filename: string, allowedModels: string[] }[] {
+        const lm = LocalizationManager.getInstance();
+        const commands: { name: string, filename: string, allowedModels: string[] }[] = [];
+        if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+            return commands;
+        }
+
+        const workflowsDir = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, '.agent', 'workflows');
+        if (fs.existsSync(workflowsDir)) {
+            try {
+                const files = fs.readdirSync(workflowsDir);
+                for (const file of files) {
+                    if (file.endsWith('.md')) {
+                        const content = fs.readFileSync(path.join(workflowsDir, file), 'utf8');
+                        const name = file.replace(/\.md$/, '');
+                        let allowedModels: string[] = [];
+
+                        // Parse allowed models from comment: // Allowed models: ["model1", "model2"]
+                        const match = content.match(/\/\/ Allowed models: (\[.*?\])/);
+                        if (match && match[1]) {
+                            try {
+                                allowedModels = JSON.parse(match[1]);
+                            } catch (e: any) {
+                                vscode.window.showErrorMessage(
+                                    lm.t('Failed to parse allowed models for {0}: {1}', [file, e.message])
+                                );
+                            }
+                        }
+
+                        commands.push({ name, filename: file, allowedModels });
+                    }
+                }
+            } catch (e: any) {
+                vscode.window.showErrorMessage(
+                    lm.t('Error reading workflows directory: {0}', [e.message])
+                );
+            }
+        }
+        return commands;
+    }
+
     public getProviderAuthInfo(provider: string): { filePath: string, fileName: string, lastModified: Date } | null {
         try {
             const configPath = path.join(this._binDir, 'config.yaml');
@@ -1698,6 +1800,10 @@ ${keyConfig}
             if (provider === 'antigravity') filePattern = /^antigravity-.*\.json$/;
             else if (provider === 'codex') filePattern = /^codex-.*\.json$/;
             else if (provider === 'github-copilot') filePattern = /^github-copilot\.json$/;
+            else if (provider === 'qwen') filePattern = /^qwen-.*\.json$/;
+            else if (provider === 'kimi') filePattern = /^kimi-.*\.json$/;
+            else if (provider === 'claude') filePattern = /^claude-.*\.json$/;
+            else if (provider === 'gemini-cli') filePattern = /^gemini-.*\.json$/;
 
             if (!filePattern) return null;
 
@@ -1714,31 +1820,32 @@ ${keyConfig}
                     lastModified: files[0].stat.mtime
                 };
             }
-        } catch { }
+        } catch { /* ignore */ }
         return null;
     }
 
     /**
      * Get the auth directory path
      */
-    public getAuthDir(): string | null {
+    /**
+     * Get the auth directory path
+     */
+    public getAuthDir(): string {
         try {
             const configPath = path.join(this._binDir, 'config.yaml');
-            if (!fs.existsSync(configPath)) return null;
-            const content = fs.readFileSync(configPath, 'utf8');
-
-            let authDir = path.join(os.homedir(), '.cli-proxy-api');
-            const authDirMatch = content.match(/^auth-dir:\s*"?(.+?)"?\s*$/m);
-            if (authDirMatch) {
-                authDir = authDirMatch[1];
-                if (authDir.startsWith('~')) {
-                    authDir = path.join(os.homedir(), authDir.slice(1));
+            if (fs.existsSync(configPath)) {
+                const content = fs.readFileSync(configPath, 'utf8');
+                const authDirMatch = content.match(/^auth-dir:\s*"?(.+?)"?\s*$/m);
+                if (authDirMatch) {
+                    let authDir = authDirMatch[1];
+                    if (authDir.startsWith('~')) {
+                        authDir = path.join(os.homedir(), authDir.slice(1));
+                    }
+                    return authDir;
                 }
             }
-            return fs.existsSync(authDir) ? authDir : null;
-        } catch {
-            return null;
-        }
+        } catch { /* ignore */ }
+        return path.join(os.homedir(), '.cli-proxy-api');
     }
 
     /**
@@ -1746,25 +1853,17 @@ ${keyConfig}
      */
     public getAllProviderAuthInfos(provider: string): { filePath: string, fileName: string, lastModified: Date }[] {
         try {
-            const configPath = path.join(this._binDir, 'config.yaml');
-            if (!fs.existsSync(configPath)) return [];
-            const content = fs.readFileSync(configPath, 'utf8');
-
-            let authDir = path.join(os.homedir(), '.cli-proxy-api');
-            const authDirMatch = content.match(/^auth-dir:\s*"?(.+?)"?\s*$/m);
-            if (authDirMatch) {
-                authDir = authDirMatch[1];
-                if (authDir.startsWith('~')) {
-                    authDir = path.join(os.homedir(), authDir.slice(1));
-                }
-            }
-
+            const authDir = this.getAuthDir();
             if (!fs.existsSync(authDir)) return [];
 
             let filePattern: RegExp | null = null;
             if (provider === 'antigravity') filePattern = /^antigravity-.*\.json$/;
             else if (provider === 'codex') filePattern = /^codex-.*\.json$/;
             else if (provider === 'github-copilot') filePattern = /^github-copilot\.json$/;
+            else if (provider === 'qwen') filePattern = /^qwen-.*\.json$/;
+            else if (provider === 'kimi') filePattern = /^kimi-.*\.json$/;
+            else if (provider === 'claude') filePattern = /^claude-.*\.json$/;
+            else if (provider === 'gemini-cli') filePattern = /^gemini-.*\.json$/;
 
             if (!filePattern) return [];
 
@@ -1779,7 +1878,7 @@ ${keyConfig}
                 fileName: path.basename(f.file),
                 lastModified: f.stat.mtime
             }));
-        } catch { }
+        } catch { /* ignore */ }
         return [];
     }
 
@@ -1826,7 +1925,7 @@ ${keyConfig}
             // Match the entire z-ai configuration section
             const match = content.match(/^\s+- name: ["']?z-ai["']?[\s\S]*?api-key:\s*["']?([^"'\n]+)["']?/m);
             if (match) return match[1];
-        } catch { }
+        } catch { /* ignore */ }
         return null;
     }
 
@@ -1843,7 +1942,7 @@ ${keyConfig}
             // Fallback to commented block
             const commentedMatch = content.match(/#\s*- name: ["']?z-ai["']?[\s\S]*?#\s*-\s*name:\s*["']?([^"'\n]+)["']?/);
             if (commentedMatch) return commentedMatch[1];
-        } catch { }
+        } catch { /* ignore */ }
         return 'glm-4-plus';
     }
 
@@ -1857,7 +1956,7 @@ ${keyConfig}
             // Match commented z-ai block and extract api-key
             const match = content.match(/#\s*- name: ["']?z-ai["']?[\s\S]*?#\s*-?\s*api-key:\s*["']?([^"'\n]+)["']?/);
             if (match) return match[1];
-        } catch { }
+        } catch { /* ignore */ }
         return null;
     }
 
@@ -1871,7 +1970,7 @@ ${keyConfig}
             // Match commented z-ai block and extract model
             const match = content.match(/#\s*- name: ["']?z-ai["']?[\s\S]*?models:[\s\S]*?#\s*-\s*name:\s*["']?([^"'\n]+)["']?/);
             if (match) return match[1];
-        } catch { }
+        } catch { /* ignore */ }
         return 'glm-4-plus';
     }
 
@@ -1919,7 +2018,6 @@ ${keyConfig}
                 // This reliably stops at the next sibling provider (same indent) while consuming nested children (deeper indent)
                 // Disable: Remove existing then Append Commented Block
                 const key = this.getZaiKey() || '';
-                const model = this.getZaiModel();
                 // Use backreference \1 to ensure we only stop at SIBLINGS
                 const purgeRegex = /(\n\s*)(?:#\s*)?(- name: ["']?z-ai["']?[\s\S]*?)(?=\1(?:#[ \t]?)?- name:|\r?\n[a-zA-Z]|\r?\n#[ \t]?[a-zA-Z0-9_-]+:|$)/g;
                 content = content.replace(purgeRegex, '');
@@ -1979,7 +2077,91 @@ ${keyConfig}
                 this._onDidChangeStatus.fire(this._status);
                 vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Z.AI configuration removed.'));
             }
-        } catch { }
+        } catch { /* ignore */ }
+    }
+
+    public async getAccountDetails(provider: string, fileName: string): Promise<AccountDetails | null> {
+        try {
+            const authDir = this.getAuthDir();
+            if (!fs.existsSync(authDir)) return null;
+
+            const filePath = path.join(authDir, fileName);
+            if (!fs.existsSync(filePath)) return null;
+
+            const stats = fs.statSync(filePath);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const data = JSON.parse(content);
+
+            const details: AccountDetails = {
+                fileName: fileName,
+                lastModified: stats.mtime
+            };
+
+            // Extract fields based on provider
+            if (provider === 'antigravity') {
+                details.email = data.email || data.user_email || data.account_email;
+                details.expired = data.expired;
+            } else if (provider === 'codex') {
+                details.email = data.email;
+                details.expired = data.expired;
+            } else if (provider === 'kimi') {
+                details.expired = data.expired;
+            } else if (provider === 'qwen') {
+                details.expired = data.expired;
+            } else if (provider === 'github-copilot') {
+                details.user = data.user;
+            } else if (provider === 'gemini-cli') {
+                details.email = data.email;
+                // If email is not in JSON, try to parse from filename: gemini-<email>-<project>.json
+                if (!details.email && fileName.startsWith('gemini-')) {
+                    // Try to extract email: gemini-email@domain.com-project.json
+                    // Regex to capture email between 'gemini-' and the last dash-number section or .json
+                    const match = fileName.match(/^gemini-(.+?)(?:-antigravity-sync-.*|-.*)?\.json$/);
+                    if (match && match[1]) {
+                        // The regex might be too greedy or simple, let's try a safer split approach
+                        // Expected format: gemini-<email>-<project>.json
+                        // But email can contain dashes/dots.
+                        // Let's assume the project part is usually appended. 
+                        // For the user's specific case: gemini-centurionunchase@gmail.com-antigravity-sync-484813.json
+                        details.email = match[1];
+                    }
+                }
+            }
+
+            return details;
+        } catch (e) {
+            console.error(`Failed to get account details for ${provider}/${fileName}:`, e);
+            return null;
+        }
+    }
+
+    public async getAntigravityEmail(fileName: string): Promise<string | null> {
+        try {
+            const authDir = this.getAuthDir();
+            if (!fs.existsSync(authDir)) return null;
+
+            const filePath = path.join(authDir, fileName);
+
+            if (fs.existsSync(filePath)) {
+                const content = fs.readFileSync(filePath, 'utf8');
+                const data = JSON.parse(content);
+                // Check common email fields based on file structure
+                if (data.email) return data.email;
+                if (data.user_email) return data.user_email;
+                if (data.account_email) return data.account_email;
+            }
+            return null;
+        } catch (e) {
+            console.error('Failed to get Antigravity email from file:', e);
+            return null;
+        }
+    }
+
+    public async getAllAntigravityEmails(): Promise<string[]> {
+        const infos = this.getAllProviderAuthInfos('antigravity');
+        const emails = await Promise.all(infos.map(info => this.getAntigravityEmail(info.fileName)));
+        // Filter out nulls and duplicates
+        return Array.from(new Set(emails.filter((e): e is string => e !== null)));
     }
 
     public getConfiguredProviders(): string[] {
@@ -2009,10 +2191,27 @@ ${keyConfig}
                             copilotConfigured = true;
                         }
                     }
-                } catch { }
+                } catch { /* ignore */ }
             }
             if (copilotConfigured) providers.push('github-copilot');
-            if (content.includes('claude-api-key:') && content.includes('api-key:')) providers.push('claude');
+
+            // Check for Claude (OAuth)
+            let claudeConfigured = false;
+            // Check for auth file
+            try {
+                const authDirMatch = content.match(/^auth-dir:\s*"?(.+?)"?\s*$/m);
+                let authDir = authDirMatch ? authDirMatch[1] : path.join(os.homedir(), '.cli-proxy-api');
+                if (authDir.startsWith('~')) {
+                    authDir = path.join(os.homedir(), authDir.slice(1));
+                }
+                if (fs.existsSync(authDir)) {
+                    const files = fs.readdirSync(authDir);
+                    if (files.some(f => f.startsWith('claude-') && f.endsWith('.json'))) {
+                        claudeConfigured = true;
+                    }
+                }
+            } catch { /* ignore */ }
+            if (claudeConfigured) providers.push('claude');
 
             // Check for Codex (OAuth or Key)
             let codexConfigured = false;
@@ -2033,13 +2232,46 @@ ${keyConfig}
                             codexConfigured = true;
                         }
                     }
-                } catch { }
+                } catch { /* ignore */ }
             }
             if (codexConfigured) providers.push('codex');
             if (content.includes('vertex-api-key:') && content.includes('api-key:')) providers.push('vertex');
             // Z.AI is under openai-compatibility - check for active (not commented) block
             if (content.match(/^\s+- name: ["']?z-ai["']?/m)) providers.push('z-ai');
-            if (content.match(/name:\s*"?qwen3-coder-plus"?/)) providers.push('qwen');
+
+            // Check for Qwen (OAuth)
+            let qwenConfigured = false;
+            try {
+                const authDirMatch = content.match(/^auth-dir:\s*"?(.+?)"?\s*$/m);
+                let authDir = authDirMatch ? authDirMatch[1] : path.join(os.homedir(), '.cli-proxy-api');
+                if (authDir.startsWith('~')) {
+                    authDir = path.join(os.homedir(), authDir.slice(1));
+                }
+                if (fs.existsSync(authDir)) {
+                    const files = fs.readdirSync(authDir);
+                    if (files.some(f => f.startsWith('qwen-') && f.endsWith('.json'))) {
+                        qwenConfigured = true;
+                    }
+                }
+            } catch { /* ignore */ }
+            if (qwenConfigured) providers.push('qwen');
+
+            // Check for Kimi (OAuth)
+            let kimiConfigured = false;
+            try {
+                const authDirMatch = content.match(/^auth-dir:\s*"?(.+?)"?\s*$/m);
+                let authDir = authDirMatch ? authDirMatch[1] : path.join(os.homedir(), '.cli-proxy-api');
+                if (authDir.startsWith('~')) {
+                    authDir = path.join(os.homedir(), authDir.slice(1));
+                }
+                if (fs.existsSync(authDir)) {
+                    const files = fs.readdirSync(authDir);
+                    if (files.some(f => f.startsWith('kimi-') && f.endsWith('.json'))) {
+                        kimiConfigured = true;
+                    }
+                }
+            } catch { /* ignore */ }
+            if (kimiConfigured) providers.push('kimi');
             if (content.includes('kiro:')) providers.push('kiro');
 
             // Antigravity (OAuth or Key)
@@ -2061,15 +2293,36 @@ ${keyConfig}
                             antigravityConfigured = true;
                         }
                     }
-                } catch (e) {
+                } catch {
                     // ignore error
                 }
             }
             if (antigravityConfigured) providers.push('antigravity');
 
             // Gemini
+            let geminiConfigured = false;
+            // Check config.yaml
             if (content.match(/provider:\s*"?gemini"?/) || content.match(/provider:\s*"?aistudio"?/)) {
-                providers.push('gemini');
+                geminiConfigured = true;
+            } else {
+                // Check auth-dir
+                try {
+                    const authDirMatch = content.match(/^auth-dir:\s*"?(.+?)"?\s*$/m);
+                    let authDir = authDirMatch ? authDirMatch[1] : path.join(os.homedir(), '.cli-proxy-api');
+                    if (authDir.startsWith('~')) {
+                        authDir = path.join(os.homedir(), authDir.slice(1));
+                    }
+                    if (fs.existsSync(authDir)) {
+                        const files = fs.readdirSync(authDir);
+                        if (files.some(f => f.startsWith('gemini-') && f.endsWith('.json'))) {
+                            geminiConfigured = true;
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+
+            if (geminiConfigured) {
+                providers.push('gemini-cli');
             }
 
             return providers;
@@ -2144,7 +2397,7 @@ ${keyConfig}
         this._outputChannel.dispose();
     }
 
-    private async killProcessOnPort(port: number): Promise<boolean> {
+    public async killProcessOnPort(port: number): Promise<boolean> {
         return new Promise<boolean>((resolve) => {
             const platform = process.platform;
             if (platform === 'win32') {
@@ -2216,5 +2469,24 @@ ${keyConfig}
                 });
             }
         });
+    }
+    public async deployMcpServerScript(extensionUri: vscode.Uri): Promise<string> {
+        const binDir = this._binDir; // ~/.antigravity-proxy or similar
+        const mcpDir = path.join(binDir, 'mcp');
+        if (!fs.existsSync(mcpDir)) {
+            fs.mkdirSync(mcpDir, { recursive: true });
+        }
+
+        const sourcePath = vscode.Uri.joinPath(extensionUri, 'dist', 'mcp', 'proxyMcpServer.js');
+        const destPath = path.join(mcpDir, 'proxyMcpServer.js');
+
+        try {
+            const content = await vscode.workspace.fs.readFile(sourcePath);
+            fs.writeFileSync(destPath, content);
+            return destPath;
+        } catch (error) {
+            console.error('Failed to deploy MCP server script:', error);
+            throw error;
+        }
     }
 }

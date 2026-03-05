@@ -80,8 +80,13 @@ export async function activate(context: vscode.ExtensionContext) {
     proxyManager = new ProxyManager(context, STORAGE_ROOT);
     await proxyManager.initialize();
 
+    // Initialize Profile Manager (Lazy init is fine but we need instance for dashboard)
+    ensureProfileManager(context);
+    quotaManager.setProfileManager(profileManager);
+
+
     // Initialize Proxy Dashboard
-    proxyDashboard = new ProxyDashboardWebview(context.extensionUri, proxyManager);
+    proxyDashboard = new ProxyDashboardWebview(context.extensionUri, proxyManager, profileManager);
 
     // Register disposables containing proxyManager
     context.subscriptions.push(telegramService, statsScheduler, telegramCommandController, proxyManager);
@@ -275,15 +280,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
             const patreonBtn = {
                 iconPath: new vscode.ThemeIcon('heart'),
-                tooltip: 'Support on Patreon'
+                tooltip: lm.t('Support on Patreon')
             };
             const coffeeBtn = {
                 iconPath: new vscode.ThemeIcon('gift'),
-                tooltip: 'Buy Me a Coffee'
+                tooltip: lm.t('Buy Me a Coffee')
             };
             const githubBtn = {
                 iconPath: new vscode.ThemeIcon('star'),
-                tooltip: 'Star on GitHub'
+                tooltip: lm.t('Star on GitHub')
             };
             quickPick.buttons = [patreonBtn, coffeeBtn, githubBtn];
 
@@ -514,40 +519,19 @@ export async function activate(context: vscode.ExtensionContext) {
             });
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.switchProfile`, async () => {
-            if (!profileManager) {
-                profileManager = new ProfileManager(context);
-            }
+            ensureProfileManager(context);
             await profileManager.showProfilePicker();
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.debugProfile`, async () => {
-            if (!profileManager) {
-                profileManager = new ProfileManager(context);
-            }
+            ensureProfileManager(context);
             await profileManager.debugProfileInfo();
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.saveProfile`, async () => {
-            if (!profileManager) {
-                profileManager = new ProfileManager(context);
-            }
-            const name = await vscode.window.showInputBox({
-                placeHolder: LocalizationManager.getInstance().t('Enter profile name (e.g. "Personal")'),
-                validateInput: (value) => {
-                    return value && value.trim().length > 0 ? null : LocalizationManager.getInstance().t('Name cannot be empty');
-                }
-            });
-            if (name) {
-                try {
-                    await profileManager.saveProfile(name);
-                    vscode.window.showInformationMessage(LocalizationManager.getInstance().t('Profile "{0}" saved.', name));
-                } catch (e: any) {
-                    vscode.window.showErrorMessage(LocalizationManager.getInstance().t('Failed to save profile: {0}', e.message));
-                }
-            }
+            ensureProfileManager(context);
+            await profileManager.promptForSaveProfile();
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.deleteProfile`, async () => {
-            if (!profileManager) {
-                profileManager = new ProfileManager(context);
-            }
+            ensureProfileManager(context);
             const profiles = await profileManager.loadProfiles();
             const lm = LocalizationManager.getInstance();
             const toDelete = await vscode.window.showQuickPick(profiles.map(p => p.name), {
@@ -1098,4 +1082,73 @@ async function renameConversation() {
     }
 }
 
-export function deactivate() { }
+export function deactivate() {
+    // Clear global instances
+    // @ts-expect-error Global instance reset
+    profileManager = undefined;
+    // @ts-expect-error Global instance reset
+    proxyManager = undefined;
+
+    console.log('Antigravity Storage Manager deactivated.');
+}
+
+function ensureProfileManager(context: vscode.ExtensionContext): ProfileManager {
+    if (!profileManager) {
+        profileManager = new ProfileManager(
+            context,
+            async () => {
+                if (!proxyManager) return [];
+                return await proxyManager.getAllAntigravityEmails();
+            },
+            async () => {
+                if (!proxyManager) {
+                    vscode.window.showErrorMessage(LocalizationManager.getInstance().t('ProxyManager is not initialized.'));
+                    return undefined;
+                }
+                const lm = LocalizationManager.getInstance();
+                const initialEmails = await proxyManager.getAllAntigravityEmails();
+
+                await proxyManager.initiateOAuthFlow('antigravity');
+
+                // Poll for new email
+                return await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: lm.t('Waiting for authentication...'),
+                    cancellable: true
+                }, async (progress, token) => {
+                    return new Promise<string | undefined>((resolve) => {
+                        let elapsed = 0;
+                        const interval = setInterval(async () => {
+                            if (token.isCancellationRequested) {
+                                clearInterval(interval);
+                                resolve(undefined);
+                                return;
+                            }
+
+                            elapsed += 2000;
+                            if (elapsed > 300000) { // 5 minutes timeout
+                                clearInterval(interval);
+                                resolve(undefined);
+                                return;
+                            }
+
+                            const currentEmails = await proxyManager.getAllAntigravityEmails();
+                            const newEmail = currentEmails.find(e => !initialEmails.includes(e));
+                            if (newEmail) {
+                                clearInterval(interval);
+                                resolve(newEmail);
+                            }
+                        }, 2000);
+                    });
+                });
+            }
+        );
+        // Wire up quota refresh
+        if (quotaManager) {
+            profileManager.setQuotaRefreshCallback(async () => {
+                await quotaManager.refresh();
+            });
+        }
+    }
+    return profileManager;
+}

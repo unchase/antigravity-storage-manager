@@ -1,8 +1,8 @@
 {
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
-    "description": "Securely sync Antigravity Conversations with Google Drive. Features Telegram Bot notifications, Multi-Account Profile Switching, Real-time Quota Monitoring, MCP Server Status validation, and advanced backup tools.",
-    "version": "0.13.0",
+    "description": "Securely sync Antigravity Conversations with Google Drive. Features Telegram Bot notifications, Multi-Account Profile Switching, Real-time Quota Monitoring, MCP Server, Proxy support, and advanced backup tools.",
+    "version": "0.14.0",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -448,13 +448,13 @@
                             "Gemini 3 Flash"
                         ],
                         "enumDescriptions": [
-                            "Claude Sonnet 4.5",
-                            "Claude Sonnet 4.5 (Thinking)",
-                            "Claude Opus 4.5 (Thinking)",
-                            "GPT-OSS 120B (Medium)",
-                            "Gemini 3 Pro (High)",
-                            "Gemini 3 Pro (Low)",
-                            "Gemini 3 Flash"
+                            "%antigravity.model.claudeSonnet45%",
+                            "%antigravity.model.claudeSonnet45Thinking%",
+                            "%antigravity.model.claudeOpus45Thinking%",
+                            "%antigravity.model.gptOss120b%",
+                            "%antigravity.model.gemini3ProHigh%",
+                            "%antigravity.model.gemini3ProLow%",
+                            "%antigravity.model.gemini3Flash%"
                         ]
                     },
                     "default": [],
@@ -655,7 +655,8 @@
         "sync:l10n": "node check_l10n_bundles.js",
         "sync:localization": "npm run sync:nls && npm run sync:l10n",
         "test:sync_redundancy": "C:\\PROGRA~1\\nodejs\\node.exe node_modules/jest/bin/jest.js sync_redundancy.test.ts",
-        "check": "npx tsc --noEmit && npm run lint && npm run test:unit"
+        "check": "npx tsc --noEmit && npm run lint && npm run test:unit",
+        "mcp": "node ./dist/mcp/proxyMcpServer.js"
     },
     "devDependencies": {
         "@eslint/js": "^9.39.2",
@@ -675,6 +676,7 @@
         "typescript-eslint": "^8.53.1"
     },
     "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.25.3",
         "@types/archiver": "^7.0.0",
         "@types/markdown-it": "^14.1.2",
         "@vscode/codicons": "^0.0.44",
@@ -683,7 +685,8 @@
         "googleapis": "^144.0.0",
         "markdown-it": "^14.1.0",
         "node-cron": "^4.2.1",
-        "protobufjs": "^8.0.0"
+        "protobufjs": "^8.0.0",
+        "zod": "^3.25.76"
     },
     "optionalDependencies": {
         "@esbuild/win32-x64": "^0.27.2"
