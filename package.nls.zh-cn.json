@@ -84,5 +84,6 @@
     "antigravity.config.section.quota": "配额",
     "antigravity.config.section.networkProxy": "网络代理",
     "antigravity.config.section.antigravityProxy": "Antigravity 代理",
-    "antigravity.config.section.telegram": "Telegram"
+    "antigravity.config.section.telegram": "Telegram",
+    "antigravity.command.exportAsMarkdown": "??? Markdown"
 }

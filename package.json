@@ -190,6 +190,12 @@
                 "command": "antigravity-storage-manager.proxy.install",
                 "title": "%antigravity.command.proxy.install%",
                 "category": "%antigravity.submenu.label%"
+            },
+            {
+                "command": "antigravity-storage-manager.exportAsMarkdown",
+                "title": "%antigravity.command.exportAsMarkdown%",
+                "icon": "$(markdown)",
+                "category": "%antigravity.submenu.label%"
             }
         ],
         "submenus": [
@@ -241,6 +247,9 @@
                 },
                 {
                     "command": "antigravity-storage-manager.deleteProfile"
+                },
+                {
+                    "command": "antigravity-storage-manager.exportAsMarkdown"
                 }
             ],
             "antigravity-storage-manager.submenu": [
@@ -251,6 +260,10 @@
                 {
                     "command": "antigravity-storage-manager.import",
                     "group": "1_export@2"
+                },
+                {
+                    "command": "antigravity-storage-manager.exportAsMarkdown",
+                    "group": "1_export@3"
                 },
                 {
                     "command": "antigravity-storage-manager.rename",

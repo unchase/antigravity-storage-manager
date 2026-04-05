@@ -376,6 +376,23 @@ export class GoogleAuthProvider {
                         const error = parsedUrl.query.error as string;
 
                         if (error) {
+                            // Build user-friendly troubleshooting hint based on error type
+                            let hint = '';
+                            let vscodeHint = '';
+                            if (error === 'access_denied') {
+                                hint = '<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• Make sure you click <strong>"Allow"</strong> on the Google consent screen.<br>• The extension requires the <em>"See, edit, create, and delete only the specific Google Drive files you use with this app"</em> permission.<br>• If your Google account is managed by an organization, your admin may need to approve this app.</p>';
+                                vscodeHint = lm.t('You must grant the Google Drive file access permission. Please try again and click "Allow" on the consent screen.');
+                            } else if (error === 'invalid_client') {
+                                hint = '<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• Check your <strong>Client ID</strong> and <strong>Client Secret</strong> in VS Code Settings → Antigravity Storage Manager.<br>• Ensure the OAuth credentials are for a <em>Desktop App</em> type in Google Cloud Console.<br>• Verify the Google Drive API is enabled in your Google Cloud project.</p>';
+                                vscodeHint = lm.t('Invalid OAuth credentials. Please verify your Client ID and Client Secret in Settings.');
+                            } else if (error === 'redirect_uri_mismatch') {
+                                hint = `<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• In Google Cloud Console → Credentials, add <code>http://localhost:${REDIRECT_PORT}/callback</code> as an Authorized redirect URI.<br>• Make sure the OAuth credential type is <em>Desktop App</em>.</p>`;
+                                vscodeHint = lm.t('Redirect URI mismatch. Please add http://localhost:{0}/callback to your OAuth credentials in Google Cloud Console.', REDIRECT_PORT);
+                            } else {
+                                hint = '<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• Remove and re-add your account in VS Code.<br>• Check the <a href="https://github.com/unchase/antigravity-storage-manager/blob/master/SYNC_SETUP.md" style="color:#58a6ff;">Sync Setup Guide</a> for detailed instructions.</p>';
+                                vscodeHint = lm.t('Authentication error: {0}. Please check the Sync Setup Guide for help.', error);
+                            }
+
                             res.writeHead(400, { 'Content-Type': 'text/html' });
                             res.end(`
                                 <!DOCTYPE html>
@@ -406,7 +423,7 @@ export class GoogleAuthProvider {
                                             border: 1px solid var(--border);
                                             border-radius: 12px;
                                             padding: 40px;
-                                            max-width: 400px;
+                                            max-width: 480px;
                                             width: 90%;
                                             box-shadow: 0 8px 24px rgba(0,0,0,0.5);
                                             text-align: center;
@@ -417,6 +434,8 @@ export class GoogleAuthProvider {
                                         p { line-height: 1.6; opacity: 0.9; }
                                         .error-code { font-family: monospace; background: rgba(248,81,73,0.1); padding: 4px 8px; border-radius: 4px; color: var(--danger); }
                                         .icon { font-size: 48px; margin-bottom: 20px; }
+                                        a { color: #58a6ff; }
+                                        code { background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
                                     </style>
                                 </head>
                                 <body>
@@ -425,12 +444,29 @@ export class GoogleAuthProvider {
                                         <h1>Authentication Failed</h1>
                                         <p>Something went wrong during the sign-in process.</p>
                                         <p><span class="error-code">${error}</span></p>
-                                        <p style="font-size: 0.9em; opacity: 0.6; margin-top: 30px;">You can close this window and try again from VS Code.</p>
+                                        ${hint}
+                                        <p style="font-size: 0.9em; opacity: 0.6; margin-top: 20px;">You can close this window and try again from VS Code.</p>
                                     </div>
                                 </body>
                                 </html>
                             `);
                             this.closeServer();
+
+                            // Show actionable notification in VS Code
+                            const setupGuide = lm.t('Open Setup Guide');
+                            const retryAction = lm.t('Retry');
+                            vscode.window.showErrorMessage(
+                                vscodeHint || lm.t('Authentication failed: {0}', error),
+                                setupGuide,
+                                retryAction
+                            ).then(selection => {
+                                if (selection === setupGuide) {
+                                    vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager/blob/master/SYNC_SETUP.md'));
+                                } else if (selection === retryAction) {
+                                    this.signIn();
+                                }
+                            });
+
                             reject(new Error(`OAuth error: ${error}`));
                             return;
                         }

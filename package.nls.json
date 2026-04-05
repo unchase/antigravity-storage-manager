@@ -84,5 +84,6 @@
     "antigravity.config.section.quota": "Quota",
     "antigravity.config.section.networkProxy": "Network Proxy",
     "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
-    "antigravity.config.section.telegram": "Telegram"
+    "antigravity.config.section.telegram": "Telegram",
+    "antigravity.command.exportAsMarkdown": "Export as Markdown"
 }

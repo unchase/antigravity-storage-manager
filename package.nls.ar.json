@@ -84,5 +84,6 @@
     "antigravity.config.section.quota": "الحصة",
     "antigravity.config.section.networkProxy": "وكيل الشبكة",
     "antigravity.config.section.antigravityProxy": "وكيل Antigravity",
-    "antigravity.config.section.telegram": "تيليجرام"
+    "antigravity.config.section.telegram": "تيليجرام",
+    "antigravity.command.exportAsMarkdown": "????? ?? Markdown"
 }

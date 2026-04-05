@@ -84,5 +84,6 @@
     "antigravity.config.section.quota": "Kota",
     "antigravity.config.section.networkProxy": "Ağ Proxy",
     "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
-    "antigravity.config.section.telegram": "Telegram"
+    "antigravity.config.section.telegram": "Telegram",
+    "antigravity.command.exportAsMarkdown": "Markdown olarak disa aktar"
 }

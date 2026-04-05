@@ -84,5 +84,6 @@
     "antigravity.config.section.quota": "Квоты",
     "antigravity.config.section.networkProxy": "Сетевой прокси",
     "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
-    "antigravity.config.section.telegram": "Telegram"
+    "antigravity.config.section.telegram": "Telegram",
+    "antigravity.command.exportAsMarkdown": "??????? ? Markdown"
 }

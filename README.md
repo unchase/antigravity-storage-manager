@@ -54,6 +54,7 @@ If you find this extension useful, consider supporting the development:
 - 🔍 **Account Insights** — Monitor your Plan/Tier, specific feature availability (Web Search, Browser Tool), and raw Google API responses.
 - 🛡️ **Proxy Support** — Full support for corporate proxies with authentication and strict SSL configuration.
 - 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
+- 📝 **Markdown Export** — Export conversations as readable `.md` files with message grouping and brain artifacts included.
 - 🛑 **Cancellation Support** — Abort long-running operations (Sync, Export, Backup) safely at any time.
 - 🛠️ **Smart Configuration** — Auto-detects missing sync setup and prompts for configuration on startup.
 - 📱 **Multi-Profile Quota Display** — Intelligently combined quota usage for all accounts linked to active profiles on a specific device, with a scrollable and collapsible UI.

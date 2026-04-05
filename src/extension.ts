@@ -16,6 +16,7 @@ import { BackupManager } from './backup';
 import { QuotaManager } from './quota/quotaManager';
 import { ProfileManager } from './profileManager';
 import { TelegramService } from './telegram/telegramService';
+import { MarkdownExporter } from './markdownExporter';
 import { StatsScheduler } from './telegram/statsScheduler';
 import { TelegramCommandController } from './telegram/telegramCommandController';
 
@@ -94,6 +95,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register existing commands
     context.subscriptions.push(
         vscode.commands.registerCommand(`${EXT_NAME}.export`, exportConversations),
+        vscode.commands.registerCommand(`${EXT_NAME}.exportAsMarkdown`, exportAsMarkdown),
         vscode.commands.registerCommand(`${EXT_NAME}.import`, importConversations),
         vscode.commands.registerCommand(`${EXT_NAME}.rename`, renameConversation),
         vscode.commands.registerCommand(`${EXT_NAME}.backupAll`, backupAll),
@@ -1037,6 +1039,15 @@ async function importConversations() {
     const message = lm.t('Imported {0} conversation(s)', importedCount) +
         (skippedCount > 0 ? lm.t(', skipped {0}', skippedCount) : '');
 
+    if (importedCount > 0) {
+        // Auto-reindex to link restored conversations to current workspaces (Issue #17)
+        try {
+            await syncManager.reindexConversations();
+        } catch (e: any) {
+            console.warn('[Import] Auto-reindex failed:', e.message);
+        }
+    }
+
     const choice = await vscode.window.showInformationMessage(
         lm.t('{0}. Reload window to refresh?', message),
         lm.t('Reload'),
@@ -1097,6 +1108,68 @@ async function renameConversation() {
     } catch (e: any) {
         vscode.window.showErrorMessage(lm.t('Rename failed: {0}', e.message));
     }
+}
+
+// EXPORT AS MARKDOWN: Issue #16
+async function exportAsMarkdown() {
+    const lm = LocalizationManager.getInstance();
+
+    let statuses: Map<string, { status: string, icon: string }> | undefined;
+    if (syncManager && syncManager.isReady()) {
+        statuses = await syncManager.getConversationStatuses({ forceCache: true });
+    }
+
+    const selected = await showEnhancedConversationQuickPick({
+        title: lm.t('Export as Markdown'),
+        placeholder: lm.t('Select conversations to export as .md (use Space to select multiple)'),
+        canSelectMany: true,
+        syncManager: syncManager,
+        statuses: statuses
+    });
+
+    if (!selected || selected.length === 0) return;
+
+    // Ask for output directory
+    const outputUri = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        openLabel: lm.t('Select Output Folder')
+    });
+
+    if (!outputUri || outputUri.length === 0) return;
+
+    const outputDir = outputUri[0].fsPath;
+
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: lm.t('Exporting {0} conversation(s) as Markdown...', selected.length),
+        cancellable: true
+    }, async (progress, token) => {
+        const conversations = selected.map(s => ({
+            id: s.id,
+            title: s.label || s.id
+        }));
+
+        const result = await MarkdownExporter.exportMultiple(
+            conversations, BRAIN_DIR, CONV_DIR, outputDir, progress, token
+        );
+
+        if (result.errors.length > 0) {
+            vscode.window.showWarningMessage(
+                lm.t('Exported {0} conversation(s) with {1} error(s).', result.exported, result.errors.length)
+            );
+        } else {
+            const openFolder = lm.t('Open Folder');
+            const choice = await vscode.window.showInformationMessage(
+                lm.t('Exported {0} conversation(s) as Markdown to {1}', result.exported, outputDir),
+                openFolder
+            );
+            if (choice === openFolder) {
+                vscode.env.openExternal(vscode.Uri.file(outputDir));
+            }
+        }
+    });
 }
 
 export function deactivate() {

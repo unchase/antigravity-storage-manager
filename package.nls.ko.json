@@ -84,5 +84,6 @@
     "antigravity.config.section.quota": "할당량",
     "antigravity.config.section.networkProxy": "네트워크 프록시",
     "antigravity.config.section.antigravityProxy": "Antigravity 프록시",
-    "antigravity.config.section.telegram": "Telegram"
+    "antigravity.config.section.telegram": "Telegram",
+    "antigravity.command.exportAsMarkdown": "Markdown?? ????"
 }

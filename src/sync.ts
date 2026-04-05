@@ -708,6 +708,55 @@ export class SyncManager {
                                 for (const match of titleMatched) {
                                     console.log(`  Remote "${match.remote.title}" (${match.remote.id}) => Local (${match.localId})`);
                                 }
+
+                                // Issue #6: Offer automatic re-linking
+                                const relinkAction = lm.t('Re-link All');
+                                const titles = titleMatched.slice(0, 5).map(m => m.remote.title || m.remote.id).join(', ');
+                                const suffix = titleMatched.length > 5 ? ` (+${titleMatched.length - 5})` : '';
+
+                                const relinkChoice = await vscode.window.showInformationMessage(
+                                    lm.t('Found {0} conversation(s) matched by workspace name: {1}{2}. Re-link them to current workspace?',
+                                        titleMatched.length, titles, suffix),
+                                    relinkAction
+                                );
+
+                                if (relinkChoice === relinkAction) {
+                                    for (const match of titleMatched) {
+                                        try {
+                                            // Pull remote data using the remote conversation ID
+                                            // then copy/symlink brain data from remote ID to local ID
+                                            const remoteBrainDir = path.join(BRAIN_DIR, match.remote.id);
+                                            const localBrainDir = path.join(BRAIN_DIR, match.localId);
+
+                                            // Pull the remote conversation if not already on disk
+                                            if (!fs.existsSync(remoteBrainDir)) {
+                                                await this.pullConversation(match.remote.id);
+                                            }
+
+                                            // Copy files from remote ID folder to local ID folder (merge)
+                                            if (fs.existsSync(remoteBrainDir) && remoteBrainDir !== localBrainDir) {
+                                                const remoteFiles = await fs.promises.readdir(remoteBrainDir, { withFileTypes: true });
+                                                for (const entry of remoteFiles) {
+                                                    const srcPath = path.join(remoteBrainDir, entry.name);
+                                                    const destPath = path.join(localBrainDir, entry.name);
+                                                    if (!fs.existsSync(destPath)) {
+                                                        if (entry.isDirectory()) {
+                                                            fs.cpSync(srcPath, destPath, { recursive: true });
+                                                        } else {
+                                                            fs.copyFileSync(srcPath, destPath);
+                                                        }
+                                                    }
+                                                }
+                                                console.log(`[Reindex] Re-linked "${match.remote.title}" (${match.remote.id}) => (${match.localId})`);
+                                            }
+                                        } catch (e: any) {
+                                            console.error(`[Reindex] Failed to re-link ${match.remote.id}: ${e.message}`);
+                                        }
+                                    }
+                                    vscode.window.showInformationMessage(
+                                        lm.t('Re-linked {0} conversation(s) to current workspace.', titleMatched.length)
+                                    );
+                                }
                             }
 
                             remoteOnlyCount = missingRemote.length;

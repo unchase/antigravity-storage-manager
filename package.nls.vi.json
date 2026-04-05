@@ -84,5 +84,6 @@
     "antigravity.config.section.quota": "Hạn mức",
     "antigravity.config.section.networkProxy": "Proxy mạng",
     "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
-    "antigravity.config.section.telegram": "Telegram"
+    "antigravity.config.section.telegram": "Telegram",
+    "antigravity.command.exportAsMarkdown": "Xu?t du?i d?ng Markdown"
 }

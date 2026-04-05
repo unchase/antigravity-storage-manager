@@ -5,7 +5,7 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14.3] - 2026-03-08
+## [0.14.3] - 2026-04-05
 ### Local Storage Provider ([#11](https://github.com/unchase/antigravity-storage-manager/issues/11))
 - **Local Sync**: Added a full local filesystem storage provider as an alternative to Google Drive. Conversations can now be synced to any local or network-attached directory.
 - **New Setting `sync.storageProvider`**: Dropdown selector (`google-drive` / `local`) to choose the sync backend.
@@ -21,7 +21,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Workspace Name-Based Mapping ([#6](https://github.com/unchase/antigravity-storage-manager/issues/6))
 - **Improved Reindexing**: The `reindexConversations` command now checks the remote manifest for conversations that are missing locally.
 - **Name-Based Matching**: Remote conversations are matched against local ones by title (case-insensitive), resolving workspace migration issues where conversation IDs change but titles remain the same.
+- **Automatic Re-linking**: When title-matched conversations are found, users can click "Re-link All" to automatically merge remote data into local workspace folders — no manual file copying required.
 - **Pull Missing**: If unmatched remote conversations are found, the user is offered a "Pull Missing" action to download them.
+
+### Authentication UX ([#15](https://github.com/unchase/antigravity-storage-manager/issues/15))
+- **Actionable Error Messages**: OAuth error pages now display specific troubleshooting hints based on error type:
+  - `access_denied` — Guidance on granting permissions and organization approval.
+  - `invalid_client` — Instructions to verify Client ID/Secret and enable Google Drive API.
+  - `redirect_uri_mismatch` — Exact localhost URL to add in Google Cloud Console.
+- **VS Code Notifications**: Error notifications now include **"Open Setup Guide"** and **"Retry"** action buttons for quick recovery.
+
+### Backup Restoration ([#17](https://github.com/unchase/antigravity-storage-manager/issues/17))
+- **Auto-Reindex on Import**: After importing conversations from a backup ZIP, the extension automatically runs `reindexConversations` to link restored conversations to the current workspace.
+
+### Markdown Export ([#16](https://github.com/unchase/antigravity-storage-manager/issues/16))
+- **New Command `Export as Markdown`**: Export conversations as readable `.md` files instead of binary `.pb` archives.
+  - Extracts conversation messages from `.pb` protobuf data using heuristic role-based grouping (User/Assistant/System).
+  - Includes brain artifacts (`task.md`, `walkthrough.md`, etc.) in the exported file.
+  - Supports batch export with progress indicator and cancellation.
+  - Output directory selection via native file picker.
 
 ### Settings UX
 - **Grouped Settings**: All extension settings are now organized into 8 logical sections in the Settings UI: **General**, **Sync**, **Google Authentication**, **Backup**, **Quota**, **Network Proxy**, **Antigravity Proxy**, and **Telegram**. Previously, all ~35 settings were displayed in a single flat list.
