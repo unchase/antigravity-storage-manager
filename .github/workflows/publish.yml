@@ -67,24 +67,13 @@ jobs:
           COMMIT_MSG=$(git log -1 --format=%s)
           echo "commit_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
 
-          # 2. Extract Changelog
-          # Find start line of the version section
-          START_LINE=$(grep -n "^## \[$VERSION\]" CHANGELOG.md | cut -d: -f1)
+          # 2. Extract Changelog using sed (avoids tail|head broken pipe)
+          # Extract everything between "## [$VERSION]" and the next "## [" section
+          CONTENT=$(sed -n "/^## \[$VERSION\]/,/^## \[/{/^## \[$VERSION\]/p; /^## \[/!p}" CHANGELOG.md)
 
-          if [ -z "$START_LINE" ]; then
+          if [ -z "$CONTENT" ]; then
              echo "::error::Could not find '## [$VERSION]' in CHANGELOG.md"
              exit 1
-          fi
-
-          # Find next section start to determine end line
-          REMAINING_LINES=$(tail -n +$((START_LINE + 1)) CHANGELOG.md)
-          NEXT_SECTION_OFFSET=$(echo "$REMAINING_LINES" | grep -n "^## \[" | head -n 1 | cut -d: -f1)
-
-          if [ -z "$NEXT_SECTION_OFFSET" ]; then
-             CONTENT=$(tail -n +$START_LINE CHANGELOG.md)
-          else
-             # Take lines up to the next section
-             CONTENT=$(tail -n +$START_LINE CHANGELOG.md | head -n $((NEXT_SECTION_OFFSET - 1)))
           fi
 
           # Replace header: remove first line, add new title
