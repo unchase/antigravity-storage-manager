@@ -920,5 +920,8 @@
     "{0}d": "{0}일",
     "{0}h": "{0}시간",
     "{0}m": "{0}분",
-    "{0}s": "{0}s"
+    "{0}s": "{0}s",
+    "Pull Missing": "누락 항목 가져오기",
+    "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "로컬에 없는 원격 대화 {0}개 발견: {1}{2}. 가져오시겠습니까?",
+    "Enable sync to check for remote conversations.": "원격 대화를 확인하려면 동기화를 활성화하세요."
 }

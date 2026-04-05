@@ -920,5 +920,8 @@
     "{0}d": "{0}天",
     "{0}h": "{0}時",
     "{0}m": "{0}分",
-    "{0}s": "{0}s"
+    "{0}s": "{0}s",
+    "Pull Missing": "拉取缺少項目",
+    "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "發現 {0} 個本機不存在的遠端對話：{1}{2}。是否要拉取？",
+    "Enable sync to check for remote conversations.": "啟用同步以檢查遠端對話。"
 }

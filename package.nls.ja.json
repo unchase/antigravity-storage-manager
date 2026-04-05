@@ -72,5 +72,17 @@
     "antigravity.model.gemini3ProHigh": "Gemini 3.1 Pro (High)",
     "antigravity.model.gemini3ProLow": "Gemini 3.1 Pro (Low)",
     "antigravity.model.gemini3Flash": "Gemini 3.1 Flash",
-    "antigravity.config.ui.showExportImportStatusBarItems": "ステータスバーに 'AG Export' と 'AG Import' ボタンを表示する"
+    "antigravity.config.ui.showExportImportStatusBarItems": "ステータスバーに 'AG Export' と 'AG Import' ボタンを表示する",
+    "antigravity.config.sync.keepLocalFiles": "リモートで削除された場合でも、同期後にローカルファイルを削除せずに保持する",
+    "antigravity.config.sync.storageProvider": "同期用ストレージプロバイダー（google-driveまたはローカルファイルシステム）",
+    "antigravity.config.sync.localPath": "ローカルファイルシステム同期のパス（ストレージプロバイダーが'local'の場合のみ使用）",
+    "antigravity.config.sync.localPath.md": "ローカルファイルシステム同期の絶対パス。`#antigravity-storage-manager.sync.storageProvider#` が `local` に設定されている場合のみ使用されます。ホームディレクトリには `~` を使用できます。",
+    "antigravity.config.section.general": "一般",
+    "antigravity.config.section.sync": "同期",
+    "antigravity.config.section.googleAuth": "Google認証",
+    "antigravity.config.section.backup": "バックアップ",
+    "antigravity.config.section.quota": "クォータ",
+    "antigravity.config.section.networkProxy": "ネットワークプロキシ",
+    "antigravity.config.section.antigravityProxy": "Antigravity プロキシ",
+    "antigravity.config.section.telegram": "Telegram"
 }

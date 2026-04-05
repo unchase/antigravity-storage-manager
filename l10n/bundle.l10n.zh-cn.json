@@ -920,5 +920,8 @@
     "{0}d": "{0}天",
     "{0}h": "{0}时",
     "{0}m": "{0}分",
-    "{0}s": "{0}秒"
+    "{0}s": "{0}秒",
+    "Pull Missing": "拉取缺失",
+    "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "发现 {0} 个本地不存在的远程对话：{1}{2}。是否要拉取？",
+    "Enable sync to check for remote conversations.": "启用同步以检查远程对话。"
 }

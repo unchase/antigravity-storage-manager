@@ -920,5 +920,8 @@
     "{0}d": "{0}д",
     "{0}h": "{0}ч",
     "{0}m": "{0}м",
-    "{0}s": "{0}с"
+    "{0}s": "{0}с",
+    "Pull Missing": "Загрузить отсутствующие",
+    "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "Найдено {0} удалённых диалогов, отсутствующих локально: {1}{2}. Хотите загрузить их?",
+    "Enable sync to check for remote conversations.": "Включите синхронизацию для проверки удалённых диалогов."
 }

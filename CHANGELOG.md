@@ -5,6 +5,31 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.3] - 2026-03-08
+### Local Storage Provider ([#11](https://github.com/unchase/antigravity-storage-manager/issues/11))
+- **Local Sync**: Added a full local filesystem storage provider as an alternative to Google Drive. Conversations can now be synced to any local or network-attached directory.
+- **New Setting `sync.storageProvider`**: Dropdown selector (`google-drive` / `local`) to choose the sync backend.
+- **New Setting `sync.localPath`**: Path to the local directory for sync storage (visible only when provider is `local`).
+- **`StorageService` Interface**: Introduced a common storage abstraction (`StorageService`) implemented by both `GoogleDriveService` and the new `LocalStorageService`. The `SyncManager` now dynamically selects the provider at startup based on settings.
+- **`LocalStorageService`**: Full implementation mirroring the Google Drive API — manifest, machine states, per-file conversation sync, lock files, and storage info.
+
+### Keep Local Files ([#8](https://github.com/unchase/antigravity-storage-manager/issues/8))
+- **New Setting `sync.keepLocalFiles`** (default: `true`): When enabled, local files are preserved during sync even if they were deleted on the remote side. Conversely, remote files are not deleted if they are missing locally.
+- **Pull Protection**: `pullConversationPerFile` skips deletion of local files that were removed remotely.
+- **Push Protection**: `pushConversation` skips deletion of remote files that are absent locally.
+
+### Workspace Name-Based Mapping ([#6](https://github.com/unchase/antigravity-storage-manager/issues/6))
+- **Improved Reindexing**: The `reindexConversations` command now checks the remote manifest for conversations that are missing locally.
+- **Name-Based Matching**: Remote conversations are matched against local ones by title (case-insensitive), resolving workspace migration issues where conversation IDs change but titles remain the same.
+- **Pull Missing**: If unmatched remote conversations are found, the user is offered a "Pull Missing" action to download them.
+
+### Settings UX
+- **Grouped Settings**: All extension settings are now organized into 8 logical sections in the Settings UI: **General**, **Sync**, **Google Authentication**, **Backup**, **Quota**, **Network Proxy**, **Antigravity Proxy**, and **Telegram**. Previously, all ~35 settings were displayed in a single flat list.
+- **Ordered Properties**: Settings within each section are logically ordered by importance and usage frequency.
+
+### Localization
+- Added full translations for all new settings, section titles, and UI strings across all 16 supported languages.
+
 ## [0.14.2] - 2026-03-08
 ### Improvements
 - **Human-Readable AI Model Names**: Chat messages now display full model names (e.g., "Gemini 3.1 Pro (High)") instead of raw M-codes (e.g., "M37"). Uses dynamic lookup from the Language Server's `GetUserStatus` API with correct prefix stripping for reliable matching.

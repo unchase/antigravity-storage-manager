@@ -72,5 +72,17 @@
     "antigravity.model.gemini3ProHigh": "Gemini 3.1 Pro (High)",
     "antigravity.model.gemini3ProLow": "Gemini 3.1 Pro (Low)",
     "antigravity.model.gemini3Flash": "Gemini 3.1 Flash",
-    "antigravity.config.ui.showExportImportStatusBarItems": "Показывать кнопки 'AG Export' и 'AG Import' в строке состояния"
+    "antigravity.config.ui.showExportImportStatusBarItems": "Показывать кнопки 'AG Export' и 'AG Import' в строке состояния",
+    "antigravity.config.sync.keepLocalFiles": "Сохранять локальные файлы после синхронизации вместо их удаления при удалении на удалённом хранилище",
+    "antigravity.config.sync.storageProvider": "Провайдер хранилища для синхронизации (google-drive или локальная файловая система)",
+    "antigravity.config.sync.localPath": "Путь для синхронизации в локальную файловую систему (используется только при провайдере 'local')",
+    "antigravity.config.sync.localPath.md": "Абсолютный путь для синхронизации в локальную файловую систему. Используется только когда `#antigravity-storage-manager.sync.storageProvider#` установлен в `local`. Поддерживает `~` для домашнего каталога.",
+    "antigravity.config.section.general": "Общие",
+    "antigravity.config.section.sync": "Синхронизация",
+    "antigravity.config.section.googleAuth": "Аутентификация Google",
+    "antigravity.config.section.backup": "Резервное копирование",
+    "antigravity.config.section.quota": "Квоты",
+    "antigravity.config.section.networkProxy": "Сетевой прокси",
+    "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
+    "antigravity.config.section.telegram": "Telegram"
 }

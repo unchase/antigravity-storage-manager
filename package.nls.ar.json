@@ -72,5 +72,17 @@
     "antigravity.model.gemini3ProHigh": "Gemini 3.1 Pro (High)",
     "antigravity.model.gemini3ProLow": "Gemini 3.1 Pro (Low)",
     "antigravity.model.gemini3Flash": "Gemini 3.1 Flash",
-    "antigravity.config.ui.showExportImportStatusBarItems": "عرض أزرار 'AG Export' و 'AG Import' في شريط الحالة"
+    "antigravity.config.ui.showExportImportStatusBarItems": "عرض أزرار 'AG Export' و 'AG Import' في شريط الحالة",
+    "antigravity.config.sync.keepLocalFiles": "الاحتفاظ بالملفات المحلية بعد المزامنة بدلاً من حذفها عند إزالتها عن بُعد",
+    "antigravity.config.sync.storageProvider": "مزود التخزين للمزامنة (google-drive أو نظام الملفات المحلي)",
+    "antigravity.config.sync.localPath": "مسار مزامنة نظام الملفات المحلي (يُستخدم فقط عندما يكون مزود التخزين 'local')",
+    "antigravity.config.sync.localPath.md": "المسار المطلق لمزامنة نظام الملفات المحلي. يُستخدم فقط عندما يكون `#antigravity-storage-manager.sync.storageProvider#` مضبوطًا على `local`. يدعم `~` لمجلد المستخدم.",
+    "antigravity.config.section.general": "عام",
+    "antigravity.config.section.sync": "المزامنة",
+    "antigravity.config.section.googleAuth": "مصادقة Google",
+    "antigravity.config.section.backup": "النسخ الاحتياطي",
+    "antigravity.config.section.quota": "الحصة",
+    "antigravity.config.section.networkProxy": "وكيل الشبكة",
+    "antigravity.config.section.antigravityProxy": "وكيل Antigravity",
+    "antigravity.config.section.telegram": "تيليجرام"
 }

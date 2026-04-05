@@ -10,6 +10,7 @@ const markdownit = require('markdown-it');
 import extract from 'extract-zip';
 import { GoogleAuthProvider } from './googleAuth';
 import { GoogleDriveService, SyncManifest, SyncedConversation, Machine, MachineState, FileHashInfo } from './googleDrive';
+import { StorageService, LocalStorageService } from './localStorage';
 import * as crypto from './crypto';
 import { LocalizationManager } from './l10n/localizationManager';
 import { getConversationsAsync, limitConcurrency, formatDuration, ConversationItem } from './utils';
@@ -73,7 +74,7 @@ export class SyncManager {
     private lastDashboardUpdate: number = 0;
     private context: vscode.ExtensionContext;
     private authProvider: GoogleAuthProvider;
-    private driveService: GoogleDriveService;
+    private driveService: StorageService;
     private config: SyncConfig | null = null;
     private masterPassword: string | null = null;
     private lastHistory: Uint8Array | null = null;
@@ -110,7 +111,21 @@ export class SyncManager {
     ) {
         this.context = context;
         this.authProvider = authProvider;
-        this.driveService = new GoogleDriveService(authProvider);
+        // Select storage provider based on settings
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
+        const storageProvider = config.get<string>('sync.storageProvider', 'google-drive');
+
+        if (storageProvider === 'local') {
+            const localPath = config.get<string>('sync.localPath', '');
+            if (localPath) {
+                this.driveService = new LocalStorageService(localPath);
+            } else {
+                // Fallback to Google Drive if no local path configured
+                this.driveService = new GoogleDriveService(authProvider);
+            }
+        } else {
+            this.driveService = new GoogleDriveService(authProvider);
+        }
 
         try {
             const MD = (markdownit as any).default || markdownit;
@@ -549,6 +564,8 @@ export class SyncManager {
             }
 
             // Files that exist remotely but not locally (deleted locally)
+            const config = vscode.workspace.getConfiguration(EXT_NAME);
+            const keepLocalFiles = config.get<boolean>('sync.keepLocalFiles', true);
             for (const remotePath of Object.keys(remoteHashes)) {
                 if (!localData.fileHashes[remotePath]) {
                     filesToDelete.push(remotePath);
@@ -564,6 +581,9 @@ export class SyncManager {
                 if (isFirstSync) {
                     console.warn(`[Push] First sync for ${conversationId}, skipping remote deletion for ${filesToDelete.length} files that might exist on other machines.`);
                     filesToDelete.length = 0; // Don't delete remotely on first sync
+                } else if (keepLocalFiles) {
+                    console.warn(`[Push] keepLocalFiles is enabled, skipping remote deletion for ${filesToDelete.length} files for conversation ${conversationId}.`);
+                    filesToDelete.length = 0;
                 } else {
                     console.warn(`[Push] Found ${filesToDelete.length} files missing locally for conversation ${conversationId}. Will delete from remote:`, filesToDelete);
                 }
@@ -571,7 +591,6 @@ export class SyncManager {
 
             // Upload changed files
             let uploadedCount = 0;
-            const config = vscode.workspace.getConfiguration(EXT_NAME);
             const concurrency = config.get<number>('sync.concurrency', 3);
 
             await limitConcurrency(filesToUpload, concurrency, async (relativePath) => {
@@ -645,20 +664,92 @@ export class SyncManager {
                         const dirPath = path.join(BRAIN_DIR, id);
                         const stats = await fs.promises.stat(dirPath);
                         if (stats.isDirectory()) {
-                            // It's a directory but not recognized. 
-                            // Maybe missing .pb file? Or just no recognizable title?
-                            // We can try to "adopt" it by creating a minimal metadata marker if needed, 
-                            // but for now let's just log it.
                             console.log(`[Reindex] Found potential orphan: ${id}`);
-                            // If it has files, we count it.
                             const files = await fs.promises.readdir(dirPath);
                             if (files.length > 0) recovered++;
                         }
                     }
                 }
 
-                if (recovered > 0) {
-                    vscode.window.showInformationMessage(lm.t('Found {0} potential orphaned conversations. Please check specific folders in {1}.', recovered, BRAIN_DIR));
+                // 3. Name-based mapping: check remote manifest for conversations missing locally (Issue #6)
+                let remoteOnlyCount = 0;
+                if (this.isReady()) {
+                    try {
+                        const manifest = await this.getDecryptedManifest(true);
+                        if (manifest && manifest.conversations.length > 0) {
+                            const localIds = new Set(localConversations.map(c => c.id));
+                            const localTitles = new Map<string, string>(); // title -> id
+                            for (const c of localConversations) {
+                                if (c.label && c.label !== c.id) {
+                                    localTitles.set(c.label.toLowerCase(), c.id);
+                                }
+                            }
+
+                            const missingRemote: SyncedConversation[] = [];
+                            const titleMatched: { remote: SyncedConversation; localId: string }[] = [];
+
+                            for (const remote of manifest.conversations) {
+                                if (!localIds.has(remote.id)) {
+                                    // Not found by ID — try name-based matching
+                                    const matchedLocalId = remote.title
+                                        ? localTitles.get(remote.title.toLowerCase())
+                                        : undefined;
+
+                                    if (matchedLocalId) {
+                                        titleMatched.push({ remote, localId: matchedLocalId });
+                                    } else {
+                                        missingRemote.push(remote);
+                                    }
+                                }
+                            }
+
+                            if (titleMatched.length > 0) {
+                                console.log(`[Reindex] Found ${titleMatched.length} conversation(s) matched by title (name-based mapping):`);
+                                for (const match of titleMatched) {
+                                    console.log(`  Remote "${match.remote.title}" (${match.remote.id}) => Local (${match.localId})`);
+                                }
+                            }
+
+                            remoteOnlyCount = missingRemote.length;
+
+                            if (missingRemote.length > 0) {
+                                const pullAction = lm.t('Pull Missing');
+                                const titles = missingRemote.slice(0, 5).map(c => c.title || c.id).join(', ');
+                                const suffix = missingRemote.length > 5 ? ` (+${missingRemote.length - 5})` : '';
+
+                                const choice = await vscode.window.showInformationMessage(
+                                    lm.t('Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?',
+                                        missingRemote.length, titles, suffix),
+                                    pullAction
+                                );
+
+                                if (choice === pullAction) {
+                                    for (const remote of missingRemote) {
+                                        try {
+                                            await this.pullConversation(remote.id);
+                                        } catch (e: any) {
+                                            console.error(`[Reindex] Failed to pull ${remote.id}: ${e.message}`);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: any) {
+                        console.warn(`[Reindex] Could not check remote manifest: ${e.message}`);
+                    }
+                }
+
+                if (recovered > 0 || remoteOnlyCount > 0) {
+                    const parts: string[] = [];
+                    if (recovered > 0) {
+                        parts.push(lm.t('Found {0} potential orphaned conversations. Please check specific folders in {1}.', recovered, BRAIN_DIR));
+                    }
+                    if (remoteOnlyCount > 0 && !this.isReady()) {
+                        parts.push(lm.t('Enable sync to check for remote conversations.'));
+                    }
+                    if (parts.length > 0) {
+                        vscode.window.showInformationMessage(parts.join(' '));
+                    }
                 } else {
                     vscode.window.showInformationMessage(lm.t('Reindex complete. Found {0} conversations.', localConversations.length));
                 }
@@ -778,10 +869,18 @@ export class SyncManager {
         }
 
         // Files that exist locally but not remotely (deleted remotely)
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
+        const keepLocalFiles = config.get<boolean>('sync.keepLocalFiles', true);
         for (const localPath of Object.keys(localHashes)) {
             if (!remoteHashes[localPath]) {
                 filesToDelete.push(localPath);
             }
+        }
+
+        // If keepLocalFiles is enabled, skip deletion of local files
+        if (keepLocalFiles && filesToDelete.length > 0) {
+            console.warn(`[Pull] keepLocalFiles is enabled, skipping local deletion for ${filesToDelete.length} file(s) for conversation ${conversationId}.`);
+            filesToDelete.length = 0;
         }
 
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
@@ -793,7 +892,6 @@ export class SyncManager {
 
         // Download changed files
         let downloadedCount = 0;
-        const config = vscode.workspace.getConfiguration(EXT_NAME);
         const concurrency = config.get<number>('sync.concurrency', 3);
 
         await limitConcurrency(filesToDownload, concurrency, async (relativePath) => {

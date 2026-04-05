@@ -920,5 +920,8 @@
     "{0}d": "{0}日",
     "{0}h": "{0}時間",
     "{0}m": "{0}分",
-    "{0}s": "{0}s"
+    "{0}s": "{0}s",
+    "Pull Missing": "不足分を取得",
+    "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "ローカルに存在しないリモート会話が{0}件見つかりました: {1}{2}。取得しますか？",
+    "Enable sync to check for remote conversations.": "同期を有効にしてリモート会話を確認してください。"
 }

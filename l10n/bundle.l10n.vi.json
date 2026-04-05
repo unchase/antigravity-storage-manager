@@ -920,5 +920,8 @@
     "{0}d": "{0} ngày",
     "{0}h": "{0} giờ",
     "{0}m": "{0} phút",
-    "{0}s": "{0}s"
+    "{0}s": "{0}s",
+    "Pull Missing": "Tải về thiếu",
+    "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "Tìm thấy {0} cuộc trò chuyện từ xa không có trên máy: {1}{2}. Bạn có muốn tải về không?",
+    "Enable sync to check for remote conversations.": "Bật đồng bộ để kiểm tra các cuộc trò chuyện từ xa."
 }

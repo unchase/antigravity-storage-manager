@@ -920,5 +920,8 @@
     "{0}d": "{0}g",
     "{0}h": "{0}h",
     "{0}m": "{0}m",
-    "{0}s": "{0}s"
+    "{0}s": "{0}s",
+    "Pull Missing": "Scarica mancanti",
+    "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "Trovate {0} conversazione/i remota/e non presente/i localmente: {1}{2}. Vuoi scaricarle?",
+    "Enable sync to check for remote conversations.": "Abilita la sincronizzazione per controllare le conversazioni remote."
 }

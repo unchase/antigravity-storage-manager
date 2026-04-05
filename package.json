@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Securely sync Antigravity Conversations with Google Drive. Features Telegram Bot notifications, Multi-Account Profile Switching, Real-time Quota Monitoring, MCP Server, Proxy support, and advanced backup tools.",
-    "version": "0.14.2",
+    "version": "0.14.3",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -330,259 +330,367 @@
                 }
             ]
         },
-        "configuration": {
-            "title": "%antigravity.config.title%",
-            "properties": {
-                "antigravity-storage-manager.sync.autoSync": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%antigravity.config.autoSync%"
-                },
-                "antigravity-storage-manager.sync.syncInterval": {
-                    "type": "number",
-                    "default": 300000,
-                    "description": "%antigravity.config.syncInterval%"
-                },
-                "antigravity-storage-manager.language": {
-                    "type": "string",
-                    "enum": [
-                        "auto",
-                        "ar",
-                        "cs",
-                        "de",
-                        "en",
-                        "es",
-                        "fr",
-                        "it",
-                        "ja",
-                        "ko",
-                        "pl",
-                        "pt-br",
-                        "ru",
-                        "tr",
-                        "vi",
-                        "zh-cn",
-                        "zh-tw"
-                    ],
-                    "default": "auto",
-                    "description": "%antigravity.config.language%"
-                },
-                "antigravity-storage-manager.sync.concurrency": {
-                    "type": "number",
-                    "default": 3,
-                    "minimum": 1,
-                    "maximum": 50,
-                    "description": "%antigravity.config.concurrency%"
-                },
-                "antigravity-storage-manager.sync.showStatusBar": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%antigravity.config.showStatusBar%"
-                },
-                "antigravity-storage-manager.sync.silent": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "%antigravity.config.silent%"
-                },
-                "antigravity-storage-manager.sync.machineName": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.machineName%"
-                },
-                "antigravity-storage-manager.sync.suggestSolutions": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%antigravity.config.suggestSolutions%"
-                },
-                "antigravity-storage-manager.sync.enableCompression": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%antigravity.config.sync.enableCompression%"
-                },
-                "antigravity-storage-manager.google.clientId": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.clientId%"
-                },
-                "antigravity-storage-manager.google.clientSecret": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.clientSecret%"
-                },
-                "antigravity-storage-manager.backup.enabled": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "%antigravity.config.backupEnabled%"
-                },
-                "antigravity-storage-manager.backup.interval": {
-                    "type": "number",
-                    "default": 24,
-                    "description": "%antigravity.config.backupInterval%"
-                },
-                "antigravity-storage-manager.backup.path": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.backupPath%"
-                },
-                "antigravity-storage-manager.backup.retention": {
-                    "type": "number",
-                    "default": 10,
-                    "description": "%antigravity.config.backupRetention%"
-                },
-                "antigravity-storage-manager.ui.showExportImportStatusBarItems": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%antigravity.config.ui.showExportImportStatusBarItems%"
-                },
-                "antigravity-storage-manager.enableQuota": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%antigravity.config.enableQuota%"
-                },
-                "antigravity-storage-manager.quota.pinnedModels": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
+        "configuration": [
+            {
+                "title": "%antigravity.config.section.general%",
+                "order": 0,
+                "properties": {
+                    "antigravity-storage-manager.language": {
+                        "type": "string",
+                        "order": 1,
+                        "enum": [
+                            "auto",
+                            "ar",
+                            "cs",
+                            "de",
+                            "en",
+                            "es",
+                            "fr",
+                            "it",
+                            "ja",
+                            "ko",
+                            "pl",
+                            "pt-br",
+                            "ru",
+                            "tr",
+                            "vi",
+                            "zh-cn",
+                            "zh-tw"
+                        ],
+                        "default": "auto",
+                        "description": "%antigravity.config.language%"
                     },
-                    "default": [],
-                    "description": "%antigravity.config.pinnedModels%"
-                },
-                "antigravity-storage-manager.sync.authorizedRemoteDeleteMachineIds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
+                    "antigravity-storage-manager.ui.showExportImportStatusBarItems": {
+                        "type": "boolean",
+                        "order": 2,
+                        "default": true,
+                        "description": "%antigravity.config.ui.showExportImportStatusBarItems%"
                     },
-                    "default": [],
-                    "markdownDescription": "%antigravity.config.authorizedRemoteDeleteMachineIds%"
-                },
-                "antigravity-storage-manager.sync.useMetadataCache": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%antigravity.config.useMetadataCache%"
-                },
-                "antigravity-storage-manager.quota.thresholds.warning": {
-                    "type": "number",
-                    "default": 50,
-                    "minimum": 0,
-                    "maximum": 100,
-                    "description": "%antigravity.config.quota.warningThreshold%"
-                },
-                "antigravity-storage-manager.quota.thresholds.critical": {
-                    "type": "number",
-                    "default": 30,
-                    "minimum": 0,
-                    "maximum": 100,
-                    "description": "%antigravity.config.quota.criticalThreshold%"
-                },
-                "antigravity-storage-manager.quota.thresholds.danger": {
-                    "type": "number",
-                    "default": 0,
-                    "minimum": 0,
-                    "maximum": 100,
-                    "description": "%antigravity.config.quota.dangerThreshold%"
-                },
-                "antigravity-storage-manager.showCreditsBalance": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "%antigravity.config.showCreditsBalance%"
-                },
-                "antigravity-storage-manager.profilesDirectory": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.profilesDirectory%",
-                    "markdownDescription": "%antigravity.config.profilesDirectory.md%"
-                },
-                "antigravity-storage-manager.quota.historyRetentionDays": {
-                    "type": "number",
-                    "default": 7,
-                    "minimum": 1,
-                    "maximum": 30,
-                    "description": "%antigravity.config.quota.historyRetentionDays%"
-                },
-                "antigravity-storage-manager.proxy.url": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.proxy.url%"
-                },
-                "antigravity-storage-manager.proxy.strictSSL": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%antigravity.config.proxy.strictSSL%"
-                },
-                "antigravity-storage-manager.proxy.username": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.proxy.username%"
-                },
-                "antigravity-storage-manager.proxy.password": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.proxy.password%"
-                },
-                "antigravity-storage-manager.telegram.botToken": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.telegram.botToken%",
-                    "scope": "application"
-                },
-                "antigravity-storage-manager.telegram.userIds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
+                    "antigravity-storage-manager.profilesDirectory": {
+                        "type": "string",
+                        "order": 3,
+                        "default": "",
+                        "description": "%antigravity.config.profilesDirectory%",
+                        "markdownDescription": "%antigravity.config.profilesDirectory.md%"
+                    }
+                }
+            },
+            {
+                "title": "%antigravity.config.section.sync%",
+                "order": 1,
+                "properties": {
+                    "antigravity-storage-manager.sync.storageProvider": {
+                        "type": "string",
+                        "order": 1,
+                        "enum": [
+                            "google-drive",
+                            "local"
+                        ],
+                        "default": "google-drive",
+                        "description": "%antigravity.config.sync.storageProvider%"
                     },
-                    "default": [],
-                    "description": "%antigravity.config.telegram.userIds%"
-                },
-                "antigravity-storage-manager.telegram.usernames": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
+                    "antigravity-storage-manager.sync.localPath": {
+                        "type": "string",
+                        "order": 2,
+                        "default": "",
+                        "description": "%antigravity.config.sync.localPath%",
+                        "markdownDescription": "%antigravity.config.sync.localPath.md%"
                     },
-                    "default": [],
-                    "description": "%antigravity.config.telegram.usernames%"
-                },
-                "antigravity-storage-manager.telegram.statsIntervalCron": {
-                    "type": "string",
-                    "default": "0 */12 * * *",
-                    "description": "%antigravity.config.telegram.statsIntervalCron%"
-                },
-                "antigravity-storage-manager.proxy.enabled": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "%antigravity.config.proxy.enabled%",
-                    "scope": "application"
-                },
-                "antigravity-storage-manager.proxy.port": {
-                    "type": "number",
-                    "default": 8317,
-                    "description": "%antigravity.config.proxy.port%",
-                    "scope": "application"
-                },
-                "antigravity-storage-manager.proxy.autoConfig": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%antigravity.config.proxy.autoConfig%"
-                },
-                "antigravity-storage-manager.proxy.binaryPath": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.proxy.binaryPath%",
-                    "scope": "application"
-                },
-                "antigravity.config.proxy.binaryPath": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.proxy.binaryPath%",
-                    "scope": "application"
-                },
-                "antigravity.config.proxy.upstreamUrl": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%antigravity.config.proxy.upstreamUrl%",
-                    "scope": "application"
+                    "antigravity-storage-manager.sync.autoSync": {
+                        "type": "boolean",
+                        "order": 3,
+                        "default": true,
+                        "description": "%antigravity.config.autoSync%"
+                    },
+                    "antigravity-storage-manager.sync.syncInterval": {
+                        "type": "number",
+                        "order": 4,
+                        "default": 300000,
+                        "description": "%antigravity.config.syncInterval%"
+                    },
+                    "antigravity-storage-manager.sync.concurrency": {
+                        "type": "number",
+                        "order": 5,
+                        "default": 3,
+                        "minimum": 1,
+                        "maximum": 50,
+                        "description": "%antigravity.config.concurrency%"
+                    },
+                    "antigravity-storage-manager.sync.keepLocalFiles": {
+                        "type": "boolean",
+                        "order": 6,
+                        "default": true,
+                        "description": "%antigravity.config.sync.keepLocalFiles%"
+                    },
+                    "antigravity-storage-manager.sync.enableCompression": {
+                        "type": "boolean",
+                        "order": 7,
+                        "default": true,
+                        "description": "%antigravity.config.sync.enableCompression%"
+                    },
+                    "antigravity-storage-manager.sync.showStatusBar": {
+                        "type": "boolean",
+                        "order": 8,
+                        "default": true,
+                        "description": "%antigravity.config.showStatusBar%"
+                    },
+                    "antigravity-storage-manager.sync.silent": {
+                        "type": "boolean",
+                        "order": 9,
+                        "default": false,
+                        "description": "%antigravity.config.silent%"
+                    },
+                    "antigravity-storage-manager.sync.machineName": {
+                        "type": "string",
+                        "order": 10,
+                        "default": "",
+                        "description": "%antigravity.config.machineName%"
+                    },
+                    "antigravity-storage-manager.sync.suggestSolutions": {
+                        "type": "boolean",
+                        "order": 11,
+                        "default": true,
+                        "description": "%antigravity.config.suggestSolutions%"
+                    },
+                    "antigravity-storage-manager.sync.useMetadataCache": {
+                        "type": "boolean",
+                        "order": 12,
+                        "default": true,
+                        "description": "%antigravity.config.useMetadataCache%"
+                    },
+                    "antigravity-storage-manager.sync.authorizedRemoteDeleteMachineIds": {
+                        "type": "array",
+                        "order": 13,
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "markdownDescription": "%antigravity.config.authorizedRemoteDeleteMachineIds%"
+                    }
+                }
+            },
+            {
+                "title": "%antigravity.config.section.googleAuth%",
+                "order": 2,
+                "properties": {
+                    "antigravity-storage-manager.google.clientId": {
+                        "type": "string",
+                        "order": 1,
+                        "default": "",
+                        "description": "%antigravity.config.clientId%"
+                    },
+                    "antigravity-storage-manager.google.clientSecret": {
+                        "type": "string",
+                        "order": 2,
+                        "default": "",
+                        "description": "%antigravity.config.clientSecret%"
+                    }
+                }
+            },
+            {
+                "title": "%antigravity.config.section.backup%",
+                "order": 3,
+                "properties": {
+                    "antigravity-storage-manager.backup.enabled": {
+                        "type": "boolean",
+                        "order": 1,
+                        "default": false,
+                        "description": "%antigravity.config.backupEnabled%"
+                    },
+                    "antigravity-storage-manager.backup.interval": {
+                        "type": "number",
+                        "order": 2,
+                        "default": 24,
+                        "description": "%antigravity.config.backupInterval%"
+                    },
+                    "antigravity-storage-manager.backup.path": {
+                        "type": "string",
+                        "order": 3,
+                        "default": "",
+                        "description": "%antigravity.config.backupPath%"
+                    },
+                    "antigravity-storage-manager.backup.retention": {
+                        "type": "number",
+                        "order": 4,
+                        "default": 10,
+                        "description": "%antigravity.config.backupRetention%"
+                    }
+                }
+            },
+            {
+                "title": "%antigravity.config.section.quota%",
+                "order": 4,
+                "properties": {
+                    "antigravity-storage-manager.enableQuota": {
+                        "type": "boolean",
+                        "order": 1,
+                        "default": true,
+                        "description": "%antigravity.config.enableQuota%"
+                    },
+                    "antigravity-storage-manager.quota.pinnedModels": {
+                        "type": "array",
+                        "order": 2,
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "description": "%antigravity.config.pinnedModels%"
+                    },
+                    "antigravity-storage-manager.showCreditsBalance": {
+                        "type": "boolean",
+                        "order": 3,
+                        "default": false,
+                        "description": "%antigravity.config.showCreditsBalance%"
+                    },
+                    "antigravity-storage-manager.quota.historyRetentionDays": {
+                        "type": "number",
+                        "order": 4,
+                        "default": 7,
+                        "minimum": 1,
+                        "maximum": 30,
+                        "description": "%antigravity.config.quota.historyRetentionDays%"
+                    },
+                    "antigravity-storage-manager.quota.thresholds.warning": {
+                        "type": "number",
+                        "order": 5,
+                        "default": 50,
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "%antigravity.config.quota.warningThreshold%"
+                    },
+                    "antigravity-storage-manager.quota.thresholds.critical": {
+                        "type": "number",
+                        "order": 6,
+                        "default": 30,
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "%antigravity.config.quota.criticalThreshold%"
+                    },
+                    "antigravity-storage-manager.quota.thresholds.danger": {
+                        "type": "number",
+                        "order": 7,
+                        "default": 0,
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "%antigravity.config.quota.dangerThreshold%"
+                    }
+                }
+            },
+            {
+                "title": "%antigravity.config.section.networkProxy%",
+                "order": 5,
+                "properties": {
+                    "antigravity-storage-manager.proxy.url": {
+                        "type": "string",
+                        "order": 1,
+                        "default": "",
+                        "description": "%antigravity.config.proxy.url%"
+                    },
+                    "antigravity-storage-manager.proxy.strictSSL": {
+                        "type": "boolean",
+                        "order": 2,
+                        "default": true,
+                        "description": "%antigravity.config.proxy.strictSSL%"
+                    },
+                    "antigravity-storage-manager.proxy.username": {
+                        "type": "string",
+                        "order": 3,
+                        "default": "",
+                        "description": "%antigravity.config.proxy.username%"
+                    },
+                    "antigravity-storage-manager.proxy.password": {
+                        "type": "string",
+                        "order": 4,
+                        "default": "",
+                        "description": "%antigravity.config.proxy.password%"
+                    }
+                }
+            },
+            {
+                "title": "%antigravity.config.section.antigravityProxy%",
+                "order": 6,
+                "properties": {
+                    "antigravity-storage-manager.proxy.enabled": {
+                        "type": "boolean",
+                        "order": 1,
+                        "default": false,
+                        "description": "%antigravity.config.proxy.enabled%",
+                        "scope": "application"
+                    },
+                    "antigravity-storage-manager.proxy.port": {
+                        "type": "number",
+                        "order": 2,
+                        "default": 8317,
+                        "description": "%antigravity.config.proxy.port%",
+                        "scope": "application"
+                    },
+                    "antigravity-storage-manager.proxy.autoConfig": {
+                        "type": "boolean",
+                        "order": 3,
+                        "default": true,
+                        "description": "%antigravity.config.proxy.autoConfig%"
+                    },
+                    "antigravity-storage-manager.proxy.binaryPath": {
+                        "type": "string",
+                        "order": 4,
+                        "default": "",
+                        "description": "%antigravity.config.proxy.binaryPath%",
+                        "scope": "application"
+                    },
+                    "antigravity.config.proxy.binaryPath": {
+                        "type": "string",
+                        "order": 5,
+                        "default": "",
+                        "description": "%antigravity.config.proxy.binaryPath%",
+                        "scope": "application"
+                    },
+                    "antigravity.config.proxy.upstreamUrl": {
+                        "type": "string",
+                        "order": 6,
+                        "default": "",
+                        "description": "%antigravity.config.proxy.upstreamUrl%",
+                        "scope": "application"
+                    }
+                }
+            },
+            {
+                "title": "%antigravity.config.section.telegram%",
+                "order": 7,
+                "properties": {
+                    "antigravity-storage-manager.telegram.botToken": {
+                        "type": "string",
+                        "order": 1,
+                        "default": "",
+                        "description": "%antigravity.config.telegram.botToken%",
+                        "scope": "application"
+                    },
+                    "antigravity-storage-manager.telegram.userIds": {
+                        "type": "array",
+                        "order": 2,
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "description": "%antigravity.config.telegram.userIds%"
+                    },
+                    "antigravity-storage-manager.telegram.usernames": {
+                        "type": "array",
+                        "order": 3,
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "description": "%antigravity.config.telegram.usernames%"
+                    },
+                    "antigravity-storage-manager.telegram.statsIntervalCron": {
+                        "type": "string",
+                        "order": 4,
+                        "default": "0 */12 * * *",
+                        "description": "%antigravity.config.telegram.statsIntervalCron%"
+                    }
                 }
             }
-        },
+        ],
         "keybindings": [
             {
                 "command": "antigravity-storage-manager.syncNow",

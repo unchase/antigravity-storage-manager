@@ -72,5 +72,17 @@
     "antigravity.model.gemini3ProHigh": "Gemini 3.1 Pro (High)",
     "antigravity.model.gemini3ProLow": "Gemini 3.1 Pro (Low)",
     "antigravity.model.gemini3Flash": "Gemini 3.1 Flash",
-    "antigravity.config.ui.showExportImportStatusBarItems": "Hiển thị các nút 'AG Export' và 'AG Import' trên thanh trạng thái"
+    "antigravity.config.ui.showExportImportStatusBarItems": "Hiển thị các nút 'AG Export' và 'AG Import' trên thanh trạng thái",
+    "antigravity.config.sync.keepLocalFiles": "Giữ lại các tệp cục bộ sau khi đồng bộ thay vì xóa chúng khi bị xóa từ xa",
+    "antigravity.config.sync.storageProvider": "Nhà cung cấp lưu trữ để đồng bộ (google-drive hoặc hệ thống tệp cục bộ)",
+    "antigravity.config.sync.localPath": "Đường dẫn đồng bộ hệ thống tệp cục bộ (chỉ dùng khi nhà cung cấp là 'local')",
+    "antigravity.config.sync.localPath.md": "Đường dẫn tuyệt đối để đồng bộ hệ thống tệp cục bộ. Chỉ sử dụng khi `#antigravity-storage-manager.sync.storageProvider#` được đặt thành `local`. Hỗ trợ `~` cho thư mục home.",
+    "antigravity.config.section.general": "Chung",
+    "antigravity.config.section.sync": "Đồng bộ",
+    "antigravity.config.section.googleAuth": "Xác thực Google",
+    "antigravity.config.section.backup": "Sao lưu",
+    "antigravity.config.section.quota": "Hạn mức",
+    "antigravity.config.section.networkProxy": "Proxy mạng",
+    "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
+    "antigravity.config.section.telegram": "Telegram"
 }

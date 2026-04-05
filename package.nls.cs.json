@@ -72,5 +72,17 @@
     "antigravity.model.gemini3ProHigh": "Gemini 3.1 Pro (High)",
     "antigravity.model.gemini3ProLow": "Gemini 3.1 Pro (Low)",
     "antigravity.model.gemini3Flash": "Gemini 3.1 Flash",
-    "antigravity.config.ui.showExportImportStatusBarItems": "Zobrazit tlačítka 'AG Export' a 'AG Import' ve stavovém řádku"
+    "antigravity.config.ui.showExportImportStatusBarItems": "Zobrazit tlačítka 'AG Export' a 'AG Import' ve stavovém řádku",
+    "antigravity.config.sync.keepLocalFiles": "Ponechat místní soubory po synchronizaci místo jejich mazání při vzdáleném odstranění",
+    "antigravity.config.sync.storageProvider": "Poskytovatel úložiště pro synchronizaci (google-drive nebo místní souborový systém)",
+    "antigravity.config.sync.localPath": "Cesta pro synchronizaci místního souborového systému (použije se pouze když je poskytovatel 'local')",
+    "antigravity.config.sync.localPath.md": "Absolutní cesta pro synchronizaci místního souborového systému. Použije se pouze když je `#antigravity-storage-manager.sync.storageProvider#` nastaven na `local`. Podporuje `~` pro domovský adresář.",
+    "antigravity.config.section.general": "Obecné",
+    "antigravity.config.section.sync": "Synchronizace",
+    "antigravity.config.section.googleAuth": "Ověření Google",
+    "antigravity.config.section.backup": "Záloha",
+    "antigravity.config.section.quota": "Kvóta",
+    "antigravity.config.section.networkProxy": "Síťový proxy",
+    "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
+    "antigravity.config.section.telegram": "Telegram"
 }

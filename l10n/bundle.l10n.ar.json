@@ -920,5 +920,8 @@
     "{0}d": "{0} يوم",
     "{0}h": "{0} ساعة",
     "{0}m": "{0} دقيقة",
-    "{0}s": "{0}s"
+    "{0}s": "{0}s",
+    "Pull Missing": "سحب المفقودة",
+    "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "تم العثور على {0} محادثة(محادثات) بعيدة غير موجودة محلياً: {1}{2}. هل تريد سحبها؟",
+    "Enable sync to check for remote conversations.": "قم بتفعيل المزامنة للتحقق من المحادثات البعيدة."
 }

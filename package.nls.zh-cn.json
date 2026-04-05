@@ -72,5 +72,17 @@
     "antigravity.model.gemini3ProHigh": "Gemini 3.1 Pro (High)",
     "antigravity.model.gemini3ProLow": "Gemini 3.1 Pro (Low)",
     "antigravity.model.gemini3Flash": "Gemini 3.1 Flash",
-    "antigravity.config.ui.showExportImportStatusBarItems": "在状态栏中显示“AG Export”和“AG Import”按钮"
+    "antigravity.config.ui.showExportImportStatusBarItems": "在状态栏中显示“AG Export”和“AG Import”按钮",
+    "antigravity.config.sync.keepLocalFiles": "同步后保留本地文件，而不是在远程删除时将其删除",
+    "antigravity.config.sync.storageProvider": "同步的存储提供程序（google-drive 或本地文件系统）",
+    "antigravity.config.sync.localPath": "本地文件系统同步路径（仅在存储提供程序为\"local\"时使用）",
+    "antigravity.config.sync.localPath.md": "本地文件系统同步的绝对路径。仅在 `#antigravity-storage-manager.sync.storageProvider#` 设置为 `local` 时使用。支持 `~` 表示主目录。",
+    "antigravity.config.section.general": "常规",
+    "antigravity.config.section.sync": "同步",
+    "antigravity.config.section.googleAuth": "Google 身份验证",
+    "antigravity.config.section.backup": "备份",
+    "antigravity.config.section.quota": "配额",
+    "antigravity.config.section.networkProxy": "网络代理",
+    "antigravity.config.section.antigravityProxy": "Antigravity 代理",
+    "antigravity.config.section.telegram": "Telegram"
 }

@@ -72,5 +72,17 @@
     "antigravity.model.gemini3ProHigh": "Gemini 3.1 Pro (High)",
     "antigravity.model.gemini3ProLow": "Gemini 3.1 Pro (Low)",
     "antigravity.model.gemini3Flash": "Gemini 3.1 Flash",
-    "antigravity.config.ui.showExportImportStatusBarItems": "Mostra i pulsanti 'AG Export' e 'AG Import' nella barra di stato"
+    "antigravity.config.ui.showExportImportStatusBarItems": "Mostra i pulsanti 'AG Export' e 'AG Import' nella barra di stato",
+    "antigravity.config.sync.keepLocalFiles": "Mantieni i file locali dopo la sincronizzazione invece di eliminarli quando vengono rimossi da remoto",
+    "antigravity.config.sync.storageProvider": "Provider di archiviazione per la sincronizzazione (google-drive o file system locale)",
+    "antigravity.config.sync.localPath": "Percorso per la sincronizzazione del file system locale (usato solo quando il provider è 'local')",
+    "antigravity.config.sync.localPath.md": "Percorso assoluto per la sincronizzazione del file system locale. Usato solo quando `#antigravity-storage-manager.sync.storageProvider#` è impostato su `local`. Supporta `~` per la directory home.",
+    "antigravity.config.section.general": "Generale",
+    "antigravity.config.section.sync": "Sincronizzazione",
+    "antigravity.config.section.googleAuth": "Autenticazione Google",
+    "antigravity.config.section.backup": "Backup",
+    "antigravity.config.section.quota": "Quota",
+    "antigravity.config.section.networkProxy": "Proxy di rete",
+    "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
+    "antigravity.config.section.telegram": "Telegram"
 }

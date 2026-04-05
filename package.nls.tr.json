@@ -72,5 +72,17 @@
     "antigravity.model.gemini3ProHigh": "Gemini 3.1 Pro (High)",
     "antigravity.model.gemini3ProLow": "Gemini 3.1 Pro (Low)",
     "antigravity.model.gemini3Flash": "Gemini 3.1 Flash",
-    "antigravity.config.ui.showExportImportStatusBarItems": "Durum çubuğunda 'AG Export' ve 'AG Import' düğmelerini göster"
+    "antigravity.config.ui.showExportImportStatusBarItems": "Durum çubuğunda 'AG Export' ve 'AG Import' düğmelerini göster",
+    "antigravity.config.sync.keepLocalFiles": "Uzak sunucudan kaldırıldığında silmek yerine senkronizasyondan sonra yerel dosyaları koru",
+    "antigravity.config.sync.storageProvider": "Senkronizasyon için depolama sağlayıcısı (google-drive veya yerel dosya sistemi)",
+    "antigravity.config.sync.localPath": "Yerel dosya sistemi senkronizasyonu için yol (yalnızca depolama sağlayıcısı 'local' olduğunda kullanılır)",
+    "antigravity.config.sync.localPath.md": "Yerel dosya sistemi senkronizasyonu için mutlak yol. Yalnızca `#antigravity-storage-manager.sync.storageProvider#` `local` olarak ayarlandığında kullanılır. Ana dizin için `~` destekler.",
+    "antigravity.config.section.general": "Genel",
+    "antigravity.config.section.sync": "Senkronizasyon",
+    "antigravity.config.section.googleAuth": "Google Kimlik Doğrulama",
+    "antigravity.config.section.backup": "Yedekleme",
+    "antigravity.config.section.quota": "Kota",
+    "antigravity.config.section.networkProxy": "Ağ Proxy",
+    "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
+    "antigravity.config.section.telegram": "Telegram"
 }

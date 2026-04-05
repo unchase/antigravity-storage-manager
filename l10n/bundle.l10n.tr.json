@@ -920,5 +920,8 @@
     "{0}d": "{0}g",
     "{0}h": "{0}sa",
     "{0}m": "{0}dk",
-    "{0}s": "{0}s"
+    "{0}s": "{0}s",
+    "Pull Missing": "Eksikleri çek",
+    "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "Yerel olarak bulunmayan {0} uzak konuşma bulundu: {1}{2}. Bunları çekmek ister misiniz?",
+    "Enable sync to check for remote conversations.": "Uzak konuşmaları kontrol etmek için senkronizasyonu etkinleştirin."
 }
