@@ -17,6 +17,9 @@ export function drawProgressBar(percentage: number, length: number = 10): string
  * Mapping of full model labels to short abbreviations.
  */
 const MODEL_ABBREVIATIONS: Record<string, string> = {
+    'Gemini 3.5 Flash (Medium)': 'Gemini 3.5 Flash (M)',
+    'Gemini 3.5 Flash (High)': 'Gemini 3.5 Flash (H)',
+    'Gemini 3.5 Flash (Low)': 'Gemini 3.5 Flash (L)',
     'Gemini 3.1 Pro (High)': 'Gemini 3.1 Pro (H)',
     'Gemini 3.1 Pro (Low)': 'Gemini 3.1 Pro (L)',
     'Gemini 3.1 Flash': 'Gemini 3.1 Flash',

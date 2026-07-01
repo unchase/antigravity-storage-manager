@@ -1135,12 +1135,7 @@ export class SyncStatsWebview {
                                 // Mini quota summary — grouped (models in same group share quota)
                                 const miniGroupDefs = [
                                     { name: 'Claude/GPT', match: (l: string) => l.includes('Claude') || l.includes('GPT-OSS') },
-                                    { name: 'Gemini 3.1 Pro', match: (l: string) => l.includes('Gemini 3.1 Pro') },
-                                    { name: 'Gemini 3 Pro', match: (l: string) => l.includes('Gemini 3 Pro') && !l.includes('3.1') },
-                                    { name: 'Gemini 3.1 Flash', match: (l: string) => l.includes('Gemini 3.1 Flash') },
-                                    { name: 'Gemini 3 Flash', match: (l: string) => l.includes('Gemini 3 Flash') && !l.includes('3.1') },
-                                    { name: 'Gemini 2.5 Flash', match: (l: string) => l.includes('Gemini 2.5 Flash') && !l.includes('Lite') },
-                                    { name: 'Gemini 2.5 FL', match: (l: string) => l.includes('Gemini 2.5 Flash Lite') },
+                                    { name: 'Gemini', match: (l: string) => l.includes('Gemini') },
                                 ];
                                 const miniProcessed = new Set<string>();
                                 const miniParts: string[] = [];
@@ -1220,8 +1215,7 @@ export class SyncStatsWebview {
                                         const processed = new Set<string>();
 
                                         const definitions = [
-                                            { name: 'Gemini 3.1 Pro', match: (l: string) => l.includes('Gemini 3.1 Pro') },
-                                            { name: 'Gemini 3.1 Flash', match: (l: string) => l.includes('Gemini 3.1 Flash') },
+                                            { name: 'Gemini', match: (l: string) => l.includes('Gemini') },
                                             { name: 'Claude & GPT-OSS', match: (l: string) => l.includes('Claude') || l.includes('GPT-OSS') }
                                         ];
 

@@ -28,7 +28,6 @@ export class QuotaStatusBar {
 
         if (pinnedModels.length === 0) {
             this.item.text = '🚀 AGQ';
-            this.item.tooltip = 'Antigravity Quota (Click to view)';
         } else {
             console.log('QuotaStatusBar', `Updating status bar with ${pinnedModels.length} pinned models`);
             for (const m of pinnedModels) {
@@ -50,15 +49,15 @@ export class QuotaStatusBar {
                 parts.push(text);
             }
             this.item.text = parts.join('  ');
-
-            // Build rich tooltip
-            const reportMarkdown = generateQuotaReportMarkdown(snapshot, pinned, this.lastTracker);
-            const md = new vscode.MarkdownString(reportMarkdown, true);
-            md.isTrusted = true;
-            md.supportThemeIcons = true;
-            md.appendMarkdown(`\n🚀 [${LocalizationManager.getInstance().t('Show Dashboard')}](command:antigravity-storage-manager.showQuota)`);
-            this.item.tooltip = md;
         }
+
+        // Build rich tooltip
+        const reportMarkdown = generateQuotaReportMarkdown(snapshot, pinned, this.lastTracker);
+        const md = new vscode.MarkdownString(reportMarkdown, true);
+        md.isTrusted = true;
+        md.supportThemeIcons = true;
+        md.appendMarkdown(`\n🚀 [${LocalizationManager.getInstance().t('Show Dashboard')}](command:antigravity-storage-manager.showQuota)`);
+        this.item.tooltip = md;
 
         this.item.show();
     }

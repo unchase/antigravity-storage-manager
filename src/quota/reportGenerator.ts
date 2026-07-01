@@ -10,14 +10,16 @@ export function generateQuotaReportMarkdown(snapshot: QuotaSnapshot, pinnedModel
 
     const isTelegram = target === 'telegram';
 
+    const hasPinned = pinnedModels && pinnedModels.length > 0;
+
     if (isTelegram) {
-        md += `📌 *${lm.t('Pinned Models Quota')}*\n`;
+        md += `📌 *${lm.t(hasPinned ? 'Pinned Models Quota' : 'Quota')}*\n`;
         if (snapshot.userEmail) {
             md += `👤 _${snapshot.userEmail}_\n`;
         }
         md += `\n`;
     } else {
-        md += `### ${lm.t('Pinned Models Quota')}\n`;
+        md += `### ${lm.t(hasPinned ? 'Pinned Models Quota' : 'Quota')}\n`;
         if (snapshot.userEmail) {
             md += `_${snapshot.userEmail}_\n\n`;
         } else {
@@ -49,26 +51,74 @@ export function generateQuotaReportMarkdown(snapshot: QuotaSnapshot, pinnedModel
 
     if (!isTelegram) md += '---\n\n';
 
-    const relevantModels = snapshot.models.filter(m => pinnedModels.includes(m.modelId) || pinnedModels.includes(m.label));
+    const relevantModels = hasPinned
+        ? snapshot.models.filter(m => pinnedModels.includes(m.modelId) || pinnedModels.includes(m.label))
+        : snapshot.models;
 
-    for (const m of relevantModels) {
+    // Grouping relevant models
+    interface ModelGroup {
+        name: string;
+        models: typeof snapshot.models;
+    }
+
+    const groups: ModelGroup[] = [];
+    const processed = new Set<string>();
+
+    const groupDefinitions = [
+        { name: 'Gemini', match: (l: string) => l.includes('Gemini') },
+        { name: 'Claude & GPT-OSS', match: (l: string) => l.includes('Claude') || l.includes('GPT-OSS') }
+    ];
+
+    for (const model of relevantModels) {
+        if (processed.has(model.modelId)) continue;
+
+        let groupFound = false;
+        for (const def of groupDefinitions) {
+            if (def.match(model.label)) {
+                const groupModels = relevantModels.filter(m => !processed.has(m.modelId) && def.match(m.label));
+                if (groupModels.length > 0) {
+                    groups.push({ name: def.name, models: groupModels });
+                    groupModels.forEach(m => processed.add(m.modelId));
+                    groupFound = true;
+                    break;
+                }
+            }
+        }
+
+        if (!groupFound) {
+            groups.push({ name: model.label, models: [model] });
+            processed.add(model.modelId);
+        }
+    }
+
+    for (const g of groups) {
+        const m = g.models[0];
         const pct = m.remainingPercentage ?? 0;
         const statusIcon = getModelStatusIcon(m.remainingPercentage, m.isExhausted);
+        const groupLabel = g.name;
 
         if (isTelegram) {
-            md += `${statusIcon} *${m.label}*\n`;
+            md += `${statusIcon} *${groupLabel}*\n`;
             const bar = drawProgressBar(pct);
             md += `${lm.t('Quota')}: \`${bar}\` ${pct.toFixed(0)}%\n`;
         } else {
-            md += `**${statusIcon} ${m.label}**\n\n`;
+            md += `**${statusIcon} ${groupLabel}**\n\n`;
             const bar = drawProgressBar(pct);
             md += `- ${lm.t('Remaining')}: \`${bar}\` **${pct.toFixed(1)}%**\n`;
         }
 
         // Add Speed / Estimation
         if (usageTracker) {
-            const est = usageTracker.getEstimation(m.modelId);
-            if (!(m.isExhausted || pct === 0) && est && est.speedPerHour > 0.1) {
+            let est: any = undefined;
+            for (const gm of g.models) {
+                const modelEst = usageTracker.getEstimation(gm.modelId);
+                if (modelEst && modelEst.speedPerHour > 0.1) {
+                    est = modelEst;
+                    break;
+                }
+            }
+
+            if (!(m.isExhausted || pct === 0) && est) {
                 if (isTelegram) {
                     md += `${lm.t('Speed')}: ~${est.speedPerHour.toFixed(1)}%${lm.t('/h')}\n`;
                     if (est.estimatedTimeRemainingMs) {
@@ -109,9 +159,10 @@ export function generateQuotaReportMarkdown(snapshot: QuotaSnapshot, pinnedModel
                     }
                 }
 
-                const isHighTier = m.label.includes('Pro') || m.label.includes('Ultra') || m.label.includes('Thinking') || m.label.includes('Opus');
-                if (isHighTier) {
-                    const cycleDuration = getCycleDuration(m.label);
+                const hasHighTier = g.models.some(gm => gm.label.includes('Pro') || gm.label.includes('Ultra') || gm.label.includes('Thinking') || gm.label.includes('Opus'));
+                if (hasHighTier) {
+                    const highTierModel = g.models.find(gm => gm.label.includes('Pro') || gm.label.includes('Ultra') || gm.label.includes('Thinking') || gm.label.includes('Opus')) || m;
+                    const cycleDuration = getCycleDuration(highTierModel.label);
                     const progress = Math.max(0, Math.min(1, 1 - (msUntilReset / cycleDuration)));
                     const progressBar = drawProgressBar(progress * 100);
                     const cycleText = lm.t('Cycle');

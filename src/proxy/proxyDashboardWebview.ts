@@ -3608,28 +3608,15 @@ return response.content;
                             if (isAntigravity) {
                                 // Grouping Logic
                                 const groups = {
-                                    'Gemini 3.1 Flash': [],
-                                    'Gemini 3.1 Pro': [],
-                                    'Gemini 3.1 Pro Image': [],
-                                    'Gemini 2.5 Flash': [],
-                                    'Gemini 2.5 Flash Lite': [],
+                                    'Gemini': [],
                                     'Claude & GPT-OSS': [],
                                     'Other': []
                                 };
                                 
                                 quotas.forEach(q => {
                                     const name = q.name || '';
-                                    if (name.includes('Gemini 2.5 Flash Lite')) {
-                                        groups['Gemini 2.5 Flash Lite'].push(q);
-                                    } else if (name.includes('Gemini 2.5 Flash')) {
-                                        groups['Gemini 2.5 Flash'].push(q);
-                                    } else if (name.includes('Gemini 3.1 Flash')) {
-                                        groups['Gemini 3.1 Flash'].push(q);
-                                    } else if (name.includes('Gemini 3.1 Pro') && (name.includes('Image') || name.includes('Vision'))) {
-                                        // Catch "Gemini 3.1 Pro Image" or similar variations
-                                        groups['Gemini 3.1 Pro Image'].push(q);
-                                    } else if (name.includes('Gemini 3.1 Pro')) {
-                                        groups['Gemini 3.1 Pro'].push(q);
+                                    if (name.includes('Gemini')) {
+                                        groups['Gemini'].push(q);
                                     } else if (name.includes('Claude') || name.includes('GPT-OSS')) {
                                         groups['Claude & GPT-OSS'].push(q);
                                     } else {
@@ -3639,11 +3626,7 @@ return response.content;
                                 
                                 // Render groups
                                 const groupNames = [
-                                    'Gemini 3.1 Flash', 
-                                    'Gemini 3.1 Pro', 
-                                    'Gemini 3.1 Pro Image',
-                                    'Gemini 2.5 Flash', 
-                                    'Gemini 2.5 Flash Lite', 
+                                    'Gemini',
                                     'Claude & GPT-OSS', 
                                     'Other'
                                 ];

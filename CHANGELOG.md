@@ -5,6 +5,15 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.4] - 2026-07-01
+### Quota Monitoring
+- **Rich Tooltip Restoration**: Fixed an issue where hovering over the `🚀 AGQ` status bar button did not display the rich quota report tooltip when no models were pinned. The tooltip now dynamically displays all active quotas under the generic "Quota" header when the pinned models list is empty.
+- **Gemini Models Grouping**: Consolidated all Gemini models (including new `Gemini 3.5 Flash` and `Gemini 3.1 Pro` variants) into a single "Gemini" group in the Quota webview, QuickPick, and Statistics Dashboard to reflect their shared server quota.
+- **Consolidated Quota Reports**: Grouped duplicate quota display blocks sharing identical resource limits (e.g. Gemini subgroups or Claude & GPT-OSS) into single consolidated blocks in both the rich tooltip and Telegram Bot notifications, reducing visual noise.
+
+### Bug Fixes
+- **Profile Manager Lint Error**: Fixed a TypeScript linting error in `src/profileManager.ts` where `configBases` was declared with `let` instead of `const`, resolving build issues.
+
 ## [0.14.3] - 2026-04-05
 ### Local Storage Provider ([#11](https://github.com/unchase/antigravity-storage-manager/issues/11))
 - **Local Sync**: Added a full local filesystem storage provider as an alternative to Google Drive. Conversations can now be synced to any local or network-attached directory.

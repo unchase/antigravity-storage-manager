@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Securely sync Antigravity Conversations with Google Drive. Features Telegram Bot notifications, Multi-Account Profile Switching, Real-time Quota Monitoring, MCP Server, Proxy support, and advanced backup tools.",
-    "version": "0.14.3",
+    "version": "0.14.4",
     "publisher": "unchase",
     "author": {
         "name": "unchase"

@@ -65,7 +65,7 @@ export class ProfileManager {
 
     private async detectConfigDir(): Promise<string | null> {
         // Cross-platform base directories (fixes #9 — macOS/Linux support)
-        let configBases: string[] = [];
+        const configBases: string[] = [];
 
         if (process.platform === 'win32') {
             const roaming = process.env.APPDATA;
