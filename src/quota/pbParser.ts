@@ -27,10 +27,69 @@ export class PbParser {
             stream.on('error', (err) => reject(err));
             stream.on('end', () => {
                 const buffer = Buffer.concat(chunks);
-                const strings = PbParser.parseBuffer(buffer);
-                resolve(strings);
+                if (filePath.toLowerCase().endsWith('.db')) {
+                    resolve(PbParser.extractStringsFromDb(buffer));
+                } else {
+                    const strings = PbParser.parseBuffer(buffer);
+                    resolve(strings);
+                }
             });
         });
+    }
+
+    static extractStringsFromDb(buffer: Buffer): string[] {
+        const strings: string[] = [];
+        let start = -1;
+
+        for (let i = 0; i < buffer.length; i++) {
+            const byte = buffer[i];
+            // Control characters to split on (excluding tab 0x09, LF 0x0a, CR 0x0d)
+            const isControl = (byte >= 0 && byte <= 8) || byte === 11 || byte === 12 || (byte >= 14 && byte <= 31) || byte === 127;
+
+            if (isControl) {
+                if (start !== -1) {
+                    const len = i - start;
+                    if (len >= 4) {
+                        const chunk = buffer.slice(start, i);
+                        try {
+                            const str = chunk.toString('utf8');
+                            // eslint-disable-next-line no-control-regex
+                            if (str.length >= 2 && !str.includes('\uFFFD') && !/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(str)) {
+                                const cleaned = str.trim();
+                                if (cleaned.length >= 2) {
+                                    strings.push(cleaned);
+                                }
+                            }
+                        } catch {
+                            // ignore
+                        }
+                    }
+                    start = -1;
+                }
+            } else {
+                if (start === -1) {
+                    start = i;
+                }
+            }
+        }
+
+        if (start !== -1 && buffer.length - start >= 4) {
+            const chunk = buffer.slice(start);
+            try {
+                const str = chunk.toString('utf8');
+                // eslint-disable-next-line no-control-regex
+                if (str.length >= 2 && !str.includes('\uFFFD') && !/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(str)) {
+                    const cleaned = str.trim();
+                    if (cleaned.length >= 2) {
+                        strings.push(cleaned);
+                    }
+                }
+            } catch {
+                // ignore
+            }
+        }
+
+        return strings;
     }
 
     private static parseBuffer(buffer: Buffer, depth: number = 0): string[] {
@@ -123,7 +182,7 @@ export class PbParser {
             return results;
         }
 
-        const files = fs.readdirSync(folderPath).filter(f => f.endsWith('.pb'));
+        const files = fs.readdirSync(folderPath).filter(f => f.endsWith('.pb') || (f.endsWith('.db') && !f.endsWith('.db-shm') && !f.endsWith('.db-wal')));
         const queryLower = query.toLowerCase();
 
         for (const file of files) {

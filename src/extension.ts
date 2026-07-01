@@ -22,7 +22,12 @@ import { TelegramCommandController } from './telegram/telegramCommandController'
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
-const STORAGE_ROOT = path.join(os.homedir(), '.gemini', 'antigravity');
+const getStorageRoot = () => {
+    const newPath = path.join(os.homedir(), '.gemini', 'antigravity-ide');
+    const oldPath = path.join(os.homedir(), '.gemini', 'antigravity');
+    return fs.existsSync(newPath) ? newPath : oldPath;
+};
+const STORAGE_ROOT = getStorageRoot();
 const BRAIN_DIR = path.join(STORAGE_ROOT, 'brain');
 const CONV_DIR = path.join(STORAGE_ROOT, 'conversations');
 
@@ -672,6 +677,45 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         }
     }
+
+    // Verify installation_id to prevent "Installation ID mismatch"
+    try {
+        const installIdPath = path.join(STORAGE_ROOT, 'installation_id');
+        if (fs.existsSync(installIdPath)) {
+            const currentInstallId = fs.readFileSync(installIdPath, 'utf8').trim();
+            const storedInstallId = context.globalState.get<string>('localInstallationId');
+            
+            if (!storedInstallId) {
+                // Save it for the first time
+                await context.globalState.update('localInstallationId', currentInstallId);
+            } else if (storedInstallId !== currentInstallId) {
+                // Mismatch detected! Ask user
+                const lm = LocalizationManager.getInstance();
+                const restoreAction = lm.t('Restore Original ID');
+                const updateAction = lm.t('Use New ID');
+                
+                vscode.window.showWarningMessage(
+                    lm.t('Antigravity Storage Manager: Detected a change in installation_id. This might cause an "Installation ID mismatch" error in the IDE.'),
+                    restoreAction,
+                    updateAction
+                ).then(async selection => {
+                    if (selection === restoreAction) {
+                        try {
+                            fs.writeFileSync(installIdPath, storedInstallId, 'utf8');
+                            vscode.window.showInformationMessage(lm.t('Original Installation ID restored.'));
+                        } catch (e: any) {
+                            vscode.window.showErrorMessage(lm.t('Failed to restore Installation ID: {0}', e.message));
+                        }
+                    } else if (selection === updateAction) {
+                        await context.globalState.update('localInstallationId', currentInstallId);
+                        vscode.window.showInformationMessage(lm.t('Local Installation ID updated.'));
+                    }
+                });
+            }
+        }
+    } catch (e) {
+        console.error('Failed to verify installation_id:', e);
+    }
 }
 
 
@@ -871,10 +915,14 @@ async function exportConversations() {
                     archive.directory(sourceBrainDir, `brain/${id}`);
                 }
 
-                // Add conversation .pb file
-                const convFile = path.join(CONV_DIR, `${id}.pb`);
-                if (fs.existsSync(convFile)) {
-                    archive.file(convFile, { name: `conversations/${id}.pb` });
+                // Add conversation .db/.pb file
+                const convFilePb = path.join(CONV_DIR, `${id}.pb`);
+                if (fs.existsSync(convFilePb)) {
+                    archive.file(convFilePb, { name: `conversations/${id}.pb` });
+                }
+                const convFileDb = path.join(CONV_DIR, `${id}.db`);
+                if (fs.existsSync(convFileDb)) {
+                    archive.file(convFileDb, { name: `conversations/${id}.db` });
                 }
             }
 
@@ -1021,6 +1069,12 @@ async function importConversations() {
                             if (fs.existsSync(sourcePb)) {
                                 const destPb = path.join(CONV_DIR, `${targetId}.pb`);
                                 fs.copyFileSync(sourcePb, destPb);
+                            }
+                            // Copy .db file if exists
+                            const sourceDb = path.join(tempDir, 'conversations', `${id}.db`);
+                            if (fs.existsSync(sourceDb)) {
+                                const destDb = path.join(CONV_DIR, `${targetId}.db`);
+                                fs.copyFileSync(sourceDb, destDb);
                             }
 
                             importedCount++;

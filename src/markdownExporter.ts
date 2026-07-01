@@ -31,14 +31,16 @@ export class MarkdownExporter {
         lines.push('---');
         lines.push('');
 
-        // 1. Extract conversation messages from .pb file
+        // 1. Extract conversation messages from .db/.pb file
+        const dbFile = path.join(convDir, `${conversationId}.db`);
         const pbFile = path.join(convDir, `${conversationId}.pb`);
-        if (fs.existsSync(pbFile)) {
+        const activeFile = fs.existsSync(dbFile) ? dbFile : (fs.existsSync(pbFile) ? pbFile : null);
+        if (activeFile) {
             lines.push('## Conversation Messages');
             lines.push('');
 
             try {
-                const strings = await PbParser.extractStrings(pbFile);
+                const strings = await PbParser.extractStrings(activeFile);
                 const messages = MarkdownExporter.groupAsMessages(strings);
 
                 if (messages.length > 0) {

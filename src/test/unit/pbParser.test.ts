@@ -45,4 +45,41 @@ describe('PbParser', () => {
         const results = await PbParser.searchInFolder(tempDir, 'NonExistent');
         expect(results).toHaveLength(0);
     });
+
+    test('extractStrings should find strings in .db file via extractStringsFromDb', async () => {
+        const dbFile = path.join(tempDir, 'test.db');
+        // Construct a buffer resembling a SQLite file
+        const header = Buffer.from('SQLite format 3\x00');
+        const trash1 = Buffer.from([0, 1, 2, 8, 11, 12, 14, 31, 127]);
+        const str1 = Buffer.from('Test message 1 from SQLite');
+        const trash2 = Buffer.from([0, 0, 5, 0]);
+        const str2 = Buffer.from('Привет из базы данных 2');
+        const trash3 = Buffer.from([0]);
+        
+        const dbBuffer = Buffer.concat([header, trash1, str1, trash2, str2, trash3]);
+        fs.writeFileSync(dbFile, dbBuffer);
+        
+        const strings = await PbParser.extractStrings(dbFile);
+        expect(strings).toContain('SQLite format 3');
+        expect(strings).toContain('Test message 1 from SQLite');
+        expect(strings).toContain('Привет из базы данных 2');
+        expect(strings.length).toBeGreaterThanOrEqual(3);
+    });
+
+    test('searchInFolder should find matches in both .pb and .db files', async () => {
+        // test.pb has 'Hello World'
+        // Let's write a test.db that has 'Hello from DB'
+        const dbFile = path.join(tempDir, 'another.db');
+        const header = Buffer.from('SQLite format 3\x00');
+        const str = Buffer.from('Hello from DB');
+        const dbBuffer = Buffer.concat([header, str]);
+        fs.writeFileSync(dbFile, dbBuffer);
+
+        const results = await PbParser.searchInFolder(tempDir, 'Hello');
+        // Should find both test.pb and another.db
+        expect(results.length).toBe(2);
+        const fileNames = results.map(r => r.fileName);
+        expect(fileNames).toContain('test.pb');
+        expect(fileNames).toContain('another.db');
+    });
 });

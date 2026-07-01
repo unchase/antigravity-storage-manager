@@ -64,6 +64,10 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                 const stats = await fs.promises.stat(dirPath);
                 if (!stats.isDirectory()) return null;
 
+                // Validate that the folder name is a valid UUID to skip system/temp folders (like tempmediaStorage)
+                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+                if (!isUuid) return null;
+
                 let label = id;
                 const parseTitle = async (filename: string): Promise<string | null> => {
                     try {
@@ -88,20 +92,22 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                     return null;
                 };
 
-                // Priority 1: .pb file (via heuristic extraction and for timestamps)
+                // Priority 1: .db/.pb file (via heuristic extraction and for timestamps)
                 let modDate = stats.mtime;
                 let birthDate = stats.birthtime;
                 try {
                     const { PbParser } = await import('./quota/pbParser');
                     const conversationsDir = path.join(brainDir, '..', 'conversations');
+                    const dbPath = path.join(conversationsDir, `${id}.db`);
                     const pbPath = path.join(conversationsDir, `${id}.pb`);
+                    const activePath = fs.existsSync(dbPath) ? dbPath : (fs.existsSync(pbPath) ? pbPath : null);
 
-                    if (fs.existsSync(pbPath)) {
-                        const pbStats = fs.statSync(pbPath);
-                        modDate = pbStats.mtime;
-                        birthDate = pbStats.birthtime;
+                    if (activePath) {
+                        const fileStats = fs.statSync(activePath);
+                        modDate = fileStats.mtime;
+                        birthDate = fileStats.birthtime;
 
-                        const pbTitle = await PbParser.extractTitle(pbPath);
+                        const pbTitle = await PbParser.extractTitle(activePath);
                         if (pbTitle) {
                             label = pbTitle;
                         }

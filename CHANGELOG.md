@@ -5,6 +5,17 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.5] - 2026-07-01
+### Antigravity IDE 2.0 (SQLite Support)
+- **SQLite Database Support**: Added support for the new SQLite database format (`.db`) introduced in Antigravity IDE 2.0, replacing the old Protobuf (`.pb`) format.
+- **Port-Free UTF-8 String Extractor**: Implemented a lightweight, native JS UTF-8 string scanner (`PbParser.extractStringsFromDb`) to extract conversation titles, preview texts, and search indices directly from SQLite binary streams without requiring heavy, native `sqlite3` compilations.
+- **Markdown Exporter Fix**: Resolved an issue on Windows where exporting conversations to Markdown resulted in empty files due to hardcoded `.pb` extension paths and incorrect `STORAGE_ROOT` directories. The exporter now auto-detects and processes both `.db` and `.pb` files.
+
+### Sync & Stability
+- **Installation ID Protection**: Added active monitoring of the `installation_id` file on startup. If a mismatch is detected (often caused by raw folder synchronization overwriting the local ID), the extension warns the user and offers to restore the original machine ID to prevent "Installation ID mismatch" errors in the IDE.
+- **Sync & Conflict Handling**: Overhauled `pullConversation`, `pushConversation`, `resolveConflict`, `backupConversationBeforePull`, and `deleteConversation` methods to seamlessly support both `.db` and `.pb` file extensions.
+- **Path Resolution Fix**: Corrected a path resolution bug in `sync.ts` where the extension attempted to find conversation history files in the `brain/` directory instead of the `conversations/` directory during statistics updates.
+
 ## [0.14.4] - 2026-07-01
 ### Quota Monitoring
 - **Rich Tooltip Restoration**: Fixed an issue where hovering over the `🚀 AGQ` status bar button did not display the rich quota report tooltip when no models were pinned. The tooltip now dynamically displays all active quotas under the generic "Quota" header when the pinned models list is empty.
