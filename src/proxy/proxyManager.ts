@@ -495,7 +495,11 @@ ${keyConfig}
     }
 
     public generateApiKey(): string {
-        const key = 'sk-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        // Use nodeCrypto to generate a cryptographically strong API key.
+        // Math.random() is not a CSPRNG and its state (V8 xorshift128+)
+        // can be recovered from observed outputs, allowing an attacker to
+        // predict subsequent API keys used to authenticate against the proxy.
+        const key = 'sk-antigravity-' + nodeCrypto.randomBytes(24).toString('hex');
         try {
             const configPath = path.join(this._binDir, 'config.yaml');
             if (!fs.existsSync(configPath)) {
