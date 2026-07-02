@@ -675,7 +675,7 @@
                         "order": 1,
                         "default": "",
                         "description": "%antigravity.config.telegram.botToken%",
-                        "scope": "application"
+                        "scope": "machine"
                     },
                     "antigravity-storage-manager.telegram.userIds": {
                         "type": "array",
@@ -684,7 +684,8 @@
                             "type": "string"
                         },
                         "default": [],
-                        "description": "%antigravity.config.telegram.userIds%"
+                        "description": "%antigravity.config.telegram.userIds%",
+                        "scope": "machine"
                     },
                     "antigravity-storage-manager.telegram.usernames": {
                         "type": "array",
@@ -693,13 +694,15 @@
                             "type": "string"
                         },
                         "default": [],
-                        "description": "%antigravity.config.telegram.usernames%"
+                        "description": "%antigravity.config.telegram.usernames%",
+                        "scope": "machine"
                     },
                     "antigravity-storage-manager.telegram.statsIntervalCron": {
                         "type": "string",
                         "order": 4,
                         "default": "0 */12 * * *",
-                        "description": "%antigravity.config.telegram.statsIntervalCron%"
+                        "description": "%antigravity.config.telegram.statsIntervalCron%",
+                        "scope": "machine"
                     }
                 }
             }
