@@ -27,7 +27,7 @@ export class PlatformDetector {
     getProcessName(): string {
         const arch = os.arch();
         if (this.platform === 'win32') {
-            // ARM64 Windows uses language_server_windows_arm.exe (not arm64)
+            // ARM64 Windows uses native language_server_windows_arm.exe
             return arch === 'arm64' ? 'language_server_windows_arm.exe' : 'language_server_windows_x64.exe';
         } else if (this.platform === 'darwin') {
             return `language_server_macos${arch === 'arm64' ? '_arm' : ''}`;
