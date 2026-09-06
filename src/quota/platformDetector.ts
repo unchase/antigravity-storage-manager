@@ -27,8 +27,8 @@ export class PlatformDetector {
     getProcessName(): string {
         const arch = os.arch();
         if (this.platform === 'win32') {
-            // ARM64 Windows may run x64 version via emulation or native ARM version
-            return arch === 'arm64' ? 'language_server_windows_arm64.exe' : 'language_server_windows_x64.exe';
+            // ARM64 Windows uses language_server_windows_arm.exe (not arm64)
+            return arch === 'arm64' ? 'language_server_windows_arm.exe' : 'language_server_windows_x64.exe';
         } else if (this.platform === 'darwin') {
             return `language_server_macos${arch === 'arm64' ? '_arm' : ''}`;
         } else {
@@ -44,8 +44,8 @@ export class PlatformDetector {
         const arch = os.arch();
         if (this.platform === 'win32') {
             if (arch === 'arm64') {
-                // ARM64 primary, x64 fallback (may run under emulation)
-                return ['language_server_windows_arm64.exe', 'language_server_windows_x64.exe'];
+                // ARM64 primary (arm.exe), arm64.exe alias fallback, then x64 under emulation
+                return ['language_server_windows_arm.exe', 'language_server_windows_arm64.exe', 'language_server_windows_x64.exe'];
             }
             return ['language_server_windows_x64.exe'];
         } else if (this.platform === 'darwin') {

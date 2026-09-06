@@ -543,8 +543,8 @@ export class ProfileManager {
             let cmd: string;
             if (process.platform === 'win32') {
                 // Kill only language_server processes, NOT the IDE itself (Antigravity.exe).
-                // Try both x64 and arm64 variants; ignore errors if process not found.
-                cmd = 'taskkill /IM language_server_windows_x64.exe /F 2>nul & taskkill /IM language_server_windows_arm64.exe /F 2>nul & exit /b 0';
+                // Try x64, arm (ARM64), and arm64 variants; ignore errors if process not found.
+                cmd = 'taskkill /IM language_server_windows_x64.exe /F 2>nul & taskkill /IM language_server_windows_arm.exe /F 2>nul & taskkill /IM language_server_windows_arm64.exe /F 2>nul & exit /b 0';
             } else {
                 // On macOS/Linux: kill only the language_server process, NOT the IDE itself.
                 // Using 'pkill -f Antigravity' would kill the IDE we're running inside of!
