@@ -5,6 +5,18 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.6] - 2026-09-08
+### Multi-Device Synchronization & SQLite WAL Support
+- **SQLite Write-Ahead Logging (WAL) Sync**: Added full support for syncing, hashing, backing up, and restoring `${conversationId}.db-wal` files alongside `.db` databases. In SQLite WAL mode, active sessions and ongoing chats are written to WAL, ensuring seamless conversation continuation across multiple machines (e.g., Mac Pro and MacBook Pro).
+- **Dynamic Storage Path Discovery**: Implemented dynamic detection of storage roots (`~/.gemini/antigravity-ide` vs `~/.gemini/antigravity`) and added a new configuration setting `antigravity-storage-manager.storagePath` allowing users to configure a custom storage path.
+- **Data Migration Tool**: Added `antigravity-storage-manager.migrateData` command to migrate conversations and chat history from legacy `~/.gemini/antigravity` storage to `~/.gemini/antigravity-ide` in a single click, accessible directly via the quick action menu (`showMenu`).
+- **Conflict Resolution & Safe Deletion**: Updated conflict resolution and deletion routines to safely handle all conversation files (`.pb`, `.db`, `.db-wal`, and `.db-shm`).
+- **Robust Title Extraction**: Sanitized conversation title detection against corrupted binary headers (`SQLite format 3`), stripped plan title prefixes (`# Task:`, `# Plan:`, `# Implementation Plan:`), and added fallback extraction from the first user prompt in `transcript.jsonl`.
+
+### Localization
+- **Complete 16-Language Localization**: Synchronized all manifest commands and configuration settings across all 16 supported languages (`en`, `ru`, `ar`, `cs`, `de`, `es`, `fr`, `it`, `ja`, `ko`, `pl`, `pt-br`, `tr`, `vi`, `zh-cn`, `zh-tw`).
+- **Localization Test Suite**: Added automated tests ensuring 100% synchronization and completeness of all NLS keys across all language files.
+
 ## [0.14.5] - 2026-07-01
 ### Antigravity IDE 2.0 (SQLite Support)
 - **SQLite Database Support**: Added support for the new SQLite database format (`.db`) introduced in Antigravity IDE 2.0, replacing the old Protobuf (`.pb`) format.
