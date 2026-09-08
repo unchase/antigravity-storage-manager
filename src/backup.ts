@@ -4,22 +4,30 @@ import * as path from 'path';
 import { LocalizationManager } from './l10n/localizationManager';
 
 import archiver from 'archiver';
-
+import { getStoragePaths } from './utils';
 
 const EXT_NAME = 'antigravity-storage-manager';
 
 export class BackupManager {
-    private storageRoot: string;
-    private brainDir: string;
-    private convDir: string;
+    private explicitStorageRoot?: string;
     private timer: NodeJS.Timeout | undefined;
     private context: vscode.ExtensionContext;
 
-    constructor(context: vscode.ExtensionContext, storageRoot: string) {
+    constructor(context: vscode.ExtensionContext, storageRoot?: string) {
         this.context = context;
-        this.storageRoot = storageRoot;
-        this.brainDir = path.join(storageRoot, 'brain');
-        this.convDir = path.join(storageRoot, 'conversations');
+        this.explicitStorageRoot = storageRoot;
+    }
+
+    private getStorageRoot(): string {
+        return this.explicitStorageRoot || getStoragePaths().storageRoot;
+    }
+
+    private getBrainDir(): string {
+        return this.explicitStorageRoot ? path.join(this.explicitStorageRoot, 'brain') : getStoragePaths().brainDir;
+    }
+
+    private getConvDir(): string {
+        return this.explicitStorageRoot ? path.join(this.explicitStorageRoot, 'conversations') : getStoragePaths().convDir;
     }
 
     /**
@@ -100,7 +108,7 @@ export class BackupManager {
         if (!backupDir) {
             backupDir = config.get<string>('path');
             if (!backupDir || backupDir.trim() === '') {
-                backupDir = path.join(this.storageRoot, 'backups');
+                backupDir = path.join(this.getStorageRoot(), 'backups');
             }
         }
 
@@ -147,11 +155,13 @@ export class BackupManager {
 
             archive.pipe(output);
 
-            if (fs.existsSync(this.brainDir)) {
-                archive.directory(this.brainDir, 'brain');
+            const brainDir = this.getBrainDir();
+            const convDir = this.getConvDir();
+            if (fs.existsSync(brainDir)) {
+                archive.directory(brainDir, 'brain');
             }
-            if (fs.existsSync(this.convDir)) {
-                archive.directory(this.convDir, 'conversations');
+            if (fs.existsSync(convDir)) {
+                archive.directory(convDir, 'conversations');
             }
 
             archive.finalize();

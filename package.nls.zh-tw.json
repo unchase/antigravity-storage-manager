@@ -85,5 +85,7 @@
     "antigravity.config.section.networkProxy": "網路代理",
     "antigravity.config.section.antigravityProxy": "Antigravity 代理",
     "antigravity.config.section.telegram": "Telegram",
-    "antigravity.command.exportAsMarkdown": "??? Markdown"
+    "antigravity.command.exportAsMarkdown": "??? Markdown",
+    "antigravity.command.migrateData": "Antigravity: 將資料遷移到 IDE 儲存空間",
+    "antigravity.config.storagePath": "Antigravity 資料儲存目錄（包含 brain 和 conversations 資料夾）的自訂路徑。留空以自動偵測。"
 }

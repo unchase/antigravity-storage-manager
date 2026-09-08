@@ -85,5 +85,7 @@
     "antigravity.config.section.networkProxy": "وكيل الشبكة",
     "antigravity.config.section.antigravityProxy": "وكيل Antigravity",
     "antigravity.config.section.telegram": "تيليجرام",
-    "antigravity.command.exportAsMarkdown": "????? ?? Markdown"
+    "antigravity.command.exportAsMarkdown": "????? ?? Markdown",
+    "antigravity.command.migrateData": "Antigravity: ترحيل البيانات إلى مساحة تخزين IDE",
+    "antigravity.config.storagePath": "مسار مخصص لدليل تخزين بيانات Antigravity (الذي يحتوي على مجلدي brain و conversations). اتركه فارغًا للكشف التلقائي."
 }

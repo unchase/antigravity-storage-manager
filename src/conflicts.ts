@@ -117,9 +117,11 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
         try {
             // Delete conflict folder
             fs.rmSync(path.join(brainDir, c.conflictId), { recursive: true, force: true });
-            // Delete conflict .pb
-            const pbPath = path.join(convDir, `${c.conflictId}.pb`);
-            if (fs.existsSync(pbPath)) fs.unlinkSync(pbPath);
+            // Delete conflict conversation files (.pb, .db, .db-wal, .db-shm)
+            for (const ext of ['.pb', '.db', '.db-wal', '.db-shm']) {
+                const filePath = path.join(convDir, `${c.conflictId}${ext}`);
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            }
 
             vscode.window.showInformationMessage(lm.t("Conflict resolved: Start version kept."));
         } catch (e: any) {
@@ -134,12 +136,14 @@ export async function resolveConflictsCommand(brainDir: string, convDir: string)
             // 2. Rename conflict folder to original
             fs.renameSync(path.join(brainDir, c.conflictId), originalPath);
 
-            // 3. Handle PB files
-            const conflictPb = path.join(convDir, `${c.conflictId}.pb`);
-            const originalPb = path.join(convDir, `${c.originalId}.pb`);
+            // 3. Handle conversation files (.pb, .db, .db-wal, .db-shm)
+            for (const ext of ['.pb', '.db', '.db-wal', '.db-shm']) {
+                const conflictFile = path.join(convDir, `${c.conflictId}${ext}`);
+                const originalFile = path.join(convDir, `${c.originalId}${ext}`);
 
-            if (fs.existsSync(originalPb)) fs.unlinkSync(originalPb);
-            if (fs.existsSync(conflictPb)) fs.renameSync(conflictPb, originalPb);
+                if (fs.existsSync(originalFile)) fs.unlinkSync(originalFile);
+                if (fs.existsSync(conflictFile)) fs.renameSync(conflictFile, originalFile);
+            }
 
             vscode.window.showInformationMessage(lm.t("Conflict resolved: Conflict version kept."));
         } catch (e: any) {

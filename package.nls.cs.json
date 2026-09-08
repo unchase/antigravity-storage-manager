@@ -85,5 +85,7 @@
     "antigravity.config.section.networkProxy": "Síťový proxy",
     "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
     "antigravity.config.section.telegram": "Telegram",
-    "antigravity.command.exportAsMarkdown": "Exportovat jako Markdown"
+    "antigravity.command.exportAsMarkdown": "Exportovat jako Markdown",
+    "antigravity.command.migrateData": "Antigravity: Migrovat data do úložiště IDE",
+    "antigravity.config.storagePath": "Vlastní cesta k adresáři úložiště dat Antigravity (obsahujícímu složky brain a conversations). Ponechte prázdné pro automatickou detekci."
 }

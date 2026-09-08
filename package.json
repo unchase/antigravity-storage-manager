@@ -90,6 +90,12 @@
                 "category": "%antigravity.submenu.label%"
             },
             {
+                "command": "antigravity-storage-manager.migrateData",
+                "title": "%antigravity.command.migrateData%",
+                "icon": "$(arrow-swap)",
+                "category": "%antigravity.submenu.label%"
+            },
+            {
                 "command": "antigravity-storage-manager.syncSetup",
                 "title": "%antigravity.command.syncSetup%",
                 "icon": "$(cloud)",
@@ -385,6 +391,12 @@
                         "default": "",
                         "description": "%antigravity.config.profilesDirectory%",
                         "markdownDescription": "%antigravity.config.profilesDirectory.md%"
+                    },
+                    "antigravity-storage-manager.storagePath": {
+                        "type": "string",
+                        "order": 4,
+                        "default": "",
+                        "description": "%antigravity.config.storagePath%"
                     }
                 }
             },

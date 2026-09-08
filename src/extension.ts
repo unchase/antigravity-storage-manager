@@ -8,7 +8,7 @@ import { ProxyManager } from './proxy/proxyManager';
 import { ProxyDashboardWebview } from './proxy/proxyDashboardWebview';
 import { GoogleAuthProvider } from './googleAuth';
 import { SyncManager } from './sync';
-import { getConversationsAsync, ConversationItem, formatSize } from './utils';
+import { getConversationsAsync, ConversationItem, formatSize, getStoragePaths } from './utils';
 import { resolveConflictsCommand } from './conflicts';
 import { DiagnosticsManager } from './diagnostics/diagnosticsManager';
 import { LocalizationManager } from './l10n/localizationManager';
@@ -22,14 +22,9 @@ import { TelegramCommandController } from './telegram/telegramCommandController'
 
 // Configuration
 const EXT_NAME = 'antigravity-storage-manager';
-const getStorageRoot = () => {
-    const newPath = path.join(os.homedir(), '.gemini', 'antigravity-ide');
-    const oldPath = path.join(os.homedir(), '.gemini', 'antigravity');
-    return fs.existsSync(newPath) ? newPath : oldPath;
-};
-const STORAGE_ROOT = getStorageRoot();
-const BRAIN_DIR = path.join(STORAGE_ROOT, 'brain');
-const CONV_DIR = path.join(STORAGE_ROOT, 'conversations');
+const getStorageRoot = () => getStoragePaths().storageRoot;
+const getBrainDir = () => getStoragePaths().brainDir;
+const getConvDir = () => getStoragePaths().convDir;
 
 
 
@@ -65,7 +60,7 @@ export async function activate(context: vscode.ExtensionContext) {
     await syncManager.initialize();
 
     // Initialize Backup Manager
-    backupManager = new BackupManager(context, STORAGE_ROOT);
+    backupManager = new BackupManager(context, getStorageRoot());
     backupManager.initialize();
 
     // Initialize QuotaManager with AuthProvider and TelegramService
@@ -83,7 +78,7 @@ export async function activate(context: vscode.ExtensionContext) {
     diagnosticsManager = new DiagnosticsManager(authProvider, quotaManager);
 
     // Initialize Proxy Manager
-    proxyManager = new ProxyManager(context, STORAGE_ROOT);
+    proxyManager = new ProxyManager(context, getStorageRoot());
     await proxyManager.initialize();
 
     // Initialize Profile Manager (Lazy init is fine but we need instance for dashboard)
@@ -122,7 +117,8 @@ export async function activate(context: vscode.ExtensionContext) {
                 });
             });
         }),
-        vscode.commands.registerCommand(`${EXT_NAME}.resolveConflicts`, () => resolveConflictsCommand(BRAIN_DIR, CONV_DIR)),
+        vscode.commands.registerCommand(`${EXT_NAME}.resolveConflicts`, () => resolveConflictsCommand(getBrainDir(), getConvDir())),
+        vscode.commands.registerCommand(`${EXT_NAME}.migrateData`, migrateData),
 
         vscode.commands.registerCommand(`${EXT_NAME}.proxy.dashboard`, () => {
             proxyDashboard.show();
@@ -262,6 +258,7 @@ export async function activate(context: vscode.ExtensionContext) {
             items.push({ label: `$(globe) ${lm.t('Apply Proxy Settings')}`, description: lm.t('Configure and apply proxy settings'), command: `${EXT_NAME}.applyProxy` });
             items.push({ label: `$(account) ${lm.t('Switch Profile')}`, description: lm.t('Switch between Antigravity/Codeium accounts'), command: `${EXT_NAME}.switchProfile` });
             items.push({ label: `$(trash) ${lm.t('Clear Cache')}`, description: lm.t('Clear temporary files and internal caches'), command: `${EXT_NAME}.clearCache` });
+            items.push({ label: `$(database) ${lm.t('Migrate Data to IDE Storage')}`, description: lm.t('Migrate data between standard and IDE storage'), command: `${EXT_NAME}.migrateData` });
 
             // Post-process items to reflect auth state
             const processedItems = items.map(item => {
@@ -680,7 +677,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Verify installation_id to prevent "Installation ID mismatch"
     try {
-        const installIdPath = path.join(STORAGE_ROOT, 'installation_id');
+        const installIdPath = path.join(getStorageRoot(), 'installation_id');
         if (fs.existsSync(installIdPath)) {
             const currentInstallId = fs.readFileSync(installIdPath, 'utf8').trim();
             const storedInstallId = context.globalState.get<string>('localInstallationId');
@@ -735,7 +732,7 @@ export async function showEnhancedConversationQuickPick(
     }
 ): Promise<ConversationItem[] | undefined> {
     const lm = LocalizationManager.getInstance();
-    const initialItems = await getConversationsAsync(BRAIN_DIR);
+    const initialItems = await getConversationsAsync(getBrainDir());
 
     if (initialItems.length === 0) {
         return [];
@@ -910,19 +907,18 @@ async function exportConversations() {
                 const id = conv.id;
 
                 // Add brain directory
-                const sourceBrainDir = path.join(BRAIN_DIR, id);
+                const sourceBrainDir = path.join(getBrainDir(), id);
                 if (fs.existsSync(sourceBrainDir)) {
                     archive.directory(sourceBrainDir, `brain/${id}`);
                 }
 
-                // Add conversation .db/.pb file
-                const convFilePb = path.join(CONV_DIR, `${id}.pb`);
-                if (fs.existsSync(convFilePb)) {
-                    archive.file(convFilePb, { name: `conversations/${id}.pb` });
-                }
-                const convFileDb = path.join(CONV_DIR, `${id}.db`);
-                if (fs.existsSync(convFileDb)) {
-                    archive.file(convFileDb, { name: `conversations/${id}.db` });
+                // Add conversation files (.pb, .db, .db-wal)
+                const convExts = ['.pb', '.db', '.db-wal'];
+                for (const ext of convExts) {
+                    const convFile = path.join(getConvDir(), `${id}${ext}`);
+                    if (fs.existsSync(convFile)) {
+                        archive.file(convFile, { name: `conversations/${id}${ext}` });
+                    }
                 }
             }
 
@@ -935,7 +931,7 @@ async function exportConversations() {
 async function backupAll() {
     const lm = LocalizationManager.getInstance();
     // 1. Get all conversations without prompting (just to check if empty)
-    const conversations = await getConversationsAsync(BRAIN_DIR);
+    const conversations = await getConversationsAsync(getBrainDir());
     if (conversations.length === 0) {
         vscode.window.showInformationMessage(lm.t('No conversations found to backup.'));
         return;
@@ -1017,7 +1013,7 @@ async function importConversations() {
                         );
 
                         for (const id of convIds) {
-                            const existingDir = path.join(BRAIN_DIR, id);
+                            const existingDir = path.join(getBrainDir(), id);
                             let targetId = id;
 
                             if (fs.existsSync(existingDir)) {
@@ -1039,7 +1035,7 @@ async function importConversations() {
                                         value: `${id}-imported`,
                                         validateInput: (value) => {
                                             if (!value) return lm.t('ID cannot be empty');
-                                            if (fs.existsSync(path.join(BRAIN_DIR, value))) {
+                                            if (fs.existsSync(path.join(getBrainDir(), value))) {
                                                 return lm.t('This ID already exists');
                                             }
                                             return null;
@@ -1057,24 +1053,25 @@ async function importConversations() {
 
                             // Copy brain directory
                             const sourceBrain = path.join(brainDir, id);
-                            const destBrain = path.join(BRAIN_DIR, targetId);
+                            const destBrain = path.join(getBrainDir(), targetId);
 
                             if (fs.existsSync(destBrain)) {
                                 fs.rmSync(destBrain, { recursive: true, force: true });
                             }
                             fs.cpSync(sourceBrain, destBrain, { recursive: true });
 
-                            // Copy .pb file if exists
-                            const sourcePb = path.join(tempDir, 'conversations', `${id}.pb`);
-                            if (fs.existsSync(sourcePb)) {
-                                const destPb = path.join(CONV_DIR, `${targetId}.pb`);
-                                fs.copyFileSync(sourcePb, destPb);
+                            // Copy conversation files (.pb, .db, .db-wal) if exists
+                            const destConv = getConvDir();
+                            if (!fs.existsSync(destConv)) {
+                                fs.mkdirSync(destConv, { recursive: true });
                             }
-                            // Copy .db file if exists
-                            const sourceDb = path.join(tempDir, 'conversations', `${id}.db`);
-                            if (fs.existsSync(sourceDb)) {
-                                const destDb = path.join(CONV_DIR, `${targetId}.db`);
-                                fs.copyFileSync(sourceDb, destDb);
+                            const convExts = ['.pb', '.db', '.db-wal'];
+                            for (const ext of convExts) {
+                                const sourceFile = path.join(tempDir, 'conversations', `${id}${ext}`);
+                                if (fs.existsSync(sourceFile)) {
+                                    const destFile = path.join(destConv, `${targetId}${ext}`);
+                                    fs.copyFileSync(sourceFile, destFile);
+                                }
                             }
 
                             importedCount++;
@@ -1141,7 +1138,7 @@ async function renameConversation() {
 
     if (!newTitle || newTitle === currentTitle) return;
 
-    const taskPath = path.join(BRAIN_DIR, selected.id, 'task.md');
+    const taskPath = path.join(getBrainDir(), selected.id, 'task.md');
 
     try {
         let content = '';
@@ -1206,7 +1203,7 @@ async function exportAsMarkdown() {
         }));
 
         const result = await MarkdownExporter.exportMultiple(
-            conversations, BRAIN_DIR, CONV_DIR, outputDir, progress, token
+            conversations, getBrainDir(), getConvDir(), outputDir, progress, token
         );
 
         if (result.errors.length > 0) {
@@ -1224,6 +1221,91 @@ async function exportAsMarkdown() {
             }
         }
     });
+}
+
+// MIGRATE: Migrate conversations between legacy ~/.gemini/antigravity and ~/.gemini/antigravity-ide
+async function migrateData() {
+    const lm = LocalizationManager.getInstance();
+    const homedir = os.homedir();
+    const sourceStorage = path.join(homedir, '.gemini', 'antigravity');
+    const targetStorage = path.join(homedir, '.gemini', 'antigravity-ide');
+
+    if (!fs.existsSync(sourceStorage)) {
+        vscode.window.showInformationMessage(lm.t('No source data found at {0}', sourceStorage));
+        return;
+    }
+
+    const sourceBrain = path.join(sourceStorage, 'brain');
+    const sourceConv = path.join(sourceStorage, 'conversations');
+
+    const hasBrain = fs.existsSync(sourceBrain) && fs.readdirSync(sourceBrain).length > 0;
+    const hasConv = fs.existsSync(sourceConv) && fs.readdirSync(sourceConv).length > 0;
+
+    if (!hasBrain && !hasConv) {
+        vscode.window.showInformationMessage(lm.t('No conversations found to migrate from {0}', sourceStorage));
+        return;
+    }
+
+    const confirm = await vscode.window.showInformationMessage(
+        lm.t('Migrate conversations from "{0}" to "{1}"?', sourceStorage, targetStorage),
+        { modal: true },
+        lm.t('Migrate'),
+        lm.t('Cancel')
+    );
+
+    if (confirm !== lm.t('Migrate')) {
+        return;
+    }
+
+    let migratedCount = 0;
+    const targetBrain = path.join(targetStorage, 'brain');
+    const targetConv = path.join(targetStorage, 'conversations');
+
+    if (!fs.existsSync(targetBrain)) {
+        fs.mkdirSync(targetBrain, { recursive: true });
+    }
+    if (!fs.existsSync(targetConv)) {
+        fs.mkdirSync(targetConv, { recursive: true });
+    }
+
+    if (hasBrain) {
+        const brainDirs = fs.readdirSync(sourceBrain).filter(d => {
+            try {
+                return fs.statSync(path.join(sourceBrain, d)).isDirectory();
+            } catch {
+                return false;
+            }
+        });
+        for (const dir of brainDirs) {
+            const src = path.join(sourceBrain, dir);
+            const dst = path.join(targetBrain, dir);
+            if (!fs.existsSync(dst)) {
+                fs.cpSync(src, dst, { recursive: true });
+                migratedCount++;
+            }
+        }
+    }
+
+    if (hasConv) {
+        const convFiles = fs.readdirSync(sourceConv);
+        for (const file of convFiles) {
+            const src = path.join(sourceConv, file);
+            const dst = path.join(targetConv, file);
+            if (!fs.existsSync(dst)) {
+                fs.copyFileSync(src, dst);
+            }
+        }
+    }
+
+    const choice = await vscode.window.showInformationMessage(
+        lm.t('Successfully migrated data to Antigravity IDE storage ({0} conversation(s)). Reload window to refresh?', migratedCount),
+        lm.t('Reload'),
+        lm.t('Later')
+    );
+
+    if (choice === lm.t('Reload')) {
+        vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
 }
 
 export function deactivate() {

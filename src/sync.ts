@@ -13,7 +13,7 @@ import { GoogleDriveService, SyncManifest, SyncedConversation, Machine, MachineS
 import { StorageService, LocalStorageService } from './localStorage';
 import * as crypto from './crypto';
 import { LocalizationManager } from './l10n/localizationManager';
-import { getConversationsAsync, limitConcurrency, formatDuration, ConversationItem } from './utils';
+import { getConversationsAsync, limitConcurrency, formatDuration, ConversationItem, getStoragePaths } from './utils';
 import { SyncStatsWebview, SyncStatsData } from './quota/syncStatsWebview';
 import { QuotaManager } from './quota/quotaManager';
 import { drawProgressBar } from './quota/utils';
@@ -22,15 +22,10 @@ import { PbParser } from './quota/pbParser';
 import { getFileIconSvg } from './quota/fileIcons';
 
 const EXT_NAME = 'antigravity-storage-manager';
-const getStorageRoot = () => {
-    const newPath = path.join(os.homedir(), '.gemini', 'antigravity-ide');
-    const oldPath = path.join(os.homedir(), '.gemini', 'antigravity');
-    return fs.existsSync(newPath) ? newPath : oldPath;
-};
-const STORAGE_ROOT = getStorageRoot();
-const BRAIN_DIR = path.join(STORAGE_ROOT, 'brain');
-const CONV_DIR = path.join(STORAGE_ROOT, 'conversations');
-const DEFAULT_SYNC_BACKUP_DIR = path.join(STORAGE_ROOT, 'sync-backups');
+const getStorageRoot = () => getStoragePaths().storageRoot;
+const getBrainDir = () => getStoragePaths().brainDir;
+const getConvDir = () => getStoragePaths().convDir;
+const getDefaultSyncBackupDir = () => path.join(getStorageRoot(), 'sync-backups');
 const SECRET_KEY = `${EXT_NAME}.sync.masterPassword`;
 const LEGACY_SECRET_KEY = 'ag-sync-master-password';
 
@@ -656,17 +651,17 @@ export class SyncManager {
             cancellable: false
         }, async () => {
             // 1. Force refresh of local conversation list
-            const localConversations = await getConversationsAsync(BRAIN_DIR);
+            const localConversations = await getConversationsAsync(getBrainDir());
 
             // 2. Check for "orphaned" folders that might be valid conversations but missing metadata
             try {
-                const entries = await fs.promises.readdir(BRAIN_DIR);
+                const entries = await fs.promises.readdir(getBrainDir());
                 let recovered = 0;
 
                 for (const id of entries) {
                     // If not in localConversations, check if it looks like a conversation
                     if (!localConversations.find(c => c.id === id)) {
-                        const dirPath = path.join(BRAIN_DIR, id);
+                        const dirPath = path.join(getBrainDir(), id);
                         const stats = await fs.promises.stat(dirPath);
                         if (stats.isDirectory()) {
                             console.log(`[Reindex] Found potential orphan: ${id}`);
@@ -730,8 +725,8 @@ export class SyncManager {
                                         try {
                                             // Pull remote data using the remote conversation ID
                                             // then copy/symlink brain data from remote ID to local ID
-                                            const remoteBrainDir = path.join(BRAIN_DIR, match.remote.id);
-                                            const localBrainDir = path.join(BRAIN_DIR, match.localId);
+                                            const remoteBrainDir = path.join(getBrainDir(), match.remote.id);
+                                            const localBrainDir = path.join(getBrainDir(), match.localId);
 
                                             // Pull the remote conversation if not already on disk
                                             if (!fs.existsSync(remoteBrainDir)) {
@@ -796,7 +791,7 @@ export class SyncManager {
                 if (recovered > 0 || remoteOnlyCount > 0) {
                     const parts: string[] = [];
                     if (recovered > 0) {
-                        parts.push(lm.t('Found {0} potential orphaned conversations. Please check specific folders in {1}.', recovered, BRAIN_DIR));
+                        parts.push(lm.t('Found {0} potential orphaned conversations. Please check specific folders in {1}.', recovered, getBrainDir()));
                     }
                     if (remoteOnlyCount > 0 && !this.isReady()) {
                         parts.push(lm.t('Enable sync to check for remote conversations.'));
@@ -823,13 +818,13 @@ export class SyncManager {
      */
     private getFullPathForRelative(conversationId: string, relativePath: string): string {
         if (relativePath.startsWith('conversations/')) {
-            return path.join(CONV_DIR, relativePath.replace('conversations/', ''));
+            return path.join(getConvDir(), relativePath.replace('conversations/', ''));
         } else if (relativePath.startsWith(`brain/${conversationId}/`)) {
-            // brain/{convId}/subpath -> BRAIN_DIR/{convId}/subpath
-            return path.join(BRAIN_DIR, relativePath.replace('brain/', ''));
+            // brain/{convId}/subpath -> brainDir/{convId}/subpath
+            return path.join(getBrainDir(), relativePath.replace('brain/', ''));
         } else if (relativePath.startsWith('brain/')) {
             // brain/{convId}/subpath (generic case)
-            return path.join(BRAIN_DIR, relativePath.replace('brain/', ''));
+            return path.join(getBrainDir(), relativePath.replace('brain/', ''));
         }
         throw new Error(`Unknown path format: ${relativePath}`);
     }
@@ -1026,21 +1021,24 @@ export class SyncManager {
             // Copy brain directory
             const sourceBrain = path.join(tempDir, 'brain', conversationId);
             if (fs.existsSync(sourceBrain)) {
-                const destBrain = path.join(BRAIN_DIR, conversationId);
+                const destBrain = path.join(getBrainDir(), conversationId);
                 if (fs.existsSync(destBrain)) {
                     fs.rmSync(destBrain, { recursive: true, force: true });
                 }
                 fs.cpSync(sourceBrain, destBrain, { recursive: true });
             }
 
-            // Copy conversation file
-            const sourcePb = path.join(tempDir, 'conversations', `${conversationId}.pb`);
-            if (fs.existsSync(sourcePb)) {
-                fs.copyFileSync(sourcePb, path.join(CONV_DIR, `${conversationId}.pb`));
+            // Copy conversation files (.pb, .db, .db-wal)
+            const destConv = getConvDir();
+            if (!fs.existsSync(destConv)) {
+                fs.mkdirSync(destConv, { recursive: true });
             }
-            const sourceDb = path.join(tempDir, 'conversations', `${conversationId}.db`);
-            if (fs.existsSync(sourceDb)) {
-                fs.copyFileSync(sourceDb, path.join(CONV_DIR, `${conversationId}.db`));
+            const convExts = ['.pb', '.db', '.db-wal'];
+            for (const ext of convExts) {
+                const sourceFile = path.join(tempDir, 'conversations', `${conversationId}${ext}`);
+                if (fs.existsSync(sourceFile)) {
+                    fs.copyFileSync(sourceFile, path.join(destConv, `${conversationId}${ext}`));
+                }
             }
         } finally {
             fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1081,16 +1079,19 @@ export class SyncManager {
                         // Copy with new ID
                         const sourceBrain = path.join(tempDir, 'brain', conflict.conversationId);
                         if (fs.existsSync(sourceBrain)) {
-                            fs.cpSync(sourceBrain, path.join(BRAIN_DIR, newId), { recursive: true });
+                            fs.cpSync(sourceBrain, path.join(getBrainDir(), newId), { recursive: true });
                         }
 
-                        const sourcePb = path.join(tempDir, 'conversations', `${conflict.conversationId}.pb`);
-                        if (fs.existsSync(sourcePb)) {
-                            fs.copyFileSync(sourcePb, path.join(CONV_DIR, `${newId}.pb`));
+                        const destConv = getConvDir();
+                        if (!fs.existsSync(destConv)) {
+                            fs.mkdirSync(destConv, { recursive: true });
                         }
-                        const sourceDb = path.join(tempDir, 'conversations', `${conflict.conversationId}.db`);
-                        if (fs.existsSync(sourceDb)) {
-                            fs.copyFileSync(sourceDb, path.join(CONV_DIR, `${newId}.db`));
+                        const convExts = ['.pb', '.db', '.db-wal'];
+                        for (const ext of convExts) {
+                            const sourceFile = path.join(tempDir, 'conversations', `${conflict.conversationId}${ext}`);
+                            if (fs.existsSync(sourceFile)) {
+                                fs.copyFileSync(sourceFile, path.join(destConv, `${newId}${ext}`));
+                            }
                         }
                     } finally {
                         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1153,7 +1154,7 @@ export class SyncManager {
         this.reportProgress(progress, lm.t('Creating backup before sync for "{0}"...', convTitle));
 
         try {
-            const backupBaseDir = config.get<string>('sync.preSyncBackupPath', '') || DEFAULT_SYNC_BACKUP_DIR;
+            const backupBaseDir = config.get<string>('sync.preSyncBackupPath', '') || getDefaultSyncBackupDir();
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const backupDir = path.join(backupBaseDir, conversationId, timestamp);
 
@@ -1162,29 +1163,23 @@ export class SyncManager {
             let backedUpFiles = 0;
 
             // Backup brain directory
-            const brainDir = path.join(BRAIN_DIR, conversationId);
+            const brainDir = path.join(getBrainDir(), conversationId);
             if (fs.existsSync(brainDir)) {
                 const destBrain = path.join(backupDir, 'brain', conversationId);
                 fs.cpSync(brainDir, destBrain, { recursive: true });
                 backedUpFiles++;
             }
 
-            // Backup .pb file
-            const pbPath = path.join(CONV_DIR, `${conversationId}.pb`);
-            if (fs.existsSync(pbPath)) {
-                const destConv = path.join(backupDir, 'conversations');
-                await fs.promises.mkdir(destConv, { recursive: true });
-                fs.copyFileSync(pbPath, path.join(destConv, `${conversationId}.pb`));
-                backedUpFiles++;
-            }
-
-            // Backup .db file
-            const dbPath = path.join(CONV_DIR, `${conversationId}.db`);
-            if (fs.existsSync(dbPath)) {
-                const destConv = path.join(backupDir, 'conversations');
-                await fs.promises.mkdir(destConv, { recursive: true });
-                fs.copyFileSync(dbPath, path.join(destConv, `${conversationId}.db`));
-                backedUpFiles++;
+            // Backup conversation files (.pb, .db, .db-wal)
+            const destConv = path.join(backupDir, 'conversations');
+            const convExts = ['.pb', '.db', '.db-wal'];
+            for (const ext of convExts) {
+                const filePath = path.join(getConvDir(), `${conversationId}${ext}`);
+                if (fs.existsSync(filePath)) {
+                    await fs.promises.mkdir(destConv, { recursive: true });
+                    fs.copyFileSync(filePath, path.join(destConv, `${conversationId}${ext}`));
+                    backedUpFiles++;
+                }
             }
 
             // Write metadata
@@ -1859,41 +1854,29 @@ export class SyncManager {
         const fileHashes: { [relativePath: string]: FileHashInfo } = {};
         let maxMtime = 0;
 
-        // 1. Conversation DB/PB file
-        const dbPath = path.join(CONV_DIR, `${conversationId}.db`);
-        if (fs.existsSync(dbPath)) {
-            const hash = options?.skipHashes ? '' : await this.getFileHashWithCacheAsync(dbPath);
-            if (options?.skipHashes || hash) {
-                const relativePath = `conversations/${conversationId}.db`;
-                if (!options?.skipHashes) parts.push(`${relativePath}:${hash}`);
-                const stats = await fs.promises.stat(dbPath);
-                maxMtime = Math.max(maxMtime, stats.mtimeMs);
-                fileHashes[relativePath] = {
-                    hash: hash || '',
-                    size: stats.size,
-                    lastModified: stats.mtime.toISOString()
-                };
-            }
-        }
-
-        const pbPath = path.join(CONV_DIR, `${conversationId}.pb`);
-        if (fs.existsSync(pbPath)) {
-            const hash = options?.skipHashes ? '' : await this.getFileHashWithCacheAsync(pbPath);
-            if (options?.skipHashes || hash) {
-                const relativePath = `conversations/${conversationId}.pb`;
-                if (!options?.skipHashes) parts.push(`${relativePath}:${hash}`);
-                const stats = await fs.promises.stat(pbPath);
-                maxMtime = Math.max(maxMtime, stats.mtimeMs);
-                fileHashes[relativePath] = {
-                    hash: hash || '',
-                    size: stats.size,
-                    lastModified: stats.mtime.toISOString()
-                };
+        // 1. Conversation files (.db, .pb, .db-wal)
+        const convDir = getConvDir();
+        const convExts = ['.db', '.pb', '.db-wal'];
+        for (const ext of convExts) {
+            const filePath = path.join(convDir, `${conversationId}${ext}`);
+            if (fs.existsSync(filePath)) {
+                const hash = options?.skipHashes ? '' : await this.getFileHashWithCacheAsync(filePath);
+                if (options?.skipHashes || hash) {
+                    const relativePath = `conversations/${conversationId}${ext}`;
+                    if (!options?.skipHashes) parts.push(`${relativePath}:${hash}`);
+                    const stats = await fs.promises.stat(filePath);
+                    maxMtime = Math.max(maxMtime, stats.mtimeMs);
+                    fileHashes[relativePath] = {
+                        hash: hash || '',
+                        size: stats.size,
+                        lastModified: stats.mtime.toISOString()
+                    };
+                }
             }
         }
 
         // 2. Brain directory files
-        const brainDir = path.join(BRAIN_DIR, conversationId);
+        const brainDir = path.join(getBrainDir(), conversationId);
         if (fs.existsSync(brainDir)) {
             const files = await this.getAllFilesAsync(brainDir);
 
@@ -1930,7 +1913,7 @@ export class SyncManager {
      */
     private async getLocalConversationsAsync(options?: { skipHashes?: boolean }): Promise<Array<{ id: string; title: string; lastModified: string; hash: string; size: number }>> {
         // Reuse utils logic to ensure consistent title extraction
-        const items = await getConversationsAsync(BRAIN_DIR);
+        const items = await getConversationsAsync(getBrainDir());
         const serverTitleMap = await this.getServerTitleMap();
 
         const concurrency = vscode.workspace.getConfiguration(EXT_NAME).get<number>('sync.concurrency', 3);
@@ -2781,7 +2764,7 @@ export class SyncManager {
         }
 
         // Priority 2: Fallback to the existing file-system-based detection (brain/ directory)
-        const conversations = await getConversationsAsync(BRAIN_DIR);
+        const conversations = await getConversationsAsync(getBrainDir());
         if (conversations.length === 0) {
             vscode.window.showInformationMessage(lm.t('No conversations found locally.'));
             return;
@@ -2835,7 +2818,7 @@ export class SyncManager {
 
     async manageConversations(): Promise<void> {
         const lm = LocalizationManager.getInstance();
-        const conversations = await getConversationsAsync(BRAIN_DIR);
+        const conversations = await getConversationsAsync(getBrainDir());
         const currentSelection = this.config?.selectedConversations;
 
         // Get sync statuses
@@ -2980,19 +2963,18 @@ export class SyncManager {
     private async deleteConversation(id: string): Promise<void> {
         const lm = LocalizationManager.getInstance();
         // Delete local
-        const brainPath = path.join(BRAIN_DIR, id);
-        const pbPath = path.join(CONV_DIR, `${id}.pb`);
-        const dbPath = path.join(CONV_DIR, `${id}.db`);
+        const brainPath = path.join(getBrainDir(), id);
+        const convDir = getConvDir();
 
         try {
             if (fs.existsSync(brainPath)) {
                 fs.rmSync(brainPath, { recursive: true, force: true });
             }
-            if (fs.existsSync(pbPath)) {
-                fs.unlinkSync(pbPath);
-            }
-            if (fs.existsSync(dbPath)) {
-                fs.unlinkSync(dbPath);
+            for (const ext of ['.pb', '.db', '.db-wal', '.db-shm']) {
+                const filePath = path.join(convDir, `${id}${ext}`);
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
             }
 
             // Delete remote? Sync will handle "deleted locally" if we push? 
@@ -3060,7 +3042,7 @@ export class SyncManager {
 
     private async renameConversationId(id: string, newTitle: string): Promise<void> {
         // Rename title in task.md locally
-        const taskPath = path.join(BRAIN_DIR, id, 'task.md');
+        const taskPath = path.join(getBrainDir(), id, 'task.md');
         if (fs.existsSync(taskPath)) {
             try {
                 let content = fs.readFileSync(taskPath, 'utf8');
@@ -3126,7 +3108,7 @@ export class SyncManager {
      * Read MCP server states from mcp_config.json file
      */
     private getMcpServerStatesFromConfig(): any[] {
-        const configPath = path.join(STORAGE_ROOT, 'mcp_config.json');
+        const configPath = path.join(getStorageRoot(), 'mcp_config.json');
         if (!fs.existsSync(configPath)) {
             return []; // Return empty array to show "No MCP servers" section
         }
@@ -3234,8 +3216,8 @@ export class SyncManager {
                          } else {
                             // Fallback to PbParser if API returns empty but file exists?
                             // Or just leave empty.
-                            const dbPath = path.join(CONV_DIR, c.id + '.db');
-                            const pbPath = path.join(CONV_DIR, c.id + '.pb');
+                            const dbPath = path.join(getConvDir(), c.id + '.db');
+                            const pbPath = path.join(getConvDir(), c.id + '.pb');
                             const filePath = fs.existsSync(dbPath) ? dbPath : (fs.existsSync(pbPath) ? pbPath : null);
                             if (filePath) {
                                 const strings = await PbParser.extractStrings(filePath);
@@ -3247,8 +3229,8 @@ export class SyncManager {
                     } catch (e) {
                         // Fallback to PbParser on error
                         try {
-                            const dbPath = path.join(CONV_DIR, c.id + '.db');
-                            const pbPath = path.join(CONV_DIR, c.id + '.pb');
+                            const dbPath = path.join(getConvDir(), c.id + '.db');
+                            const pbPath = path.join(getConvDir(), c.id + '.pb');
                             const filePath = fs.existsSync(dbPath) ? dbPath : (fs.existsSync(pbPath) ? pbPath : null);
                             if (filePath) {
                                 const strings = await PbParser.extractStrings(filePath);
@@ -3670,8 +3652,8 @@ export class SyncManager {
 
                     // HYBRID STRATEGY: Fetch from local DB/PB as well and compare
                     let pbText = '';
-                    const dbPath = path.join(CONV_DIR, id + '.db');
-                    const pbPath = path.join(CONV_DIR, id + '.pb');
+                    const dbPath = path.join(getConvDir(), id + '.db');
+                    const pbPath = path.join(getConvDir(), id + '.pb');
                     const filePath = fs.existsSync(dbPath) ? dbPath : (fs.existsSync(pbPath) ? pbPath : null);
                     if (filePath) {
                         try {
@@ -3760,14 +3742,14 @@ export class SyncManager {
                 if (opened) break;
 
                 const id = message.id;
-                const dbPath = path.join(STORAGE_ROOT, 'conversations', `${id}.db`);
-                const pbPath = path.join(STORAGE_ROOT, 'conversations', `${id}.pb`);
+                const dbPath = path.join(getConvDir(), `${id}.db`);
+                const pbPath = path.join(getConvDir(), `${id}.pb`);
                 const activePath = fs.existsSync(dbPath) ? dbPath : (fs.existsSync(pbPath) ? pbPath : null);
                 if (activePath) {
                     const title = message.title || this.getConversationTitle(id) || id;
                     await this.openPbChat(id, title);
                 } else {
-                    const convPath = path.join(BRAIN_DIR, id);
+                    const convPath = path.join(getBrainDir(), id);
                     if (fs.existsSync(convPath)) {
                         const taskMd = path.join(convPath, 'task.md');
                         if (fs.existsSync(taskMd)) {
@@ -4350,7 +4332,7 @@ export class SyncManager {
                                             break;
                                         }
                                         // Also check for BRAIN_DIR/{id}/{filePath}
-                                        p = path.join(BRAIN_DIR, id, filePath);
+                                        p = path.join(getBrainDir(), id, filePath);
                                         if (fs.existsSync(p)) {
                                             fullPath = p;
                                             break;
@@ -4417,7 +4399,7 @@ export class SyncManager {
     private getConversationTitle(conversationId: string): string {
         const lm = LocalizationManager.getInstance();
         try {
-            const taskPath = path.join(BRAIN_DIR, conversationId, 'task.md');
+            const taskPath = path.join(getBrainDir(), conversationId, 'task.md');
             if (fs.existsSync(taskPath)) {
                 const content = fs.readFileSync(taskPath, 'utf8');
                 const match = content.match(/^#\s+(.*)/);

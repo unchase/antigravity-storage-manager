@@ -85,5 +85,7 @@
     "antigravity.config.section.networkProxy": "Netzwerk-Proxy",
     "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
     "antigravity.config.section.telegram": "Telegram",
-    "antigravity.command.exportAsMarkdown": "Als Markdown exportieren"
+    "antigravity.command.exportAsMarkdown": "Als Markdown exportieren",
+    "antigravity.command.migrateData": "Antigravity: Daten in den IDE-Speicher migrieren",
+    "antigravity.config.storagePath": "Benutzerdefinierter Pfad zum Antigravity-Datenspeicherverzeichnis (mit den Ordnern brain und conversations). Für automatische Erkennung leer lassen."
 }

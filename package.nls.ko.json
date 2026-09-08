@@ -85,5 +85,7 @@
     "antigravity.config.section.networkProxy": "네트워크 프록시",
     "antigravity.config.section.antigravityProxy": "Antigravity 프록시",
     "antigravity.config.section.telegram": "Telegram",
-    "antigravity.command.exportAsMarkdown": "Markdown?? ????"
+    "antigravity.command.exportAsMarkdown": "Markdown?? ????",
+    "antigravity.command.migrateData": "Antigravity: IDE 스토리지로 데이터 마이그레이션",
+    "antigravity.config.storagePath": "Antigravity 데이터 저장소 디렉터리(brain 및 conversations 폴더 포함)의 사용자 지정 경로입니다. 자동 감지를 사용하려면 비워 두세요."
 }

@@ -1,7 +1,56 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { LocalizationManager } from './l10n/localizationManager';
+
+export interface StoragePaths {
+    storageRoot: string;
+    brainDir: string;
+    convDir: string;
+}
+
+/**
+ * Get resolved storage paths for Antigravity data.
+ * Checks user setting first, then detects Antigravity IDE (~/.gemini/antigravity-ide),
+ * and falls back to standard directory (~/.gemini/antigravity).
+ */
+export function getStoragePaths(): StoragePaths {
+    const config = vscode.workspace?.getConfiguration?.('antigravity-storage-manager');
+    const customPath = config?.get<string>('storagePath')?.trim();
+    if (customPath && customPath.length > 0) {
+        return {
+            storageRoot: customPath,
+            brainDir: path.join(customPath, 'brain'),
+            convDir: path.join(customPath, 'conversations')
+        };
+    }
+
+    const homedir = os.homedir();
+    const ideDir = path.join(homedir, '.gemini', 'antigravity-ide');
+    const standardDir = path.join(homedir, '.gemini', 'antigravity');
+
+    const appName = vscode.env?.appName || '';
+    const appRoot = vscode.env?.appRoot || '';
+    const isAntigravityIDE =
+        appName.toLowerCase().includes('antigravity') ||
+        appRoot.toLowerCase().includes('antigravity');
+
+    let chosenRoot = standardDir;
+    if (isAntigravityIDE) {
+        if (fs.existsSync(ideDir) || !fs.existsSync(standardDir)) {
+            chosenRoot = ideDir;
+        }
+    } else if (fs.existsSync(ideDir)) {
+        chosenRoot = ideDir;
+    }
+
+    return {
+        storageRoot: chosenRoot,
+        brainDir: path.join(chosenRoot, 'brain'),
+        convDir: path.join(chosenRoot, 'conversations')
+    };
+}
 
 export interface ConversationItem extends vscode.QuickPickItem {
     id: string;
@@ -56,7 +105,7 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
         const entries = await fs.promises.readdir(brainDir);
 
         // Read concurrency limit from settings (reuse sync.concurrency)
-        const concurrencyLimit = vscode.workspace.getConfiguration('antigravity-storage-manager').get<number>('sync.concurrency', 3);
+        const concurrencyLimit = Math.max(1, vscode.workspace.getConfiguration('antigravity-storage-manager').get<number>('sync.concurrency', 3) || 3);
 
         const jobFactories = entries.map((id) => async (): Promise<ConversationItem | null> => {
             const dirPath = path.join(brainDir, id);
@@ -80,9 +129,9 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                         }
 
                         const content = await fs.promises.readFile(filePath, 'utf8');
-                        // Match "# Task: Title" OR "# Title"
+                        // Match "# Task: Title", "# Plan: Title", "# Implementation Plan: Title" OR "# Title"
                         // Also cleanup some common suffixes if needed, but keeping it simple for now
-                        const match = content.match(/^#\s*(?:Task:?\s*)?(.+)$/im);
+                        const match = content.match(/^#\s*(?:Task:?\s*|Plan:?\s*|Implementation Plan:?\s*)?(.+)$/im);
                         if (match && match[1]) {
                             return match[1].trim().replace(/^\[.*?\]\s*/, ''); // Remove leading badges like [Draft]
                         }
@@ -108,8 +157,8 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                         birthDate = fileStats.birthtime;
 
                         const pbTitle = await PbParser.extractTitle(activePath);
-                        if (pbTitle) {
-                            label = pbTitle;
+                        if (pbTitle && !pbTitle.startsWith('SQLite format') && pbTitle.trim().length > 0) {
+                            label = pbTitle.trim();
                         }
                     }
                 } catch {
@@ -122,10 +171,49 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
 
                     for (const file of titleSourceFiles) {
                         const foundTitle = await parseTitle(file);
-                        if (foundTitle) {
-                            label = foundTitle;
+                        if (foundTitle && !foundTitle.startsWith('SQLite format') && foundTitle.trim().length > 0) {
+                            label = foundTitle.trim();
                             break;
                         }
+                    }
+                }
+
+                // Priority 3: First user prompt from transcript.jsonl (only if label is still UUID)
+                if (label === id) {
+                    try {
+                        const transcriptPath = path.join(dirPath, '.system_generated', 'logs', 'transcript.jsonl');
+                        if (fs.existsSync(transcriptPath)) {
+                            const handle = await fs.promises.open(transcriptPath, 'r');
+                            const buffer = Buffer.alloc(8192);
+                            const { bytesRead } = await handle.read(buffer, 0, 8192, 0);
+                            await handle.close();
+                            const text = buffer.toString('utf8', 0, bytesRead);
+                            const lines = text.split('\n');
+
+                            for (const line of lines) {
+                                if (!line.trim()) continue;
+                                try {
+                                    const parsed = JSON.parse(line);
+                                    const isUser = parsed.type === 'USER_INPUT' || parsed.source === 'USER_EXPLICIT' || parsed.role === 'user';
+                                    if (isUser && parsed.content && typeof parsed.content === 'string') {
+                                        const clean = parsed.content
+                                            .replace(/<[^>]+>/g, '')
+                                            .replace(/^#\s*/, '')
+                                            .trim()
+                                            .split('\n')[0]
+                                            .trim();
+                                        if (clean.length > 0 && !clean.startsWith('SQLite format')) {
+                                            label = clean.length > 60 ? clean.substring(0, 57) + '...' : clean;
+                                            break;
+                                        }
+                                    }
+                                } catch {
+                                    // continue
+                                }
+                            }
+                        }
+                    } catch {
+                        // Ignore errors from transcript reading
                     }
                 }
 

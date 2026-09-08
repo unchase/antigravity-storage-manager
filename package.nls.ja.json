@@ -85,5 +85,7 @@
     "antigravity.config.section.networkProxy": "ネットワークプロキシ",
     "antigravity.config.section.antigravityProxy": "Antigravity プロキシ",
     "antigravity.config.section.telegram": "Telegram",
-    "antigravity.command.exportAsMarkdown": "Markdown?????????"
+    "antigravity.command.exportAsMarkdown": "Markdown?????????",
+    "antigravity.command.migrateData": "Antigravity: データを IDE ストレージに移行",
+    "antigravity.config.storagePath": "Antigravity データストレージディレクトリ (brain および conversations フォルダを含む) へのカスタムパス。自動検出の場合は空のままにします。"
 }

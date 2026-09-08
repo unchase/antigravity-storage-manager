@@ -85,5 +85,7 @@
     "antigravity.config.section.networkProxy": "Proxy mạng",
     "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
     "antigravity.config.section.telegram": "Telegram",
-    "antigravity.command.exportAsMarkdown": "Xu?t du?i d?ng Markdown"
+    "antigravity.command.exportAsMarkdown": "Xu?t du?i d?ng Markdown",
+    "antigravity.command.migrateData": "Antigravity: Di chuyển dữ liệu sang bộ nhớ IDE",
+    "antigravity.config.storagePath": "Đường dẫn tùy chỉnh đến thư mục lưu trữ dữ liệu Antigravity (chứa các thư mục brain và conversations). Để trống để tự động phát hiện."
 }
