@@ -801,6 +801,7 @@
         "compile": "C:\\PROGRA~1\\nodejs\\node.exe esbuild.js",
         "compile:production": "node esbuild.js --production",
         "package": "node esbuild.js --production && node node_modules/@vscode/vsce/vsce package --no-dependencies",
+        "release:local": "node release_local.js",
         "watch": "npx tsc -watch -p ./",
         "pretest": "npm run compile && npm run lint",
         "lint": "eslint src",
