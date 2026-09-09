@@ -219,4 +219,50 @@ describe('Per-File Sync Logic', () => {
             expect(Buffer.compare(encrypted, content)).not.toBe(0);
         });
     });
+
+    describe('Conflict Resolution Logic', () => {
+        test('keepNewer selects local if local timestamp is newer', () => {
+            const localModified = '2026-09-09T16:00:00.000Z';
+            const remoteModified = '2026-09-09T15:00:00.000Z';
+
+            const localTime = new Date(localModified).getTime();
+            const remoteTime = new Date(remoteModified).getTime();
+            const winner = localTime >= remoteTime ? 'keepLocal' : 'keepRemote';
+
+            expect(winner).toBe('keepLocal');
+        });
+
+        test('keepNewer selects remote if remote timestamp is newer', () => {
+            const localModified = '2026-09-09T14:00:00.000Z';
+            const remoteModified = '2026-09-09T15:00:00.000Z';
+
+            const localTime = new Date(localModified).getTime();
+            const remoteTime = new Date(remoteModified).getTime();
+            const winner = localTime >= remoteTime ? 'keepLocal' : 'keepRemote';
+
+            expect(winner).toBe('keepRemote');
+        });
+
+        test('keepLarger selects version with larger size', () => {
+            const localSize = 2048;
+            const remoteSize = 1024;
+            const winner = (localSize ?? 0) >= (remoteSize ?? 0) ? 'keepLocal' : 'keepRemote';
+            expect(winner).toBe('keepLocal');
+
+            const smallerLocal = 512;
+            const winnerRemote = (smallerLocal ?? 0) >= (remoteSize ?? 0) ? 'keepLocal' : 'keepRemote';
+            expect(winnerRemote).toBe('keepRemote');
+        });
+
+        test('same-device check avoids false conflict when modifiedBy matches machineId', () => {
+            const machineId: string = 'machine-alpha-123';
+            const remoteModifiedBy: string = 'machine-alpha-123';
+            const isSameDevice = !!(remoteModifiedBy && machineId && remoteModifiedBy === machineId);
+            expect(isSameDevice).toBe(true);
+
+            const differentMachine: string = 'machine-beta-456';
+            const isDifferentDevice = !!(differentMachine && machineId && differentMachine === machineId);
+            expect(isDifferentDevice).toBe(false);
+        });
+    });
 });

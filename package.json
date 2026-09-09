@@ -96,6 +96,24 @@
                 "category": "%antigravity.submenu.label%"
             },
             {
+                "command": "antigravity-storage-manager.reindexConversations",
+                "title": "%antigravity.command.reindexConversations%",
+                "icon": "$(refresh)",
+                "category": "%antigravity.submenu.label%"
+            },
+            {
+                "command": "antigravity-storage-manager.exportIdeState",
+                "title": "%antigravity.command.exportIdeState%",
+                "icon": "$(database)",
+                "category": "%antigravity.submenu.label%"
+            },
+            {
+                "command": "antigravity-storage-manager.importIdeState",
+                "title": "%antigravity.command.importIdeState%",
+                "icon": "$(database)",
+                "category": "%antigravity.submenu.label%"
+            },
+            {
                 "command": "antigravity-storage-manager.syncSetup",
                 "title": "%antigravity.command.syncSetup%",
                 "icon": "$(cloud)",
@@ -470,6 +488,26 @@
                         "order": 10,
                         "default": "",
                         "description": "%antigravity.config.machineName%"
+                    },
+                    "antigravity-storage-manager.sync.conflictResolution": {
+                        "type": "string",
+                        "order": 11,
+                        "enum": [
+                            "prompt",
+                            "keepLocal",
+                            "keepRemote",
+                            "keepNewer",
+                            "keepLarger"
+                        ],
+                        "enumDescriptions": [
+                            "%antigravity.config.conflictResolution.prompt%",
+                            "%antigravity.config.conflictResolution.keepLocal%",
+                            "%antigravity.config.conflictResolution.keepRemote%",
+                            "%antigravity.config.conflictResolution.keepNewer%",
+                            "%antigravity.config.conflictResolution.keepLarger%"
+                        ],
+                        "default": "prompt",
+                        "description": "%antigravity.config.conflictResolution%"
                     },
                     "antigravity-storage-manager.sync.suggestSolutions": {
                         "type": "boolean",

@@ -85,7 +85,16 @@
     "antigravity.config.section.networkProxy": "Сетевой прокси",
     "antigravity.config.section.antigravityProxy": "Antigravity Proxy",
     "antigravity.config.section.telegram": "Telegram",
-    "antigravity.command.exportAsMarkdown": "??????? ? Markdown",
+    "antigravity.command.exportAsMarkdown": "Экспорт в Markdown",
     "antigravity.command.migrateData": "Antigravity: Миграция данных в хранилище IDE",
+    "antigravity.command.reindexConversations": "Перестроить индекс диалогов для IDE",
+    "antigravity.command.exportIdeState": "Экспорт состояния IDE (state.vscdb)",
+    "antigravity.command.importIdeState": "Импорт состояния IDE (state.vscdb)",
+    "antigravity.config.conflictResolution": "Стратегия разрешения конфликтов синхронизации (автоматически или с запросом пользователя)",
+    "antigravity.config.conflictResolution.prompt": "Запрашивать выбор пользователя при обнаружении конфликтов",
+    "antigravity.config.conflictResolution.keepLocal": "Всегда перезаписывать удалённую версию локальной",
+    "antigravity.config.conflictResolution.keepRemote": "Всегда перезаписывать локальную версию удалённой",
+    "antigravity.config.conflictResolution.keepNewer": "Сохранять более свежую по времени изменения версию (Last-Write-Wins)",
+    "antigravity.config.conflictResolution.keepLarger": "Сохранять файл большего размера",
     "antigravity.config.storagePath": "Пользовательский путь к каталогу хранения Antigravity (содержащему папки brain и conversations). Оставьте пустым для автоопределения."
 }

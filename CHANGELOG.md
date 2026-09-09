@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.14.7] - 2026-09-09
+### Synchronization & Conflict Resolution ([#18](https://github.com/unchase/antigravity-storage-manager/issues/18))
+- **Same-Device False Conflict Prevention**: Fixed an issue where syncing on a single device triggered false conflict warnings when `lastSyncedHash` was not yet established. The extension now compares `remote.modifiedBy` against `this.config.machineId` and automatically resolves the merge when changes originate from the same machine.
+- **Configurable Conflict Resolution Policy**: Added `antigravity-storage-manager.sync.conflictResolution` configuration setting with five distinct strategies:
+  - `prompt`: Prompt the user with options when conflicts are detected (default).
+  - `keepLocal`: Always overwrite remote with local version.
+  - `keepRemote`: Always overwrite local with remote version.
+  - `keepNewer`: Automatically keep the version modified more recently (Last-Write-Wins).
+  - `keepLarger`: Automatically keep whichever version has the larger file size.
+- **Batch Conflict Resolution UI**: Enhanced the conflict notification modal to allow single-click batch resolution across all conflicting items ("Keep All Local", "Keep All Remote", "Keep All Newer", "Keep All Larger") or fine-grained inspection ("Review One-by-One").
+
+### IDE State & Trajectory Index Management ([#14](https://github.com/unchase/antigravity-storage-manager/issues/14), [#24](https://github.com/unchase/antigravity-storage-manager/issues/24), [#27](https://github.com/unchase/antigravity-storage-manager/issues/27))
+- **Rebuild Conversation Index for IDE**: Added `antigravity-storage-manager.reindexConversations` command to automatically discover all local conversation databases (`.db` and `.pb`) and populate the trajectory index in `%APPDATA%\Antigravity IDE\User\globalStorage\state.vscdb`, making imported or newly synced conversations instantly visible in the IDE chat sidebar.
+- **Export & Import IDE State**: Added `antigravity-storage-manager.exportIdeState` and `antigravity-storage-manager.importIdeState` commands with automatic timestamped backup protection, allowing seamless migration of chat sidebar state and conversation orders between machines.
+- **Offline Chat Viewer Fallback**: Updated the built-in conversation viewer (`openPbChat`) to automatically fallback to reading local `transcript.jsonl` or `task.md` when the language server responds with 500 (`trajectory not found`), ensuring complete offline access to chat history.
+
+### Export & Import Enhancements ([#26](https://github.com/unchase/antigravity-storage-manager/issues/26))
+- **Unified Storage Discovery**: `getConversationsAsync`, multi-select export, and import now scan the union of both `brain/` directories and `conversations/` databases (`*.db`, `*.pb`). This resolves item count discrepancies between export lists and raw disk counts.
+- **Stub Generation for Imported Conversations**: On ZIP import, the extension now automatically verifies and ensures the existence of the `brain/<id>` directory and creates an initial `task.md` stub for conversations that only exist in `conversations/`, preventing conversations from appearing greyed out or inactive in Antigravity IDE.
+
 ### Security
 - **Telegram Out-of-Band Confirmation (CWE-287)**: Added out-of-band confirmation code verification (displayed in VS Code) before linking Telegram usernames to `chatId`s. Prevents unauthorized users from taking over configured `@username` mappings by messaging the bot from an unconfirmed chat. Features brute-force protection (max 5 failed attempts), constant-time comparison, and full 16-language localization.
 
@@ -13,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Model Name Abbreviation Display**: Improved model abbreviation formatting in the status bar for Gemini, Claude, and GPT-OSS models. Multi-tier variants such as `Gemini 3.8 Flash (Medium)` now display cleanly and compactly as `Gemini 3.8 Flash (M)` instead of cryptic acronyms like `G3FM`.
 
 ### Localization
-- **Full 16-Language Support for Telegram Authentication**: Added native translations for all Telegram confirmation and authorization messages across all 16 supported languages (`en`, `ru`, `ar`, `cs`, `de`, `es`, `fr`, `it`, `ja`, `ko`, `pl`, `pt-br`, `tr`, `vi`, `zh-cn`, `zh-tw`).
+- **Complete 16-Language Localization**: Synchronized all new commands, configuration descriptions, and enum values across all 16 supported languages (`en`, `ru`, `ar`, `cs`, `de`, `es`, `fr`, `it`, `ja`, `ko`, `pl`, `pt-br`, `tr`, `vi`, `zh-cn`, `zh-tw`).
 
 ### Bug Fixes
 - **Windows ARM64 Language Server Detection & Process Termination**: Fixed process name detection on Windows ARM64 to use `language_server_windows_arm.exe` (matching Antigravity IDE's native naming scheme) with fallbacks, resolving issues where quota monitoring and profile switching could not detect or terminate the language server process on Windows ARM64 machines.

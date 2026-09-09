@@ -145,6 +145,21 @@ describe('Storage Management & Discovery', () => {
             expect(convs[0].id).toBe(convId);
             expect(convs[0].label).toBe(convId);
         });
+
+        test('discovers conversations that only exist in conversations/ directory without brain folder', async () => {
+            const brainDir = path.join(tempDir, 'brain');
+            const convDir = path.join(tempDir, 'conversations');
+            fs.mkdirSync(brainDir, { recursive: true });
+            fs.mkdirSync(convDir, { recursive: true });
+
+            const convId = 'a1b2c3d4-e5f6-4a1b-8c2d-123456789099';
+            fs.writeFileSync(path.join(convDir, `${convId}.db`), 'dummy sqlite content');
+
+            const convs = await getConversationsAsync(brainDir);
+            expect(convs).toHaveLength(1);
+            expect(convs[0].id).toBe(convId);
+            expect(convs[0].description).toBe(convId);
+        });
     });
 
     describe('SQLite .db and .db-wal conversation files', () => {

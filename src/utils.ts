@@ -97,28 +97,62 @@ export function formatRelativeTime(dateInput: Date | string): string {
  * Get conversations asynchronously with metadata
  */
 export async function getConversationsAsync(brainDir: string): Promise<ConversationItem[]> {
-    if (!fs.existsSync(brainDir)) {
+    const conversationsDir = path.join(brainDir, '..', 'conversations');
+    const brainExists = fs.existsSync(brainDir);
+    const convExists = fs.existsSync(conversationsDir);
+
+    if (!brainExists && !convExists) {
         return [];
     }
 
     try {
-        const entries = await fs.promises.readdir(brainDir);
+        const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        const convIds = new Set<string>();
+
+        if (brainExists) {
+            const entries = await fs.promises.readdir(brainDir);
+            for (const id of entries) {
+                if (isUuid(id)) {
+                    try {
+                        const stats = await fs.promises.stat(path.join(brainDir, id));
+                        if (stats.isDirectory()) {
+                            convIds.add(id);
+                        }
+                    } catch {
+                        // ignore
+                    }
+                }
+            }
+        }
+
+        if (convExists) {
+            const convEntries = await fs.promises.readdir(conversationsDir);
+            for (const entry of convEntries) {
+                const match = entry.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(?:db|pb)$/i);
+                if (match) {
+                    convIds.add(match[1]);
+                }
+            }
+        }
 
         // Read concurrency limit from settings (reuse sync.concurrency)
         const concurrencyLimit = Math.max(1, vscode.workspace.getConfiguration('antigravity-storage-manager').get<number>('sync.concurrency', 3) || 3);
 
-        const jobFactories = entries.map((id) => async (): Promise<ConversationItem | null> => {
+        const jobFactories = Array.from(convIds).map((id) => async (): Promise<ConversationItem | null> => {
             const dirPath = path.join(brainDir, id);
             try {
-                const stats = await fs.promises.stat(dirPath);
-                if (!stats.isDirectory()) return null;
-
-                // Validate that the folder name is a valid UUID to skip system/temp folders (like tempmediaStorage)
-                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-                if (!isUuid) return null;
+                let hasBrainDir = false;
+                let dirStats: fs.Stats | null = null;
+                try {
+                    dirStats = await fs.promises.stat(dirPath);
+                    hasBrainDir = dirStats.isDirectory();
+                } catch {
+                    hasBrainDir = false;
+                }
 
                 let label = id;
                 const parseTitle = async (filename: string): Promise<string | null> => {
+                    if (!hasBrainDir) return null;
                     try {
                         const filePath = path.join(dirPath, filename);
                         // Check existence first to avoid reading error noise
@@ -142,8 +176,8 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                 };
 
                 // Priority 1: .db/.pb file (via heuristic extraction and for timestamps)
-                let modDate = stats.mtime;
-                let birthDate = stats.birthtime;
+                let modDate = dirStats ? dirStats.mtime : new Date();
+                let birthDate = dirStats ? dirStats.birthtime : new Date();
                 try {
                     const { PbParser } = await import('./quota/pbParser');
                     const conversationsDir = path.join(brainDir, '..', 'conversations');

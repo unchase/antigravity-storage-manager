@@ -7,9 +7,10 @@ import extract from 'extract-zip';
 import { ProxyManager } from './proxy/proxyManager';
 import { ProxyDashboardWebview } from './proxy/proxyDashboardWebview';
 import { GoogleAuthProvider } from './googleAuth';
-import { SyncManager } from './sync';
+import { SyncManager, SyncConflict } from './sync';
 import { getConversationsAsync, ConversationItem, formatSize, getStoragePaths } from './utils';
 import { resolveConflictsCommand } from './conflicts';
+import { reindexConversationsCommand, exportIdeStateCommand, importIdeStateCommand } from './ideState';
 import { DiagnosticsManager } from './diagnostics/diagnosticsManager';
 import { LocalizationManager } from './l10n/localizationManager';
 import { BackupManager } from './backup';
@@ -119,6 +120,9 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.resolveConflicts`, () => resolveConflictsCommand(getBrainDir(), getConvDir())),
         vscode.commands.registerCommand(`${EXT_NAME}.migrateData`, migrateData),
+        vscode.commands.registerCommand(`${EXT_NAME}.reindexConversations`, () => reindexConversationsCommand(getBrainDir(), getConvDir())),
+        vscode.commands.registerCommand(`${EXT_NAME}.exportIdeState`, exportIdeStateCommand),
+        vscode.commands.registerCommand(`${EXT_NAME}.importIdeState`, importIdeStateCommand),
 
         vscode.commands.registerCommand(`${EXT_NAME}.proxy.dashboard`, () => {
             proxyDashboard.show();
@@ -259,6 +263,9 @@ export async function activate(context: vscode.ExtensionContext) {
             items.push({ label: `$(account) ${lm.t('Switch Profile')}`, description: lm.t('Switch between Antigravity/Codeium accounts'), command: `${EXT_NAME}.switchProfile` });
             items.push({ label: `$(trash) ${lm.t('Clear Cache')}`, description: lm.t('Clear temporary files and internal caches'), command: `${EXT_NAME}.clearCache` });
             items.push({ label: `$(database) ${lm.t('Migrate Data to IDE Storage')}`, description: lm.t('Migrate data between standard and IDE storage'), command: `${EXT_NAME}.migrateData` });
+            items.push({ label: `$(refresh) ${lm.t('Rebuild Conversation Index')}`, description: lm.t('Fix missing or greyed out conversations in IDE'), command: `${EXT_NAME}.reindexConversations` });
+            items.push({ label: `$(database) ${lm.t('Export IDE State')}`, description: lm.t('Export state.vscdb and workspace index'), command: `${EXT_NAME}.exportIdeState` });
+            items.push({ label: `$(database) ${lm.t('Import IDE State')}`, description: lm.t('Import state.vscdb and workspace index'), command: `${EXT_NAME}.importIdeState` });
 
             // Post-process items to reflect auth state
             const processedItems = items.map(item => {
@@ -388,34 +395,8 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
 
                 // Handle conflicts
-                for (const conflict of result.conflicts) {
-                    const localDate = lm.formatDateTime(new Date(conflict.localModified));
-                    const remoteDate = lm.formatDateTime(new Date(conflict.remoteModified));
-                    const localSizeStr = formatSize(conflict.localSize);
-                    const remoteSizeStr = formatSize(conflict.remoteSize);
-
-                    const msg = [
-                        lm.t('Conflict detected for "{0}"{1}.', conflict.conversationTitle || conflict.conversationId, conflict.relativePath ? ` (${conflict.relativePath})` : ''),
-                        lm.t('Local: {0}, {1}', localDate, localSizeStr),
-                        lm.t('Remote: {0}, {1} (by {2})', remoteDate, remoteSizeStr, conflict.remoteModifiedByName || conflict.remoteModifiedBy || 'Unknown'),
-                        lm.t('Hashes: L={0} / R={1}', conflict.localHash.substring(0, 7), conflict.remoteHash.substring(0, 7))
-                    ].join('\n');
-
-                    const choice = await vscode.window.showWarningMessage(
-                        msg,
-                        { modal: true },
-                        lm.t('Keep Local'),
-                        lm.t('Keep Remote'),
-                        lm.t('Keep Both')
-                    );
-
-                    if (choice === lm.t('Keep Local')) {
-                        await syncManager.resolveConflict(conflict, 'keepLocal');
-                    } else if (choice === lm.t('Keep Remote')) {
-                        await syncManager.resolveConflict(conflict, 'keepRemote');
-                    } else if (choice === lm.t('Keep Both')) {
-                        await syncManager.resolveConflict(conflict, 'keepBoth');
-                    }
+                if (result.conflicts && result.conflicts.length > 0) {
+                    await handleSyncConflicts(result.conflicts, syncManager);
                 }
             });
         }),
@@ -436,6 +417,9 @@ export async function activate(context: vscode.ExtensionContext) {
                     vscode.window.showInformationMessage(lm.t('Force Sync complete!'));
                 } else {
                     vscode.window.showErrorMessage(lm.t('Force Sync failed: {0}', result.errors.join(', ')));
+                }
+                if (result.conflicts && result.conflicts.length > 0) {
+                    await handleSyncConflicts(result.conflicts, syncManager);
                 }
             });
         }),
@@ -712,6 +696,127 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     } catch (e) {
         console.error('Failed to verify installation_id:', e);
+    }
+}
+
+/**
+ * Handles sync conflicts with support for automatic policy, single-modal, and batch prompts
+ */
+async function handleSyncConflicts(conflicts: SyncConflict[], syncManager: SyncManager): Promise<void> {
+    const lm = LocalizationManager.getInstance();
+    if (!conflicts || conflicts.length === 0) return;
+
+    const conflictSetting = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.conflictResolution', 'prompt');
+
+    if (conflictSetting !== 'prompt') {
+        for (const conflict of conflicts) {
+            try {
+                await syncManager.resolveConflict(conflict, conflictSetting as any);
+            } catch (e: any) {
+                console.error(`Failed to auto-resolve conflict for ${conflict.conversationId}:`, e);
+            }
+        }
+        vscode.window.showInformationMessage(
+            lm.t('Auto-resolved {0} conflict(s) using "{1}" policy.', conflicts.length, conflictSetting)
+        );
+        return;
+    }
+
+    if (conflicts.length === 1) {
+        const conflict = conflicts[0];
+        const localDate = lm.formatDateTime(new Date(conflict.localModified));
+        const remoteDate = lm.formatDateTime(new Date(conflict.remoteModified));
+        const localSizeStr = formatSize(conflict.localSize);
+        const remoteSizeStr = formatSize(conflict.remoteSize);
+
+        const msg = [
+            lm.t('Conflict detected for "{0}"{1}.', conflict.conversationTitle || conflict.conversationId, conflict.relativePath ? ` (${conflict.relativePath})` : ''),
+            lm.t('Local: {0}, {1}', localDate, localSizeStr),
+            lm.t('Remote: {0}, {1} (by {2})', remoteDate, remoteSizeStr, conflict.remoteModifiedByName || conflict.remoteModifiedBy || 'Unknown'),
+            lm.t('Hashes: L={0} / R={1}', conflict.localHash.substring(0, 7), conflict.remoteHash.substring(0, 7))
+        ].join('\n');
+
+        const choice = await vscode.window.showWarningMessage(
+            msg,
+            { modal: true },
+            lm.t('Keep Local'),
+            lm.t('Keep Remote'),
+            lm.t('Keep Both')
+        );
+
+        if (choice === lm.t('Keep Local')) {
+            await syncManager.resolveConflict(conflict, 'keepLocal');
+        } else if (choice === lm.t('Keep Remote')) {
+            await syncManager.resolveConflict(conflict, 'keepRemote');
+        } else if (choice === lm.t('Keep Both')) {
+            await syncManager.resolveConflict(conflict, 'keepBoth');
+        }
+    } else {
+        const keepAllLocal = lm.t('Keep All Local');
+        const keepAllRemote = lm.t('Keep All Remote');
+        const keepAllNewer = lm.t('Keep All Newer');
+        const keepAllLarger = lm.t('Keep All Larger');
+        const reviewOneByOne = lm.t('Review One-by-One');
+
+        const batchChoice = await vscode.window.showWarningMessage(
+            lm.t('{0} conflicts detected during sync. How would you like to resolve them?', conflicts.length),
+            keepAllLocal,
+            keepAllRemote,
+            keepAllNewer,
+            keepAllLarger,
+            reviewOneByOne
+        );
+
+        if (batchChoice === keepAllLocal) {
+            for (const c of conflicts) {
+                await syncManager.resolveConflict(c, 'keepLocal');
+            }
+        } else if (batchChoice === keepAllRemote) {
+            for (const c of conflicts) {
+                await syncManager.resolveConflict(c, 'keepRemote');
+            }
+        } else if (batchChoice === keepAllNewer) {
+            for (const c of conflicts) {
+                await syncManager.resolveConflict(c, 'keepNewer');
+            }
+        } else if (batchChoice === keepAllLarger) {
+            for (const c of conflicts) {
+                await syncManager.resolveConflict(c, 'keepLarger');
+            }
+        } else if (batchChoice === reviewOneByOne) {
+            for (const conflict of conflicts) {
+                const localDate = lm.formatDateTime(new Date(conflict.localModified));
+                const remoteDate = lm.formatDateTime(new Date(conflict.remoteModified));
+                const localSizeStr = formatSize(conflict.localSize);
+                const remoteSizeStr = formatSize(conflict.remoteSize);
+
+                const msg = [
+                    lm.t('Conflict detected for "{0}"{1}.', conflict.conversationTitle || conflict.conversationId, conflict.relativePath ? ` (${conflict.relativePath})` : ''),
+                    lm.t('Local: {0}, {1}', localDate, localSizeStr),
+                    lm.t('Remote: {0}, {1} (by {2})', remoteDate, remoteSizeStr, conflict.remoteModifiedByName || conflict.remoteModifiedBy || 'Unknown'),
+                    lm.t('Hashes: L={0} / R={1}', conflict.localHash.substring(0, 7), conflict.remoteHash.substring(0, 7))
+                ].join('\n');
+
+                const choice = await vscode.window.showWarningMessage(
+                    msg,
+                    { modal: true },
+                    lm.t('Keep Local'),
+                    lm.t('Keep Remote'),
+                    lm.t('Keep Both'),
+                    lm.t('Cancel Remaining')
+                );
+
+                if (choice === lm.t('Keep Local')) {
+                    await syncManager.resolveConflict(conflict, 'keepLocal');
+                } else if (choice === lm.t('Keep Remote')) {
+                    await syncManager.resolveConflict(conflict, 'keepRemote');
+                } else if (choice === lm.t('Keep Both')) {
+                    await syncManager.resolveConflict(conflict, 'keepBoth');
+                } else if (choice === lm.t('Cancel Remaining') || !choice) {
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -1005,77 +1110,130 @@ async function importConversations() {
                 try {
                     await extract(zipPath, { dir: tempDir });
 
-                    // Check for brain directories (conversation IDs)
+                    // Collect conversation IDs from both brain/ and conversations/
+                    const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+                    const convIds = new Set<string>();
+
                     const brainDir = path.join(tempDir, 'brain');
                     if (fs.existsSync(brainDir)) {
-                        const convIds = fs.readdirSync(brainDir).filter(d =>
-                            fs.statSync(path.join(brainDir, d)).isDirectory()
-                        );
+                        for (const d of fs.readdirSync(brainDir)) {
+                            if (isUuid(d)) {
+                                try {
+                                    if (fs.statSync(path.join(brainDir, d)).isDirectory()) {
+                                        convIds.add(d);
+                                    }
+                                } catch {
+                                    // ignore
+                                }
+                            }
+                        }
+                    }
 
-                        for (const id of convIds) {
-                            const existingDir = path.join(getBrainDir(), id);
-                            let targetId = id;
+                    const tempConvDir = path.join(tempDir, 'conversations');
+                    if (fs.existsSync(tempConvDir)) {
+                        for (const f of fs.readdirSync(tempConvDir)) {
+                            const match = f.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(?:db|pb)$/i);
+                            if (match) {
+                                convIds.add(match[1]);
+                            }
+                        }
+                    }
 
-                            if (fs.existsSync(existingDir)) {
-                                // Conflict! Ask user
-                                const choice = await vscode.window.showWarningMessage(
-                                    lm.t('Conversation "{0}" already exists.', id),
-                                    { modal: true },
-                                    lm.t('Overwrite'),
-                                    lm.t('Rename'),
-                                    lm.t('Skip')
-                                );
+                    for (const id of Array.from(convIds)) {
+                        const existingBrain = path.join(getBrainDir(), id);
+                        const existingDb = path.join(getConvDir(), `${id}.db`);
+                        const existingPb = path.join(getConvDir(), `${id}.pb`);
+                        const alreadyExists = fs.existsSync(existingBrain) || fs.existsSync(existingDb) || fs.existsSync(existingPb);
+                        let targetId = id;
 
-                                if (choice === lm.t('Skip')) {
+                        if (alreadyExists) {
+                            // Conflict! Ask user
+                            const choice = await vscode.window.showWarningMessage(
+                                lm.t('Conversation "{0}" already exists.', id),
+                                { modal: true },
+                                lm.t('Overwrite'),
+                                lm.t('Rename'),
+                                lm.t('Skip')
+                            );
+
+                            if (choice === lm.t('Skip')) {
+                                skippedCount++;
+                                continue;
+                            } else if (choice === lm.t('Rename')) {
+                                const newId = await vscode.window.showInputBox({
+                                    prompt: lm.t('Enter new conversation ID'),
+                                    value: `${id}-imported`,
+                                    validateInput: (value) => {
+                                        if (!value) return lm.t('ID cannot be empty');
+                                        if (fs.existsSync(path.join(getBrainDir(), value)) ||
+                                            fs.existsSync(path.join(getConvDir(), `${value}.db`)) ||
+                                            fs.existsSync(path.join(getConvDir(), `${value}.pb`))) {
+                                            return lm.t('This ID already exists');
+                                        }
+                                        return null;
+                                    }
+                                });
+
+                                if (!newId) {
                                     skippedCount++;
                                     continue;
-                                } else if (choice === lm.t('Rename')) {
-                                    const newId = await vscode.window.showInputBox({
-                                        prompt: lm.t('Enter new conversation ID'),
-                                        value: `${id}-imported`,
-                                        validateInput: (value) => {
-                                            if (!value) return lm.t('ID cannot be empty');
-                                            if (fs.existsSync(path.join(getBrainDir(), value))) {
-                                                return lm.t('This ID already exists');
-                                            }
-                                            return null;
-                                        }
-                                    });
-
-                                    if (!newId) {
-                                        skippedCount++;
-                                        continue;
-                                    }
-                                    targetId = newId;
                                 }
-                                // else Overwrite - continue with same ID
+                                targetId = newId;
                             }
+                            // else Overwrite - continue with same ID
+                        }
 
-                            // Copy brain directory
-                            const sourceBrain = path.join(brainDir, id);
-                            const destBrain = path.join(getBrainDir(), targetId);
+                        // Copy or ensure brain directory exists
+                        const sourceBrain = path.join(brainDir, id);
+                        const destBrain = path.join(getBrainDir(), targetId);
 
+                        if (fs.existsSync(sourceBrain)) {
                             if (fs.existsSync(destBrain)) {
                                 fs.rmSync(destBrain, { recursive: true, force: true });
                             }
                             fs.cpSync(sourceBrain, destBrain, { recursive: true });
-
-                            // Copy conversation files (.pb, .db, .db-wal) if exists
-                            const destConv = getConvDir();
-                            if (!fs.existsSync(destConv)) {
-                                fs.mkdirSync(destConv, { recursive: true });
+                        } else {
+                            if (!fs.existsSync(destBrain)) {
+                                fs.mkdirSync(destBrain, { recursive: true });
                             }
-                            const convExts = ['.pb', '.db', '.db-wal'];
-                            for (const ext of convExts) {
-                                const sourceFile = path.join(tempDir, 'conversations', `${id}${ext}`);
-                                if (fs.existsSync(sourceFile)) {
-                                    const destFile = path.join(destConv, `${targetId}${ext}`);
-                                    fs.copyFileSync(sourceFile, destFile);
-                                }
-                            }
-
-                            importedCount++;
                         }
+
+                        // Copy conversation files (.pb, .db, .db-wal, .db-shm) if exists
+                        const destConv = getConvDir();
+                        if (!fs.existsSync(destConv)) {
+                            fs.mkdirSync(destConv, { recursive: true });
+                        }
+                        const convExts = ['.pb', '.db', '.db-wal', '.db-shm'];
+                        for (const ext of convExts) {
+                            const sourceFile = path.join(tempDir, 'conversations', `${id}${ext}`);
+                            if (fs.existsSync(sourceFile)) {
+                                const destFile = path.join(destConv, `${targetId}${ext}`);
+                                fs.copyFileSync(sourceFile, destFile);
+                            }
+                        }
+
+                        // If task.md is missing, create minimal task.md with title from .db/.pb so IDE does not grey it out
+                        const taskMdPath = path.join(destBrain, 'task.md');
+                        if (!fs.existsSync(taskMdPath)) {
+                            try {
+                                const { PbParser } = await import('./quota/pbParser');
+                                const activeFile = path.join(destConv, `${targetId}.db`);
+                                const pbFile = path.join(destConv, `${targetId}.pb`);
+                                const targetFile = fs.existsSync(activeFile) ? activeFile : (fs.existsSync(pbFile) ? pbFile : null);
+                                let title = targetId;
+                                if (targetFile) {
+                                    const parsedTitle = await PbParser.extractTitle(targetFile);
+                                    if (parsedTitle && !parsedTitle.startsWith('SQLite format') && parsedTitle.trim().length > 0) {
+                                        title = parsedTitle.trim();
+                                    }
+                                }
+                                fs.writeFileSync(taskMdPath, `# Task: ${title}\n\n*Imported on ${new Date().toISOString()}*\n`, 'utf8');
+                            } catch {
+                                // ignore
+                            }
+                        }
+
+                        importedCount++;
                     }
                 } finally {
                     // Cleanup temp

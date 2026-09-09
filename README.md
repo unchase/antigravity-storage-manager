@@ -400,10 +400,20 @@ Worried about the cloud? Create a full local backup anytime.
 3. A single ZIP file containing **all** your conversations will be created.
 
 ### ⚔️ Conflict Resolution
-If you edit the same conversation on two machines offline, a conflict copy is created.
-1. Run `Antigravity Storage: Resolve Conflict Copies`
-2. Select the conflicting conversation from the list.
-3. Choose to **Keep Original** (delete copy) or **Keep Conflict** (overwrite original with copy).
+When changes are made concurrently on multiple machines or offline:
+- **Automatic Policy**: Set `antigravity-storage-manager.sync.conflictResolution` to:
+  - `prompt`: Prompt the user with options when conflicts are detected (default).
+  - `keepLocal`: Always overwrite remote with local version.
+  - `keepRemote`: Always overwrite local with remote version.
+  - `keepNewer`: Keep whichever version was modified more recently (Last-Write-Wins).
+  - `keepLarger`: Keep whichever version has the larger file size.
+- **Batch Resolution**: When prompted, you can resolve all conflicting items in one click (**Keep All Local**, **Keep All Remote**, **Keep All Newer**, **Keep All Larger**) or inspect them **One-by-One**.
+- **Conflict Copies**: Run `Antigravity Storage: Resolve Conflict Copies` to inspect or clean up legacy offline conflict copies.
+
+### 🔄 IDE State & Index Rebuilding
+Antigravity IDE stores chat session history and active tab order in its global database (`state.vscdb`).
+- **Rebuild Conversation Index**: Run `Antigravity Storage: Rebuild Conversation Index for IDE` to automatically detect all local `.db` and `.pb` conversations and register them in the IDE chat sidebar.
+- **Export / Import IDE State**: Run `Antigravity Storage: Export IDE State (state.vscdb)` and `Antigravity Storage: Import IDE State (state.vscdb)` to back up or migrate your IDE chat history state between machines with automatic backup safety.
 
 ---
 

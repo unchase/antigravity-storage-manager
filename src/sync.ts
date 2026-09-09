@@ -65,7 +65,7 @@ export interface SyncConflict {
     remoteModifiedByName?: string;
 }
 
-type ConflictResolution = 'keepLocal' | 'keepRemote' | 'keepBoth';
+export type ConflictResolution = 'keepLocal' | 'keepRemote' | 'keepBoth' | 'keepNewer' | 'keepLarger';
 
 /**
  * Main sync manager for coordinating conversation synchronization
@@ -1054,7 +1054,18 @@ export class SyncManager {
             throw new Error(lm.t('Encryption password not set'));
         }
 
-        switch (resolution) {
+        let effectiveResolution: 'keepLocal' | 'keepRemote' | 'keepBoth' = 'keepLocal';
+        if (resolution === 'keepNewer') {
+            const localTime = new Date(conflict.localModified).getTime();
+            const remoteTime = new Date(conflict.remoteModified).getTime();
+            effectiveResolution = localTime >= remoteTime ? 'keepLocal' : 'keepRemote';
+        } else if (resolution === 'keepLarger') {
+            effectiveResolution = (conflict.localSize ?? 0) >= (conflict.remoteSize ?? 0) ? 'keepLocal' : 'keepRemote';
+        } else {
+            effectiveResolution = resolution;
+        }
+
+        switch (effectiveResolution) {
             case 'keepLocal':
                 await this.pushConversation(conflict.conversationId);
                 break;
@@ -2560,16 +2571,106 @@ export class SyncManager {
             const removeChanged = remote.hash !== lastSyncedHash;
             const localChanged = local.hash !== lastSyncedHash;
 
-            if (!lastSyncedHash) {
-                // First sync for this item on this machine, but both exist. 
-                // Treat as conflict to be safe, unless we want to "Last Write Wins" fallback.
-                // Fallback to timestamp logic for "Adoption"
-                // const localDate = new Date(local.lastModified);
-                // const remoteDate = new Date(remote.lastModified);
+            const remoteMachine = remoteManifest.machines?.find(m => m.id === remote.modifiedBy);
+            const myMachineId = this.config?.machineId;
+            const myMachineName = this.config?.machineName?.toLowerCase();
+            const remoteMachineName = (remoteMachine?.name || remote.createdByName || '').toLowerCase();
+            const isSameDevice = (remote.modifiedBy && myMachineId && remote.modifiedBy === myMachineId) ||
+                (myMachineName && remoteMachineName && myMachineName === remoteMachineName);
 
-                // If one is significantly newer (e.g. > 1 min), adopt it?
-                // Better safe: Conflict.
-                const remoteMachine = remoteManifest.machines?.find(m => m.id === remote.modifiedBy);
+            const conflictPolicy = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string>('sync.conflictResolution', 'prompt');
+
+            // 1. Automatic conflict resolution policy if configured
+            if (conflictPolicy === 'keepLocal') {
+                try {
+                    await this.pushConversation(convId, progress, token);
+                    result.pushed.push(convId);
+                } catch (error: any) {
+                    if (error instanceof vscode.CancellationError) throw error;
+                    result.errors.push(`Failed to push ${convId}: ${error.message}`);
+                }
+                return;
+            } else if (conflictPolicy === 'keepRemote') {
+                try {
+                    await this.pullConversation(convId, progress, token);
+                    result.pulled.push(convId);
+                } catch (error: any) {
+                    if (error instanceof vscode.CancellationError) throw error;
+                    result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+                }
+                return;
+            } else if (conflictPolicy === 'keepNewer') {
+                const localTime = new Date(local.lastModified).getTime();
+                const remoteTime = new Date(remote.lastModified).getTime();
+                if (localTime >= remoteTime) {
+                    try {
+                        await this.pushConversation(convId, progress, token);
+                        result.pushed.push(convId);
+                    } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
+                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
+                    }
+                } else {
+                    try {
+                        await this.pullConversation(convId, progress, token);
+                        result.pulled.push(convId);
+                    } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
+                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+                    }
+                }
+                return;
+            } else if (conflictPolicy === 'keepLarger') {
+                if ((local.size ?? 0) >= (remote.size ?? 0)) {
+                    try {
+                        await this.pushConversation(convId, progress, token);
+                        result.pushed.push(convId);
+                    } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
+                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
+                    }
+                } else {
+                    try {
+                        await this.pullConversation(convId, progress, token);
+                        result.pulled.push(convId);
+                    } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
+                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+                    }
+                }
+                return;
+            }
+
+            // 2. Same-Device Auto-Resolution:
+            // If the remote version was authored/modified by this SAME device,
+            // local modifications are sequential edits made on this machine.
+            if (isSameDevice) {
+                const localTime = new Date(local.lastModified).getTime();
+                const remoteTime = new Date(remote.lastModified).getTime();
+                if (localTime >= remoteTime) {
+                    try {
+                        await this.pushConversation(convId, progress, token);
+                        result.pushed.push(convId);
+                    } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
+                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
+                    }
+                    return;
+                } else {
+                    try {
+                        await this.pullConversation(convId, progress, token);
+                        result.pulled.push(convId);
+                    } catch (error: any) {
+                        if (error instanceof vscode.CancellationError) throw error;
+                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+                    }
+                    return;
+                }
+            }
+
+            // 3. Distinct devices logic
+            if (!lastSyncedHash) {
+                // First sync across distinct machines, both exist and hashes differ -> Conflict
                 result.conflicts.push({
                     conversationId: convId,
                     conversationTitle: title,
@@ -2592,38 +2693,16 @@ export class SyncManager {
                     result.errors.push(`Failed to push ${convId}: ${error.message}`);
                 }
             } else if (removeChanged && !localChanged) {
-                // Only remote changed -> Pull
-                // Safety check: if remote lastModified is older than local, treat as conflict
-                // This prevents overwriting newer local data with stale remote versions
-                const remoteTime = new Date(remote.lastModified).getTime();
-                const localTime = new Date(local.lastModified).getTime();
-                if (remoteTime < localTime) {
-                    console.warn(`[Sync] Remote is older than local for ${convId} (${remote.lastModified} < ${local.lastModified}), treating as conflict instead of pull`);
-                    const remoteMachine = remoteManifest.machines?.find(m => m.id === remote.modifiedBy);
-                    result.conflicts.push({
-                        conversationId: convId,
-                        conversationTitle: title,
-                        localModified: local.lastModified,
-                        remoteModified: remote.lastModified,
-                        localHash: local.hash,
-                        remoteHash: remote.hash,
-                        localSize: local.size,
-                        remoteSize: remote.size,
-                        remoteModifiedBy: remote.modifiedBy,
-                        remoteModifiedByName: remoteMachine?.name || remote.createdByName
-                    });
-                } else {
-                    try {
-                        await this.pullConversation(convId, progress, token);
-                        result.pulled.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
-                    }
+                // Only remote changed -> Pull (safe since local content never changed)
+                try {
+                    await this.pullConversation(convId, progress, token);
+                    result.pulled.push(convId);
+                } catch (error: any) {
+                    if (error instanceof vscode.CancellationError) throw error;
+                    result.errors.push(`Failed to pull ${convId}: ${error.message}`);
                 }
             } else {
                 // Both changed (and hashes differ) -> Conflict
-                const remoteMachine = remoteManifest.machines?.find(m => m.id === remote.modifiedBy);
                 const remoteDate = remote.lastModified;
 
                 result.conflicts.push({
@@ -4389,8 +4468,79 @@ export class SyncManager {
                 }
             });
         } catch (e: any) {
+            // Attempt fallback to local transcript.jsonl or task.md if trajectory was not found on server
+            try {
+                const localSteps = await this.getLocalConversationSteps(id);
+                if (localSteps && localSteps.length > 0) {
+                    panel.webview.html = this.getChatHtml(filename, localSteps, []);
+                    return;
+                }
+            } catch {
+                // ignore fallback error
+            }
             panel.webview.html = this.getChatErrorHtml(e.message);
         }
+    }
+
+    /**
+     * Reads local conversation steps from transcript.jsonl or task.md when language server is unavailable.
+     */
+    private async getLocalConversationSteps(id: string): Promise<any[] | null> {
+        const transcriptPath = path.join(getBrainDir(), id, '.system_generated', 'logs', 'transcript.jsonl');
+        if (fs.existsSync(transcriptPath)) {
+            try {
+                const content = await fs.promises.readFile(transcriptPath, 'utf8');
+                const lines = content.split('\n');
+                const steps: any[] = [];
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const parsed = JSON.parse(line);
+                        const isUser = parsed.type === 'USER_INPUT' || parsed.source === 'USER_EXPLICIT' || parsed.role === 'user';
+                        const text = typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content);
+                        if (isUser) {
+                            steps.push({
+                                type: 'CORTEX_STEP_TYPE_USER_INPUT',
+                                userInput: { query: text },
+                                timestamp: parsed.timestamp ? new Date(parsed.timestamp).getTime() : undefined
+                            });
+                        } else {
+                            steps.push({
+                                type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
+                                plannerResponse: { response: text },
+                                timestamp: parsed.timestamp ? new Date(parsed.timestamp).getTime() : undefined
+                            });
+                        }
+                    } catch {
+                        // ignore malformed line
+                    }
+                }
+                if (steps.length > 0) return steps;
+            } catch {
+                // ignore read error
+            }
+        }
+
+        const taskPath = path.join(getBrainDir(), id, 'task.md');
+        if (fs.existsSync(taskPath)) {
+            try {
+                const taskContent = await fs.promises.readFile(taskPath, 'utf8');
+                return [
+                    {
+                        type: 'CORTEX_STEP_TYPE_USER_INPUT',
+                        userInput: { query: this.getConversationTitle(id) }
+                    },
+                    {
+                        type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
+                        plannerResponse: { response: taskContent }
+                    }
+                ];
+            } catch {
+                // ignore
+            }
+        }
+
+        return null;
     }
 
     /**

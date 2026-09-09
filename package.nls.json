@@ -87,5 +87,14 @@
     "antigravity.config.section.telegram": "Telegram",
     "antigravity.command.exportAsMarkdown": "Export as Markdown",
     "antigravity.command.migrateData": "Antigravity: Migrate Data to IDE Storage",
+    "antigravity.command.reindexConversations": "Rebuild Conversation Index for IDE",
+    "antigravity.command.exportIdeState": "Export IDE State (state.vscdb)",
+    "antigravity.command.importIdeState": "Import IDE State (state.vscdb)",
+    "antigravity.config.conflictResolution": "Strategy for resolving synchronization conflicts automatically or prompting the user",
+    "antigravity.config.conflictResolution.prompt": "Prompt the user with options when conflicts are detected",
+    "antigravity.config.conflictResolution.keepLocal": "Always overwrite remote with local version",
+    "antigravity.config.conflictResolution.keepRemote": "Always overwrite local with remote version",
+    "antigravity.config.conflictResolution.keepNewer": "Keep whichever version was modified more recently (Last-Write-Wins)",
+    "antigravity.config.conflictResolution.keepLarger": "Keep whichever version has the larger file size",
     "antigravity.config.storagePath": "Custom path to Antigravity data storage directory (containing brain and conversations folders). Leave empty for automatic detection."
 }
