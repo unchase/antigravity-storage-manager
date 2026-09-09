@@ -5,7 +5,7 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14.7] - 2026-09-09
+## [0.14.8] - 2026-09-09
 ### Synchronization & Conflict Resolution ([#18](https://github.com/unchase/antigravity-storage-manager/issues/18))
 - **Same-Device False Conflict Prevention**: Fixed an issue where syncing on a single device triggered false conflict warnings when `lastSyncedHash` was not yet established. The extension now compares `remote.modifiedBy` against `this.config.machineId` and automatically resolves the merge when changes originate from the same machine.
 - **Configurable Conflict Resolution Policy**: Added `antigravity-storage-manager.sync.conflictResolution` configuration setting with five distinct strategies:
