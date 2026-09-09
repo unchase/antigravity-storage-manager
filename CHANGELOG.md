@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Localization
 - **Full 16-Language Support for Telegram Authentication**: Added native translations for all Telegram confirmation and authorization messages across all 16 supported languages (`en`, `ru`, `ar`, `cs`, `de`, `es`, `fr`, `it`, `ja`, `ko`, `pl`, `pt-br`, `tr`, `vi`, `zh-cn`, `zh-tw`).
 
+### Bug Fixes
+- **Windows ARM64 Language Server Detection & Process Termination**: Fixed process name detection on Windows ARM64 to use `language_server_windows_arm.exe` (matching Antigravity IDE's native naming scheme) with fallbacks, resolving issues where quota monitoring and profile switching could not detect or terminate the language server process on Windows ARM64 machines.
+
 ## [0.14.6] - 2026-09-08
 ### Multi-Device Synchronization & SQLite WAL Support
 - **SQLite Write-Ahead Logging (WAL) Sync**: Added full support for syncing, hashing, backing up, and restoring `${conversationId}.db-wal` files alongside `.db` databases. In SQLite WAL mode, active sessions and ongoing chats are written to WAL, ensuring seamless conversation continuation across multiple machines (e.g., Mac Pro and MacBook Pro).
