@@ -31,6 +31,15 @@ describe('Quota Utilities', () => {
             expect(getModelAbbreviation('Gemini 3.1 Pro (High)')).toBe('Gemini 3.1 Pro (H)');
             expect(getModelAbbreviation('Claude Sonnet 4.6')).toBe('Claude S4.6');
 
+            // Dynamic model patterns (Gemini 3.6 / 3.7 / 3.8, Claude, GPT-OSS)
+            expect(getModelAbbreviation('Gemini 3.8 Flash (Medium)')).toBe('Gemini 3.8 Flash (M)');
+            expect(getModelAbbreviation('Gemini 3.7 Flash (High)')).toBe('Gemini 3.7 Flash (H)');
+            expect(getModelAbbreviation('Gemini 3.6 Flash (Low)')).toBe('Gemini 3.6 Flash (L)');
+            expect(getModelAbbreviation('Gemini 3.8 Pro (High)')).toBe('Gemini 3.8 Pro (H)');
+            expect(getModelAbbreviation('Claude Sonnet 4.6 (Thinking)')).toBe('Claude S4.6T');
+            expect(getModelAbbreviation('Claude Opus 4.6 (Thinking)')).toBe('Claude O4.6T');
+            expect(getModelAbbreviation('GPT-OSS 120B (Medium)')).toBe('GPT-OSS (M)');
+
             // Dynamic fallback
             expect(getModelAbbreviation('My Custom Model')).toBe('MCM');
             expect(getModelAbbreviation('GPT-4')).toBe('G4');

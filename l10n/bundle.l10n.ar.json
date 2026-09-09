@@ -929,5 +929,11 @@
     "{0}s": "{0}s",
     "Pull Missing": "سحب المفقودة",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "تم العثور على {0} محادثة(محادثات) بعيدة غير موجودة محلياً: {1}{2}. هل تريد سحبها؟",
-    "Enable sync to check for remote conversations.": "قم بتفعيل المزامنة للتحقق من المحادثات البعيدة."
+    "Enable sync to check for remote conversations.": "قم بتفعيل المزامنة للتحقق من المحادثات البعيدة.",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "طلب ربط تيليجرام من @{0} (معرف الدردشة {1}). رمز التأكيد: {2}. قم بالرد بهذا الرمز في تيليجرام خلال 10 دقائق للتفويض.",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "التأكيد مطلوب لربط @{0}. قم بالرد بالرمز المكون من 6 أرقام والمعروض في VS Code خلال 10 دقائق.",
+    "Confirmation code expired. Send any command to request a new code.": "انتهت صلاحية رمز التأكيد. أرسل أي أمر لطلب رمز جديد.",
+    "Invalid confirmation code.": "رمز تأكيد غير صالح.",
+    "Linked. You are now authorized.": "تم الربط. أنت الآن مفوض.",
+    "Too many failed attempts. Confirmation code invalidated.": "محاولات فاشلة كثيرة جداً. تم إبطال رمز التأكيد."
 }

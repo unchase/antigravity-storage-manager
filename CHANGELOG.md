@@ -5,6 +5,16 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.7] - 2026-09-09
+### Security
+- **Telegram Out-of-Band Confirmation (CWE-287)**: Added out-of-band confirmation code verification (displayed in VS Code) before linking Telegram usernames to `chatId`s. Prevents unauthorized users from taking over configured `@username` mappings by messaging the bot from an unconfirmed chat. Features brute-force protection (max 5 failed attempts), constant-time comparison, and full 16-language localization.
+
+### Status Bar & UI
+- **Model Name Abbreviation Display**: Improved model abbreviation formatting in the status bar for Gemini, Claude, and GPT-OSS models. Multi-tier variants such as `Gemini 3.8 Flash (Medium)` now display cleanly and compactly as `Gemini 3.8 Flash (M)` instead of cryptic acronyms like `G3FM`.
+
+### Localization
+- **Full 16-Language Support for Telegram Authentication**: Added native translations for all Telegram confirmation and authorization messages across all 16 supported languages (`en`, `ru`, `ar`, `cs`, `de`, `es`, `fr`, `it`, `ja`, `ko`, `pl`, `pt-br`, `tr`, `vi`, `zh-cn`, `zh-tw`).
+
 ## [0.14.6] - 2026-09-08
 ### Multi-Device Synchronization & SQLite WAL Support
 - **SQLite Write-Ahead Logging (WAL) Sync**: Added full support for syncing, hashing, backing up, and restoring `${conversationId}.db-wal` files alongside `.db` databases. In SQLite WAL mode, active sessions and ongoing chats are written to WAL, ensuring seamless conversation continuation across multiple machines (e.g., Mac Pro and MacBook Pro).

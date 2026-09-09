@@ -929,5 +929,11 @@
     "{0}s": "{0}с",
     "Pull Missing": "Загрузить отсутствующие",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "Найдено {0} удалённых диалогов, отсутствующих локально: {1}{2}. Хотите загрузить их?",
-    "Enable sync to check for remote conversations.": "Включите синхронизацию для проверки удалённых диалогов."
+    "Enable sync to check for remote conversations.": "Включите синхронизацию для проверки удалённых диалогов.",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "Запрос привязки Telegram от @{0} (Chat ID {1}). Код подтверждения: {2}. Ответьте этим кодом в Telegram в течение 10 минут для авторизации.",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "Требуется подтверждение для привязки @{0}. Отправьте 6-значный код, показанный в VS Code, в течение 10 минут.",
+    "Confirmation code expired. Send any command to request a new code.": "Срок действия кода подтверждения истёк. Отправьте любую команду для запроса нового кода.",
+    "Invalid confirmation code.": "Неверный код подтверждения.",
+    "Linked. You are now authorized.": "Привязано. Теперь вы авторизованы.",
+    "Too many failed attempts. Confirmation code invalidated.": "Слишком много неудачных попыток. Код подтверждения аннулирован."
 }

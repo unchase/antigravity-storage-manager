@@ -37,6 +37,33 @@ export function getModelAbbreviation(label: string): string {
         return MODEL_ABBREVIATIONS[label];
     }
 
+    // Dynamic pattern for Gemini models: e.g. "Gemini 3.8 Flash (Medium)" -> "Gemini 3.8 Flash (M)"
+    const geminiMatch = label.match(/^Gemini\s+(\d+(?:\.\d+)?)\s+([A-Za-z]+)(?:\s*\(([^)]+)\))?$/i);
+    if (geminiMatch) {
+        const [, version, variant, tier] = geminiMatch;
+        if (tier) {
+            const tierAbbrev = tier.trim()[0].toUpperCase();
+            return `Gemini ${version} ${variant} (${tierAbbrev})`;
+        }
+        return `Gemini ${version} ${variant}`;
+    }
+
+    // Dynamic pattern for Claude models: e.g. "Claude Sonnet 4.6 (Thinking)" -> "Claude S4.6T"
+    const claudeMatch = label.match(/^Claude\s+([A-Za-z]+)\s+(\d+(?:\.\d+)?)(?:\s*\(([^)]+)\))?$/i);
+    if (claudeMatch) {
+        const [, variant, version, extra] = claudeMatch;
+        const vAbbrev = variant[0].toUpperCase();
+        const isThinking = extra && /thinking/i.test(extra);
+        return `Claude ${vAbbrev}${version}${isThinking ? 'T' : ''}`;
+    }
+
+    // Dynamic pattern for GPT-OSS models: e.g. "GPT-OSS 120B (Medium)" -> "GPT-OSS (M)"
+    const gptOssMatch = label.match(/^GPT-OSS(?:\s+[^()]+)?\s*\(([^)]+)\)$/i);
+    if (gptOssMatch) {
+        const tier = gptOssMatch[1].trim()[0].toUpperCase();
+        return `GPT-OSS (${tier})`;
+    }
+
     // Fallback: generate abbreviation from first letters
     return label
         .split(/[\s\-_()]+/)

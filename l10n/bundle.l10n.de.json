@@ -929,5 +929,11 @@
     "{0}s": "{0}s",
     "Pull Missing": "Fehlende herunterladen",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "{0} Remote-Konversation(en) nicht lokal vorhanden: {1}{2}. Möchten Sie sie herunterladen?",
-    "Enable sync to check for remote conversations.": "Aktivieren Sie die Synchronisierung, um Remote-Konversationen zu prüfen."
+    "Enable sync to check for remote conversations.": "Aktivieren Sie die Synchronisierung, um Remote-Konversationen zu prüfen.",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "Telegram-Verknüpfungsanfrage von @{0} (Chat-ID {1}). Bestätigungscode: {2}. Antworten Sie innerhalb von 10 Minuten in Telegram mit diesem Code, um zu autorisieren.",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "Bestätigung erforderlich, um @{0} zu verknüpfen. Antworten Sie innerhalb von 10 Minuten mit dem in VS Code angezeigten 6-stelligen Code.",
+    "Confirmation code expired. Send any command to request a new code.": "Bestätigungscode abgelaufen. Senden Sie einen beliebigen Befehl, um einen neuen Code anzufordern.",
+    "Invalid confirmation code.": "Ungültiger Bestätigungscode.",
+    "Linked. You are now authorized.": "Verknüpft. Sie sind jetzt autorisiert.",
+    "Too many failed attempts. Confirmation code invalidated.": "Zu viele fehlgeschlagene Versuche. Bestätigungscode ungültig."
 }

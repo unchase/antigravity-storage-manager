@@ -929,5 +929,11 @@
     "{0}s": "{0}s",
     "Pull Missing": "Tải về thiếu",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "Tìm thấy {0} cuộc trò chuyện từ xa không có trên máy: {1}{2}. Bạn có muốn tải về không?",
-    "Enable sync to check for remote conversations.": "Bật đồng bộ để kiểm tra các cuộc trò chuyện từ xa."
+    "Enable sync to check for remote conversations.": "Bật đồng bộ để kiểm tra các cuộc trò chuyện từ xa.",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "Yêu cầu liên kết Telegram từ @{0} (ID trò chuyện {1}). Mã xác nhận: {2}. Trả lời bằng mã này trong Telegram trong vòng 10 phút để ủy quyền.",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "Cần xác nhận để liên kết @{0}. Trả lời bằng mã 6 chữ số hiển thị trong VS Code trong vòng 10 phút.",
+    "Confirmation code expired. Send any command to request a new code.": "Mã xác nhận đã hết hạn. Gửi bất kỳ lệnh nào để yêu cầu mã mới.",
+    "Invalid confirmation code.": "Mã xác nhận không hợp lệ.",
+    "Linked. You are now authorized.": "Đã liên kết. Bạn hiện đã được ủy quyền.",
+    "Too many failed attempts. Confirmation code invalidated.": "Quá nhiều lần thử thất bại. Mã xác nhận đã bị vô hiệu hóa."
 }

@@ -1,13 +1,27 @@
 import * as https from 'https';
+import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import * as os from 'os';
 import { LocalizationManager } from '../l10n/localizationManager';
+
+interface PendingLink {
+    chatId: string;
+    code: string;
+    expiresAt: number;
+    attempts: number;
+}
 
 export class TelegramService {
     private botToken: string | undefined;
     private userIds: string[] = [];
     private usernames: string[] = [];
     private usernameToChatId: Map<string, string> = new Map();
+    // Pending username -> {chatId, one-time code, expiresAt, attempts} awaiting user confirmation in Telegram.
+    // Prevents an attacker who sets their Telegram profile username to a configured
+    // value from silently hijacking the authorized chatId mapping (CWE-287).
+    private pendingLinks: Map<string, PendingLink> = new Map();
+    private static readonly LINK_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+    private static readonly MAX_LINK_ATTEMPTS = 5;
     private configChangeListener: vscode.Disposable;
     private pollingTimeout: NodeJS.Timeout | undefined;
     private lastUpdateId: number = 0;
@@ -75,6 +89,113 @@ export class TelegramService {
         this.context.globalState.update('telegram.usernameToChatId', obj);
     }
 
+    private isConfiguredUsername(username: string): boolean {
+        const clean = username.replace(/^@/, '').toLowerCase();
+        return this.usernames.some(u => u.replace(/^@/, '').toLowerCase() === clean);
+    }
+
+    private getConfiguredUsernameKey(username: string): string {
+        const clean = username.replace(/^@/, '').toLowerCase();
+        const found = this.usernames.find(u => u.replace(/^@/, '').toLowerCase() === clean);
+        return found ? found.replace(/^@/, '') : clean;
+    }
+
+    private generateLinkCode(): string {
+        // 6-digit numeric code, generated with a CSPRNG.
+        const n = crypto.randomInt(0, 1_000_000);
+        return n.toString().padStart(6, '0');
+    }
+
+    /**
+     * Initiate an out-of-band confirmation to link a Telegram chatId to a
+     * configured username. The code is shown to the VS Code user (who controls
+     * the extension host); the sender in Telegram must reply with the same code
+     * to be authorized. This prevents a Telegram user who merely sets their
+     * profile @username to a configured value from being silently trusted.
+     */
+    private beginUsernameLinkChallenge(username: string, chatId: string) {
+        const cleanUsername = username.replace(/^@/, '');
+        const pendingKey = cleanUsername.toLowerCase();
+        const existing = this.pendingLinks.get(pendingKey);
+        if (existing && existing.chatId === chatId && existing.expiresAt > Date.now()) {
+            // Re-send the same active challenge instead of issuing a new code.
+            void this.sendMessage(chatId, this.formatChallengePrompt(cleanUsername));
+            return;
+        }
+
+        const code = this.generateLinkCode();
+        this.pendingLinks.set(pendingKey, {
+            chatId,
+            code,
+            expiresAt: Date.now() + TelegramService.LINK_CODE_TTL_MS,
+            attempts: 0
+        });
+
+        // Show the code to the VS Code user out-of-band.
+        const lm = LocalizationManager.getInstance();
+        void vscode.window.showInformationMessage(
+            lm.t('Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.',
+                cleanUsername, chatId, code)
+        );
+
+        // Ask the sender in Telegram to reply with the code.
+        void this.sendMessage(chatId, this.formatChallengePrompt(cleanUsername));
+    }
+
+    private formatChallengePrompt(username: string): string {
+        const clean = username.replace(/^@/, '');
+        const lm = LocalizationManager.getInstance();
+        return `🔐 ${lm.t('Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.', clean)}`;
+    }
+
+    /**
+     * If `text` looks like a confirmation code and matches a pending challenge
+     * for `username`/`chatId`, complete the link. Returns true if the message
+     * was consumed as a confirmation attempt.
+     */
+    private tryConsumeLinkConfirmation(username: string, chatId: string, text: string): boolean {
+        const cleanUsername = username.replace(/^@/, '');
+        const pendingKey = cleanUsername.toLowerCase();
+        const pending = this.pendingLinks.get(pendingKey);
+        if (!pending) return false;
+
+        const trimmed = text.trim();
+        // Only intercept messages that look like a code (6 digits, optional leading /).
+        if (!/^\/?\d{6}$/.test(trimmed)) return false;
+
+        const lm = LocalizationManager.getInstance();
+
+        if (pending.expiresAt <= Date.now()) {
+            this.pendingLinks.delete(pendingKey);
+            void this.sendMessage(chatId, `⌛ ${lm.t('Confirmation code expired. Send any command to request a new code.')}`);
+            return true;
+        }
+
+        pending.attempts++;
+        if (pending.attempts > TelegramService.MAX_LINK_ATTEMPTS) {
+            this.pendingLinks.delete(pendingKey);
+            void this.sendMessage(chatId, `❌ ${lm.t('Too many failed attempts. Confirmation code invalidated.')}`);
+            return true;
+        }
+
+        const supplied = trimmed.replace(/^\//, '');
+        // Constant-time compare to avoid trivial timing leak on the 6-digit code.
+        const a = Buffer.from(supplied);
+        const b = Buffer.from(pending.code);
+        const ok = a.length === b.length && crypto.timingSafeEqual(a, b) && pending.chatId === chatId;
+
+        if (!ok) {
+            void this.sendMessage(chatId, `❌ ${lm.t('Invalid confirmation code.')}`);
+            return true;
+        }
+
+        this.pendingLinks.delete(pendingKey);
+        this.usernameToChatId.set(cleanUsername, chatId);
+        this.saveUsernameMapping();
+        void this.sendMessage(chatId, `✅ ${lm.t('Linked. You are now authorized.')}`);
+        return true;
+    }
+
     private poll() {
         if (!this.isPolling || !this.botToken) return;
 
@@ -108,7 +229,8 @@ export class TelegramService {
                                 this.lastUpdateId = Math.max(this.lastUpdateId, update.update_id);
                                 if (update.message && update.message.text) {
                                     const chatId = String(update.message.chat.id);
-                                    const username = update.message.from?.username;
+                                    const rawUsername = update.message.from?.username;
+                                    const username = rawUsername ? rawUsername.replace(/^@/, '') : undefined;
 
                                     let authorized = false;
 
@@ -117,14 +239,33 @@ export class TelegramService {
                                         authorized = true;
                                     }
 
-                                    // Check username match
-                                    if (!authorized && username && this.usernames.includes(username)) {
-                                        authorized = true;
-                                        // Store mapping if new or changed
-                                        if (this.usernameToChatId.get(username) !== chatId) {
-                                            this.usernameToChatId.set(username, chatId);
-                                            this.saveUsernameMapping();
-                                            // console.log(`[Telegram] Linked @${username} to ChatID ${chatId}`);
+                                    // Check username match. The Telegram-supplied
+                                    // `username` is attacker-controllable: any
+                                    // Telegram account can set its profile
+                                    // @username to a configured value once the
+                                    // original owner changes theirs. We therefore
+                                    // require an out-of-band confirmation code
+                                    // (shown in VS Code) before persisting the
+                                    // username -> chatId mapping or granting
+                                    // authorization for this chat.
+                                    if (!authorized && username && this.isConfiguredUsername(username)) {
+                                        const usernameKey = this.getConfiguredUsernameKey(username);
+                                        const knownChatId = this.usernameToChatId.get(usernameKey) || this.usernameToChatId.get(username) || this.usernameToChatId.get('@' + username);
+                                        if (knownChatId === chatId) {
+                                            // Previously confirmed link.
+                                            authorized = true;
+                                        } else {
+                                            // Either the mapping is new or the
+                                            // chatId claimed for this username
+                                            // has changed. Never silently trust
+                                            // or persist — require confirmation.
+                                            const consumed = this.tryConsumeLinkConfirmation(usernameKey, chatId, update.message.text);
+                                            if (!consumed) {
+                                                this.beginUsernameLinkChallenge(usernameKey, chatId);
+                                            }
+                                            // Do not authorize this message and do NOT dispatch as unauthorized command
+                                            // to avoid conflicting "Access Denied" error messages.
+                                            continue;
                                         }
                                     }
 
@@ -132,7 +273,7 @@ export class TelegramService {
                                         this._onDidReceiveMessage.fire({
                                             chatId,
                                             text: update.message.text,
-                                            username: username,
+                                            username: rawUsername,
                                             authorized: true
                                         });
                                     } else {
@@ -143,11 +284,11 @@ export class TelegramService {
                                             this._onDidReceiveMessage.fire({
                                                 chatId,
                                                 text: update.message.text,
-                                                username: username,
+                                                username: rawUsername,
                                                 authorized: false
                                             });
                                         }
-                                        console.log(`[Telegram] Unauthorized command from: ${chatId} (@${username})`);
+                                        console.log(`[Telegram] Unauthorized command from: ${chatId} (@${rawUsername})`);
                                     }
                                 }
                             }
@@ -186,7 +327,17 @@ export class TelegramService {
 
         // Add Chat IDs resolved from usernames
         for (const username of this.usernames) {
-            const chatId = this.usernameToChatId.get(username);
+            const clean = username.replace(/^@/, '');
+            let chatId = this.usernameToChatId.get(clean) || this.usernameToChatId.get(username) || this.usernameToChatId.get('@' + clean);
+            if (!chatId) {
+                const lower = clean.toLowerCase();
+                for (const [k, v] of this.usernameToChatId.entries()) {
+                    if (k.toLowerCase().replace(/^@/, '') === lower) {
+                        chatId = v;
+                        break;
+                    }
+                }
+            }
             if (chatId) {
                 targets.add(chatId);
             } else {
@@ -244,7 +395,8 @@ export class TelegramService {
 
     public dispose() {
         this.stopPolling();
-        this.configChangeListener.dispose();
-        this._onDidReceiveMessage.dispose();
+        this.pendingLinks.clear();
+        this.configChangeListener?.dispose();
+        this._onDidReceiveMessage?.dispose();
     }
 }

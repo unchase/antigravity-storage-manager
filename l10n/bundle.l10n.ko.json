@@ -929,5 +929,11 @@
     "{0}s": "{0}s",
     "Pull Missing": "누락 항목 가져오기",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "로컬에 없는 원격 대화 {0}개 발견: {1}{2}. 가져오시겠습니까?",
-    "Enable sync to check for remote conversations.": "원격 대화를 확인하려면 동기화를 활성화하세요."
+    "Enable sync to check for remote conversations.": "원격 대화를 확인하려면 동기화를 활성화하세요.",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "@{0} (채팅 ID {1})의 Telegram 연결 요청. 확인 코드: {2}. 인증하려면 10분 이내에 Telegram에서 이 코드로 답장하세요.",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "@{0}을(를) 연결하려면 확인이 필요합니다. 10분 이내에 VS Code에 표시된 6자리 코드로 답장하세요.",
+    "Confirmation code expired. Send any command to request a new code.": "확인 코드가 만료되었습니다. 새 코드를 요청하려면 명령을 보내세요.",
+    "Invalid confirmation code.": "잘못된 확인 코드입니다.",
+    "Linked. You are now authorized.": "연결되었습니다. 이제 인증되었습니다.",
+    "Too many failed attempts. Confirmation code invalidated.": "실패한 시도가 너무 많습니다. 확인 코드가 무효화되었습니다."
 }

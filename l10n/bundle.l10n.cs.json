@@ -929,5 +929,11 @@
     "{0}s": "{0}s",
     "Pull Missing": "Stáhnout chybějící",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "Nalezeno {0} vzdálených konverzací, které nejsou lokálně: {1}{2}. Chcete je stáhnout?",
-    "Enable sync to check for remote conversations.": "Zapněte synchronizaci pro kontrolu vzdálených konverzací."
+    "Enable sync to check for remote conversations.": "Zapněte synchronizaci pro kontrolu vzdálených konverzací.",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "Žádost o propojení Telegramu od @{0} (ID chatu {1}). Potvrzovací kód: {2}. Pro autorizaci odpovězte tímto kódem v Telegramu do 10 minut.",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "K propojení @{0} je vyžadováno potvrzení. Odpovězte 6místným kódem zobrazeným ve VS Code do 10 minut.",
+    "Confirmation code expired. Send any command to request a new code.": "Platnost potvrzovacího kódu vypršela. Odešlete jakýkoli příkaz pro vyžádání nového kódu.",
+    "Invalid confirmation code.": "Neplatný potvrzovací kód.",
+    "Linked. You are now authorized.": "Propojeno. Nyní jste autorizováni.",
+    "Too many failed attempts. Confirmation code invalidated.": "Příliš mnoho neúspěšných pokusů. Potvrzovací kód byl zneplatněn."
 }

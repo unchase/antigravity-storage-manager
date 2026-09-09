@@ -929,5 +929,11 @@
     "{0}s": "{0}s",
     "Pull Missing": "Pull Missing",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?",
-    "Enable sync to check for remote conversations.": "Enable sync to check for remote conversations."
+    "Enable sync to check for remote conversations.": "Enable sync to check for remote conversations.",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.",
+    "Confirmation code expired. Send any command to request a new code.": "Confirmation code expired. Send any command to request a new code.",
+    "Invalid confirmation code.": "Invalid confirmation code.",
+    "Linked. You are now authorized.": "Linked. You are now authorized.",
+    "Too many failed attempts. Confirmation code invalidated.": "Too many failed attempts. Confirmation code invalidated."
 }

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as vscode from 'vscode';
 import { getStoragePaths, getConversationsAsync } from '../../../src/utils';
 
 // Mock vscode module
@@ -28,6 +29,19 @@ describe('Storage Management & Discovery', () => {
     beforeEach(() => {
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-storage-test-'));
         mockConfigGet.mockReset();
+        if (vscode && vscode.workspace) {
+            (vscode.workspace.getConfiguration as any) = jest.fn(() => ({
+                get: (key: string, defaultVal?: any) => {
+                    const res = mockConfigGet(key, defaultVal);
+                    return res !== undefined ? res : defaultVal;
+                }
+            }));
+        }
+        if (vscode && !vscode.window) {
+            (vscode as any).window = { showErrorMessage: jest.fn() };
+        } else if (vscode && vscode.window) {
+            (vscode.window.showErrorMessage as any) = jest.fn();
+        }
     });
 
     afterEach(() => {

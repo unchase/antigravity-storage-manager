@@ -929,5 +929,11 @@
     "{0}s": "{0}s",
     "Pull Missing": "不足分を取得",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "ローカルに存在しないリモート会話が{0}件見つかりました: {1}{2}。取得しますか？",
-    "Enable sync to check for remote conversations.": "同期を有効にしてリモート会話を確認してください。"
+    "Enable sync to check for remote conversations.": "同期を有効にしてリモート会話を確認してください。",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "@{0} (チャットID {1}) からのTelegram連携リクエスト。確認コード: {2}。承認するには10分以内にTelegramでこのコードを返信してください。",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "@{0} の連携には確認が必要です。10分以内にVS Codeに表示された6桁のコードを返信してください。",
+    "Confirmation code expired. Send any command to request a new code.": "確認コードの有効期限が切れました。新しいコードを要求するには任意のコマンドを送信してください。",
+    "Invalid confirmation code.": "無効な確認コードです。",
+    "Linked. You are now authorized.": "連携されました。承認されました。",
+    "Too many failed attempts. Confirmation code invalidated.": "試行回数が多すぎます。確認コードは無効化されました。"
 }

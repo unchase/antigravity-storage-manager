@@ -929,5 +929,11 @@
     "{0}s": "{0}s",
     "Pull Missing": "Eksikleri çek",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "Yerel olarak bulunmayan {0} uzak konuşma bulundu: {1}{2}. Bunları çekmek ister misiniz?",
-    "Enable sync to check for remote conversations.": "Uzak konuşmaları kontrol etmek için senkronizasyonu etkinleştirin."
+    "Enable sync to check for remote conversations.": "Uzak konuşmaları kontrol etmek için senkronizasyonu etkinleştirin.",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "@{0} (Sohbet Kimliği {1}) kullanıcısından Telegram bağlantı isteği. Onay kodu: {2}. Yetkilendirmek için 10 dakika içinde Telegram'da bu kodla yanıt verin.",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "@{0} kullanıcısını bağlamak için onay gerekiyor. 10 dakika içinde VS Code'da gösterilen 6 haneli kodla yanıt verin.",
+    "Confirmation code expired. Send any command to request a new code.": "Onay kodunun süresi doldu. Yeni bir kod istemek için herhangi bir komut gönderin.",
+    "Invalid confirmation code.": "Geçersiz onay kodu.",
+    "Linked. You are now authorized.": "Bağlandı. Artık yetkilendirildiniz.",
+    "Too many failed attempts. Confirmation code invalidated.": "Çok fazla başarısız deneme. Onay kodu geçersiz kılındı."
 }

@@ -929,5 +929,11 @@
     "{0}s": "{0}秒",
     "Pull Missing": "拉取缺失",
     "Found {0} remote conversation(s) not present locally: {1}{2}. Would you like to pull them?": "发现 {0} 个本地不存在的远程对话：{1}{2}。是否要拉取？",
-    "Enable sync to check for remote conversations.": "启用同步以检查远程对话。"
+    "Enable sync to check for remote conversations.": "启用同步以检查远程对话。",
+    "Telegram link request from @{0} (Chat ID {1}). Confirmation code: {2}. Reply with this code in Telegram within 10 minutes to authorize.": "来自 @{0}（聊天 ID {1}）的 Telegram 关联请求。确认码：{2}。请在 10 分钟内在 Telegram 中回复此代码以进行授权。",
+    "Confirmation required to link @{0}. Reply with the 6-digit code shown in VS Code within 10 minutes.": "关联 @{0} 需要确认。请在 10 分钟内回复 VS Code 中显示的 6 位代码。",
+    "Confirmation code expired. Send any command to request a new code.": "确认码已过期。发送任意命令以请求新代码。",
+    "Invalid confirmation code.": "无效的确认码。",
+    "Linked. You are now authorized.": "已关联。您现已获得授权。",
+    "Too many failed attempts. Confirmation code invalidated.": "失败尝试次数过多。确认码已失效。"
 }
