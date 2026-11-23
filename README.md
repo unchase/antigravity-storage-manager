@@ -46,12 +46,12 @@ If you find this extension useful, consider supporting the development:
 - 🚀 **Antigravity Proxy** — Unified AI Gateway with visual dashboard to manage multiple AI providers (Antigravity, Copilot, Claude, Codex, Gemini, Gemini CLI, Qwen, Kimi, Z.AI, and more) through a single endpoint.
 - 🤖 **Telegram Bot Integration** — Real-time quota alerts, system stats, and remote sync control via interactive bot with out-of-band confirmation security.
 - 👤 **Multi-Account Profiles** — Seamlessly switch between different Antigravity / Antigravity IDE accounts (e.g., Personal vs Work) with separate quotas and settings.
-- 📊 **Advanced Quota Dashboard** — Comprehensive real-time tracking of consumption speed, reset cycles, and remaining time estimates for Gemini 4 (Neon, Carbon, Argon, Hydrogen), Orchestrator, Gemini 3.8 Flash, Claude 5.5 (Opus / Sonnet), and GPT-OSS models via `agy --hub` or `language_server`.
+- 📊 **Advanced Quota Dashboard** — Comprehensive real-time tracking of consumption speed, reset cycles, and remaining time estimates for Gemini 4 (Neon, Carbon, Argon, Hydrogen), Orchestrator, Gemini 3.8 Flash, Claude 5.5 (Opus / Sonnet), and GPT-OSS models via `agy --hub` or `language_server`, with collapsible model groups, search/pinned filters, modality badges, and disabled/unavailable model indicators with hover tooltips.
 - 🔌 **MCP Server Monitoring** — Monitor the connection status and resource availability of your Model Context Protocol servers.
 - ☁️ **Google Drive & Local Sync** — Automatically sync conversations (`.db` + SQLite WAL and `.pb`) between devices using encrypted Google Drive or a local/network folder with parallel processing.
 - 🌍 **Global Localization** — Native support for **16 languages** (English, Russian, Chinese, Japanese, Korean, German, French, Spanish, Italian, Portuguese, Polish, Vietnamese, Arabic, Czech, Turkish).
 - 🔄 **Live Updates** — Seamlessly syncs data between the status bar and dashboard every minute for up-to-the-second accuracy.
-- 🔍 **Account Insights** — Monitor your Plan/Tier, specific feature availability (Web Search, Browser Tool), and raw Google API responses.
+- 🔍 **Account Insights** — View your avatar, copyable email, Plan/Tier, Default Model, Telemetry status, Prompt/Flow/Flex Credits, Plan Limits, 10 Feature flags, deprecation notices, and raw Google API responses.
 - 🛡️ **Proxy Support** — Full support for corporate proxies with authentication and strict SSL configuration.
 - 📦 **Export/Import** — Backup conversations to ZIP archives individually or in bulk with conflict detection.
 - 📝 **Markdown Export** — Export conversations as readable `.md` files with message grouping and brain artifacts included.
@@ -119,13 +119,16 @@ Keep your conversations synchronized across multiple machines using your Google 
 Monitor your AI usage limits and remaining credits directly within VS Code.
 
 ### Features
-- **Real-time Synchronization**: The dashboard automatically refreshes data every minute, staying perfectly in sync with the status bar.
+- **Real-time Synchronization**: The dashboard automatically refreshes data every minute, staying perfectly in sync with the status bar, and includes a manual **Refresh (🔄)** button plus quick links to **Show Statistics (📊)** and **Switch Profile (👤)**.
 - **Antigravity IDE & `agy` Hub Support**: Automatically discovers both modern `agy` (`--hub` / `--hub-port`) and `language_server` processes across HTTPS and HTTP, with automatic fallback from `GetUserStatus` to `RetrieveUserQuotaSummary` (5-hour and weekly quota windows).
-- **Plan & Tier Analysis**: View your exact plan name and tier description directly from authenticated Google API data.
+- **Rich Profile & Plan Analysis**: Displays your profile avatar, click-to-copy email, exact plan name and tier description, dynamic **Upgrade Plan** link (from `upgradeSubscriptionUri`), **Default Model**, **Telemetry** status, and **Plan Limits** (Max Chat Input Tokens, Custom Instructions, Premium Messages, Pinned Context Items).
+- **Prompt, Flow & Flex Credits**: Tracks remaining balances for **Prompt Credits**, **Flow Credits**, and available **Flex Credits** purchase allowances (when `showCreditsBalance` is enabled).
+- **Collapsible Model Groups & Toolbar**: Models are grouped identically to the QuickPick (`Claude & GPT-OSS`, `Gemini`), collapsed by default with group-level remaining quota, cycle progress, and reset time. Includes live **Search**, **Pinned only** filter, and **Expand All / Collapse All** controls.
+- **Unavailable Models, Badges & Hover Tooltips**: Tier-restricted (`allowedTiers`) or disabled models are clearly marked as unavailable (`🔒` / `🚫`), locked from pinning, and display Antigravity-style hover tooltips and status badges (`New`, `Leaving Soon`, `Notice`, `Unavailable`) across the QuickPick, **Account Information**, and **Sync Statistics** views.
+- **Deprecation Banner, Modalities & Copyable Model IDs**: Highlights upcoming removals (`Leaving Soon` / `Notice`) in a dedicated **Model Deprecation Notices** banner, shows supported model modalities (`🖼️` Images, `📄` Documents, `🎵` Audio, `🎬` Video), and lets you copy canonical `modelId` values in one click.
 - **Model Monitoring**: Pin specific models (e.g., Gemini 4 Neon/Carbon/Argon/Hydrogen, Orchestrator, Gemini 3.8 Flash, Claude Opus/Sonnet 5.5, GPT-OSS 120B) to the status bar with compact readable abbreviations.
-- **Feature Availability**: Check which tools (Web Search, MCP, Browser) are enabled for your current subscription level.
-- **Visual Indicators**: Color-coded status dots (🟢/🟡/🟠/🔴) and high-resolution progress bars show usage at a glance.
-- **Cycle Tracking**: High-tier models and quota buckets show a visual time scale `[████░░]` indicating positions within their specific 5-hour or weekly quota cycles.
+- **Feature Availability**: Check which of 10 plan features (Web Search, Browser Tool, Experimental Browser, Knowledge Base, Auto-run Commands, Generate Commit Messages, MCP Servers, Fast Autocomplete, Tab to Jump, Background Agents) are enabled for your subscription.
+- **Visual Indicators & Cycle Tracking**: Color-coded status dots (🟢/🟡/🟠/🔴), progress bars, usage history sparklines, and visual 5-hour/weekly cycle indicators show usage at a glance.
 - **Detailed Statistics**: Precise counters for request usage and token limits for every model.
 
 ### Usage
@@ -320,11 +323,11 @@ Receive real-time notifications about your quota usage, system statistics, and s
 
 ![Profile Switching](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/profile_switching.png)
 
-*(Fig. 5: Profile Switching)*
+*(Fig. 6: Profile Switching)*
 
 ![Profile Settings](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/profile_settings.png)
 
-*(Fig. 6: Profile Settings)*
+*(Fig. 7: Profile Settings)*
 
 Easily switch between different Antigravity accounts (e.g., Personal vs Work) with separate quotas, limits, and authentication states.
 
@@ -350,7 +353,7 @@ By default, profiles are stored in the extension's global storage. To prevent da
 
 ![Google Account Data](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/google_account_data.png)
 
-*(Fig. 5: Raw Account Data view)*
+*(Fig. 8: Raw Account Data view)*
 
 For power users and troubleshooting, you can view the raw JSON data received from the Google API. This includes detailed information about your account status, tier details, and all raw model quota limits.
 

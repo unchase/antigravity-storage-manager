@@ -116,6 +116,138 @@ describe('QuotaService', () => {
             expect(snapshot.models[0].isExhausted).toBe(false);
             expect(snapshot.models[0].timeUntilReset).toBe(0);
         });
+        test('parses tagTitle, tagDescription and marks tier-restricted or explicitly disabled models as disabled', () => {
+            const resetTimeStr = new Date(Date.now() + 3600000).toISOString();
+            const response = {
+                userStatus: {
+                    planStatus: {
+                        planInfo: {
+                            teamsTier: 'TEAMS_TIER_FREE'
+                        }
+                    },
+                    userTier: {
+                        name: 'Free',
+                        upgradeSubscriptionText: 'You can upgrade to a Google AI Pro plan.'
+                    },
+                    cascadeModelConfigData: {
+                        clientModelConfigs: [
+                            {
+                                label: 'Gemini 4 Argon (Medium)',
+                                modelOrAlias: { model: 'MODEL_PLACEHOLDER_M418' },
+                                allowedTiers: ['TEAMS_TIER_FREE', 'TEAMS_TIER_PRO'],
+                                quotaInfo: {
+                                    remainingFraction: 0.87,
+                                    resetTime: resetTimeStr
+                                },
+                                tagTitle: 'Leaving Soon',
+                                tagDescription: 'The original Gemini 4 model for advanced workflows. Leaving on Nov 30.'
+                            },
+                            {
+                                label: 'Gemini 4 Carbon (High)',
+                                modelOrAlias: { model: 'MODEL_PLACEHOLDER_M427' },
+                                allowedTiers: ['TEAMS_TIER_PRO', 'TEAMS_TIER_PRO_ULTIMATE'],
+                                quotaInfo: {
+                                    remainingFraction: 1,
+                                    resetTime: resetTimeStr
+                                },
+                                tagTitle: 'New',
+                                tagDescription: 'For your hardest, long-horizon tasks'
+                            },
+                            {
+                                label: 'GPT-OSS 120B (Medium)',
+                                modelOrAlias: { model: 'MODEL_OPENAI_GPT_OSS_120B_MEDIUM' },
+                                disabled: true,
+                                disabledReason: 'GPT-OSS has been removed from Antigravity.',
+                                tagTitle: 'Notice',
+                                tagDescription: 'GPT-OSS will be removed from Antigravity on November 30, 2026.'
+                            }
+                        ]
+                    }
+                }
+            };
+
+            const snapshot = parseQuotaResponse(response);
+            expect(snapshot.models).toHaveLength(3);
+
+            const argon = snapshot.models[0];
+            expect(argon.isDisabled).toBe(false);
+            expect(argon.tagTitle).toBe('Leaving Soon');
+            expect(argon.tagDescription).toBe('The original Gemini 4 model for advanced workflows. Leaving on Nov 30.');
+
+            const carbon = snapshot.models[1];
+            expect(carbon.isDisabled).toBe(true);
+            expect(carbon.disabledReason).toBe('You can upgrade to a Google AI Pro plan.');
+            expect(carbon.tagTitle).toBe('New');
+
+            const gptOss = snapshot.models[2];
+            expect(gptOss.isDisabled).toBe(true);
+            expect(gptOss.isExhausted).toBe(true);
+            expect(gptOss.disabledReason).toBe('GPT-OSS has been removed from Antigravity.');
+            expect(gptOss.tagTitle).toBe('Notice');
+        });
+
+        test('parses flowCredits, canonicalModelId and model modality capabilities', () => {
+            const resetTimeStr = new Date(Date.now() + 3600000).toISOString();
+            const response = {
+                userStatus: {
+                    planStatus: {
+                        availableFlowCredits: 100,
+                        planInfo: {
+                            monthlyFlowCredits: 150000
+                        }
+                    },
+                    cascadeModelConfigData: {
+                        clientModelConfigs: [
+                            {
+                                label: 'Gemini 4 Neon (High)',
+                                modelOrAlias: { model: 'MODEL_PLACEHOLDER_M532' },
+                                modelId: 'gemini-4-neon-high',
+                                supportsImages: true,
+                                supportedMimeTypes: {
+                                    'image/png': true,
+                                    'application/pdf': true,
+                                    'audio/mp3': true,
+                                    'video/mp4': true
+                                },
+                                quotaInfo: { remainingFraction: 0.9, resetTime: resetTimeStr }
+                            },
+                            {
+                                label: 'Claude Opus 5.5 (High)',
+                                modelOrAlias: { model: 'MODEL_PLACEHOLDER_M402' },
+                                modelId: 'claude-opus-5-5-high',
+                                supportsImages: true,
+                                supportedMimeTypes: {
+                                    'image/png': true,
+                                    'video/jpeg2000': true
+                                },
+                                quotaInfo: { remainingFraction: 1, resetTime: resetTimeStr }
+                            }
+                        ]
+                    }
+                }
+            };
+
+            const snapshot = parseQuotaResponse(response);
+            expect(snapshot.flowCredits).toBeDefined();
+            expect(snapshot.flowCredits?.available).toBe(100);
+            expect(snapshot.flowCredits?.monthly).toBe(150000);
+
+            expect(snapshot.models[0].canonicalModelId).toBe('gemini-4-neon-high');
+            expect(snapshot.models[0].capabilities).toEqual({
+                images: true,
+                documents: true,
+                audio: true,
+                video: true
+            });
+
+            expect(snapshot.models[1].canonicalModelId).toBe('claude-opus-5-5-high');
+            expect(snapshot.models[1].capabilities).toEqual({
+                images: true,
+                documents: false,
+                audio: false,
+                video: false
+            });
+        });
     });
 
     describe('parseQuotaSummaryResponse', () => {
@@ -167,11 +299,18 @@ describe('QuotaService', () => {
                 timestamp: new Date(),
                 models: [],
                 planName: 'Google AI Ultra',
-                userEmail: 'test@example.com'
+                userEmail: 'test@example.com',
+                flowCredits: {
+                    available: 500,
+                    monthly: 1000,
+                    usedPercentage: 50,
+                    remainingPercentage: 50
+                }
             });
 
             expect(snapshot.planName).toBe('Google AI Ultra');
             expect(snapshot.userEmail).toBe('test@example.com');
+            expect(snapshot.flowCredits?.available).toBe(500);
             expect(snapshot.models).toHaveLength(3);
             expect(snapshot.models[0].label).toBe('Gemini Models (5-Hour Limit)');
             expect(snapshot.models[0].modelId).toBe('gemini-5h');
@@ -180,6 +319,24 @@ describe('QuotaService', () => {
             expect(snapshot.models[1].remainingPercentage).toBeCloseTo(40);
             expect(snapshot.models[2].label).toBe('Claude and GPT models');
             expect(snapshot.models[2].isExhausted).toBe(true);
+        });
+
+        test('ignores non-numeric credit values safely', () => {
+            const response = {
+                userStatus: {
+                    planStatus: {
+                        availablePromptCredits: 'not-a-number',
+                        availableFlowCredits: 'bad',
+                        planInfo: {
+                            monthlyPromptCredits: 50000,
+                            monthlyFlowCredits: 150000
+                        }
+                    }
+                }
+            };
+            const snapshot = parseQuotaResponse(response);
+            expect(snapshot.promptCredits).toBeUndefined();
+            expect(snapshot.flowCredits).toBeUndefined();
         });
     });
 });

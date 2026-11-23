@@ -51,9 +51,11 @@ export function generateQuotaReportMarkdown(snapshot: QuotaSnapshot, pinnedModel
 
     if (!isTelegram) md += '---\n\n';
 
+    const activeModels = snapshot.models.filter(m => !m.isDisabled);
+    const baseModels = activeModels.length > 0 ? activeModels : snapshot.models;
     const relevantModels = hasPinned
-        ? snapshot.models.filter(m => pinnedModels.includes(m.modelId) || pinnedModels.includes(m.label))
-        : snapshot.models;
+        ? baseModels.filter(m => pinnedModels.includes(m.modelId) || pinnedModels.includes(m.label))
+        : baseModels;
 
     // Grouping relevant models
     interface ModelGroup {

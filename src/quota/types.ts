@@ -1,7 +1,15 @@
 
+export interface ModelCapabilities {
+    images?: boolean;
+    documents?: boolean;
+    audio?: boolean;
+    video?: boolean;
+}
+
 export interface ModelQuotaInfo {
     label: string;
     modelId: string;
+    canonicalModelId?: string;
     remainingFraction?: number;
     remainingPercentage?: number;
     isExhausted: boolean;
@@ -12,6 +20,12 @@ export interface ModelQuotaInfo {
     requestUsage?: number;
     tokenLimit?: number;
     tokenUsage?: number;
+    tagTitle?: string;
+    tagDescription?: string;
+    isDisabled?: boolean;
+    disabledReason?: string;
+    allowedTiers?: string[];
+    capabilities?: ModelCapabilities;
 }
 
 export interface PromptCreditsInfo {
@@ -24,6 +38,7 @@ export interface PromptCreditsInfo {
 export interface QuotaSnapshot {
     timestamp: Date;
     promptCredits?: PromptCreditsInfo;
+    flowCredits?: PromptCreditsInfo;
     models: ModelQuotaInfo[];
     planName?: string;
     userEmail?: string;

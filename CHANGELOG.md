@@ -5,6 +5,23 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-11-24
+### Account Information & Quota Dashboard Enhancements
+- **Unavailable / Disabled Models & Hover Tooltips**: Parsed `tagTitle`, `tagDescription`, `allowedTiers`, `disabled`/`unavailable` flags, and `disabledReason` in `QuotaService` without dropping models that lack `quotaInfo`. Unavailable models are now displayed as disabled (`🔒` / `🚫`), cannot be pinned, and show Antigravity-style hover tooltips and badges (`New`, `Leaving Soon`, `Notice`, `Unavailable`) across the **Antigravity Quota Usage** QuickPick, **Account Information** Webview, and **Sync Statistics** Dashboard.
+- **Collapsible Model Groups in Account Information**: Grouped models in **Account Information** identically to the QuickPick (`Claude & GPT-OSS`, `Gemini`), collapsed by default with group-level remaining quota, cycle progress, pinned count, and reset time, plus a toolbar with **Search**, **Pinned only**, **Expand All**, and **Collapse All**.
+- **Expanded Account Information Page**:
+  - **Profile Card**: Added base64 avatar (`profilePictureUrl`), click-to-copy email, **Default Model**, **Telemetry** status badge, dynamic **Upgrade Plan** link (`upgradeSubscriptionUri`) with subscription hint, and responsive grid layout so long emails never overlap the plan badge.
+  - **Credits**: Added **Flow Credits** progress bar and **Flex Credits** purchase allowance alongside **Prompt Credits**.
+  - **Model Deprecation Notices, Modalities & Model IDs**: Added a deduplicated warning banner for `Leaving Soon` / `Notice` models, modality icons (`🖼️` Images, `📄` Documents, `🎵` Audio, `🎬` Video) parsed from `supportedMimeTypes`, and click-to-copy canonical `modelId` chips.
+  - **Plan Limits & Extended Features**: Added the **Plan Limits** section (`Max Chat Input Tokens`, `Custom Instructions`, `Premium Messages`, `Pinned Context Items`) and expanded the **Features** grid to 10 subscription flags (`Fast Autocomplete`, `Tab to Jump`, `Background Agents`, `Experimental Browser`, etc.).
+  - **Quick Header Actions**: Added **Refresh**, **Show Statistics**, and **Switch Profile** buttons to the Account Information header.
+
+### Bug Fixes & Code Quality
+- **Webview Pinning, Tooltips & Escaping**: Fixed `togglePin` in `AccountInfoWebview` to match/remove both `modelId` and `label`, removed `overflow: hidden` from `.model-group` so hover tooltips are never clipped, added safe `Date` parsing for `resetTime`, sanitized SVG gradient IDs, and hardened HTML/JS attribute escaping.
+- **Quota Service & Manager Resilience**: Preserved `flowCredits` during `parseQuotaSummaryResponse` fallback, guarded credit parsing against `NaN`, skipped disabled models in reset notifications, used dynamic `upgradeSubscriptionUri` in the QuickPick plan item, and removed unused fields (`telegramService`, `extensionUri`).
+- **Localization**: Added 29 new runtime localization keys across all 16 `l10n/bundle.l10n.*.json` bundles and preserved CRLF line endings.
+- **Unit Tests**: Expanded `quotaService.test.ts` to cover disabled/tier-restricted models, `tagTitle`/`tagDescription`, `flowCredits`, `canonicalModelId`, modality capabilities, and non-numeric credit handling.
+
 ## [0.15.0] - 2026-11-24
 ### Antigravity 2.0 / `agy --hub` & New Gemini 4 Models Support
 - **Process & Port Detection (`agy` Hub + Unified `language_server`)**: Updated `PlatformDetector`, `WindowsProcessDetector`, `UnixProcessDetector`, `ProcessPortDetector`, and `AntigravityClient` to detect `agy.exe`/`agy` (`--hub` / `--hub-port=...`) and unified `language_server.exe`/`language_server` processes alongside legacy architecture-specific binaries, fixing `language_server process not found` errors in newer Antigravity IDE versions.

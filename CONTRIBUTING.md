@@ -46,6 +46,11 @@ Thank you for your interest in contributing to this VS Code extension!
 
 This project uses **Jest** for unit testing.
 
+- **Run Full Check (TypeScript, ESLint & Unit Tests):**
+  ```bash
+  npm run check
+  ```
+
 - **Run Unit Tests:**
   ```bash
   npm run test:unit
@@ -56,7 +61,12 @@ This project uses **Jest** for unit testing.
   npm run lint
   ```
 
-Please ensure all tests pass and there are no lint errors before submitting a PR.
+- **Run Localization Tests:**
+  ```bash
+  npm run test:localization
+  ```
+
+Please ensure all checks and tests pass with no lint or localization errors before submitting a PR.
 
 ## Internationalization (i18n)
 

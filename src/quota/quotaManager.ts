@@ -2,7 +2,7 @@
 import * as vscode from 'vscode';
 import { ProcessPortDetector } from './processPortDetector';
 import { QuotaService } from './quotaService';
-import { QuotaSnapshot } from './types';
+import { QuotaSnapshot, ModelQuotaInfo } from './types';
 import { versionInfo } from './versionInfo';
 import { LocalizationManager } from '../l10n/localizationManager';
 
@@ -29,12 +29,10 @@ export class QuotaManager {
     private sortMethod: 'quota' | 'time' = 'quota';
     private lastNotifiedModels: Map<string, boolean> = new Map(); // modelId -> wasExhausted
     private syncManager: any | null = null; // SyncManager type to be imported or use any to avoid cycle if needed. Ideally interface.
-    private telegramService: TelegramService;
 
     constructor(context: vscode.ExtensionContext, authProvider: GoogleAuthProvider, telegramService: TelegramService) {
         this.context = context;
         this.authProvider = authProvider;
-        this.telegramService = telegramService;
         this.portDetector = new ProcessPortDetector();
         this.statusBar = new QuotaStatusBar();
         this.usageTracker = new QuotaUsageTracker(context, telegramService);
@@ -210,7 +208,9 @@ export class QuotaManager {
         if (snapshot) {
             const accounts = await this.authProvider.getAccounts();
             const currentAccountId = this.authProvider.getCurrentAccountId();
-            AccountInfoWebview.show(this.context, snapshot, this.usageTracker, accounts, currentAccountId);
+            AccountInfoWebview.show(this.context, snapshot, this.usageTracker, accounts, currentAccountId, async () => {
+                await this.refresh();
+            });
         } else {
             const lm = LocalizationManager.getInstance();
             vscode.window.showErrorMessage(lm.t('No account data available.'));
@@ -270,6 +270,7 @@ export class QuotaManager {
         if (!snapshot.models) return;
 
         for (const model of snapshot.models) {
+            if (model.isDisabled) continue;
             const wasExhausted = this.lastNotifiedModels.get(model.modelId) ?? false;
             const isExhausted = model.isExhausted || (model.remainingPercentage !== undefined && model.remainingPercentage < 5);
 
@@ -285,7 +286,12 @@ export class QuotaManager {
 
     private async displayQuota(snapshot: QuotaSnapshot): Promise<void> {
         const lm = LocalizationManager.getInstance();
-        const picker = vscode.window.createQuickPick();
+        interface QuotaQuickPickItem extends vscode.QuickPickItem {
+            model?: ModelQuotaInfo;
+            infoTooltip?: string;
+            isPlanItem?: boolean;
+        }
+        const picker = vscode.window.createQuickPick<QuotaQuickPickItem>();
         picker.title = LocalizationManager.getInstance().t('Antigravity Quota Usage');
         picker.placeholder = LocalizationManager.getInstance().t('Click a model to pin/unpin it from status bar');
         picker.matchOnDetail = true;
@@ -313,7 +319,7 @@ export class QuotaManager {
         };
 
         const updateItems = () => {
-            const items: vscode.QuickPickItem[] = [];
+            const items: QuotaQuickPickItem[] = [];
 
             if (this.statusBar) {
                 this.statusBar.update(snapshot, undefined, this.usageTracker);
@@ -325,7 +331,8 @@ export class QuotaManager {
                     label: `$(star) ${lm.t('Plan')}: ${snapshot.planName}`,
                     // kind: vscode.QuickPickItemKind.Separator // Separators don't support icons
                     alwaysShow: true,
-                    description: lm.t('Current Subscription')
+                    description: lm.t('Current Subscription'),
+                    isPlanItem: true
                 });
             }
 
@@ -343,13 +350,12 @@ export class QuotaManager {
 
             // Models
             if (snapshot.models && snapshot.models.length > 0) {
-                // ... rest of model rendering logic
                 const models = [...snapshot.models];
                 const pinned = this.statusBar.getPinnedModels();
 
                 const groups = [
-                    { name: 'Claude & GPT-OSS', models: [] as any[] },
-                    { name: 'Gemini', models: [] as any[] }
+                    { name: 'Claude & GPT-OSS', models: [] as ModelQuotaInfo[] },
+                    { name: 'Gemini', models: [] as ModelQuotaInfo[] }
                 ];
 
                 for (const m of models) {
@@ -360,11 +366,51 @@ export class QuotaManager {
                     }
                 }
 
-                const addGroup = (groupName: string, groupModels: any[]) => {
+                const buildInfoTooltip = (model: ModelQuotaInfo): string | undefined => {
+                    const parts: string[] = [];
+                    if (model.isDisabled) {
+                        parts.push(model.disabledReason || model.tagDescription || lm.t('This model is currently unavailable.'));
+                        if (model.tagTitle && model.tagDescription && model.disabledReason && model.disabledReason !== model.tagDescription) {
+                            parts.push(`${model.tagTitle}: ${model.tagDescription}`);
+                        }
+                    } else if (model.tagDescription) {
+                        parts.push(model.tagTitle ? `${model.tagTitle}: ${model.tagDescription}` : model.tagDescription);
+                    }
+                    return parts.length > 0 ? parts.join(' • ') : undefined;
+                };
+
+                const addGroup = (groupName: string, groupModels: ModelQuotaInfo[]) => {
                     if (groupModels.length === 0) return;
                     items.push({ label: groupName, kind: vscode.QuickPickItemKind.Separator });
-                    groupModels.sort((a, b) => compareModels(a, b, this.sortMethod));
+                    groupModels.sort((a, b) => {
+                        if (Boolean(a.isDisabled) !== Boolean(b.isDisabled)) {
+                            return a.isDisabled ? 1 : -1;
+                        }
+                        return compareModels(a, b, this.sortMethod);
+                    });
                     for (const model of groupModels) {
+                        const infoTooltip = buildInfoTooltip(model);
+                        const itemButtons: vscode.QuickInputButton[] | undefined = infoTooltip
+                            ? [{
+                                iconPath: new vscode.ThemeIcon(model.isDisabled ? 'lock' : 'info'),
+                                tooltip: infoTooltip
+                            }]
+                            : undefined;
+
+                        if (model.isDisabled) {
+                            const tagSuffix = model.tagTitle ? ` • ${model.tagTitle}` : '';
+                            const reasonText = model.disabledReason || model.tagDescription || lm.t('This model is currently unavailable.');
+                            items.push({
+                                label: `$(circle-slash) $(lock) ${model.label}`,
+                                description: `${lm.t('Unavailable')}${tagSuffix}`,
+                                detail: `$(info) ${reasonText}`,
+                                buttons: itemButtons,
+                                model,
+                                infoTooltip
+                            });
+                            continue;
+                        }
+
                         const isPinned = pinned.includes(model.modelId) || pinned.includes(model.label);
                         const pinIcon = isPinned ? '$(pin)' : '$(circle-outline)';
                         const pct = model.remainingPercentage ?? 0;
@@ -373,15 +419,23 @@ export class QuotaManager {
                         else if (pct < 30) status = '$(flame)';
                         else if (pct < 50) status = '$(warning)';
                         const bar = drawProgressBar(pct);
-                        let desc = `${bar} ${pct.toFixed(1)}%`;
+                        const tagBadge = model.tagTitle ? ` • [${model.tagTitle}]` : '';
+                        let desc = `${bar} ${pct.toFixed(1)}%${tagBadge}`;
                         if (model.timeUntilReset > 0) {
                             const timeUntil = formatDuration(model.timeUntilReset);
                             desc += ` • ${lm.t('Reset at {0}', formatResetTime(model.resetTime))} (${lm.t('in')} ${timeUntil})`;
                         }
-                        let details = '';
-                        if (model.requestLimit && model.requestUsage !== undefined) details += `${lm.t('Requests')}: ${model.requestUsage} / ${model.requestLimit}  `;
-                        if (model.tokenLimit && model.tokenUsage !== undefined) details += `${lm.t('Tokens')}: ${model.tokenUsage} / ${model.tokenLimit}`;
-                        items.push({ label: `${pinIcon} ${status} ${model.label}`, description: desc, detail: details });
+                        const detailParts: string[] = [];
+                        if (model.requestLimit && model.requestUsage !== undefined) detailParts.push(`${lm.t('Requests')}: ${model.requestUsage} / ${model.requestLimit}`);
+                        if (model.tokenLimit && model.tokenUsage !== undefined) detailParts.push(`${lm.t('Tokens')}: ${model.tokenUsage} / ${model.tokenLimit}`);
+                        items.push({
+                            label: `${pinIcon} ${status} ${model.label}`,
+                            description: desc,
+                            detail: detailParts.length > 0 ? detailParts.join('  ') : undefined,
+                            buttons: itemButtons,
+                            model,
+                            infoTooltip
+                        });
                     }
                 };
                 const activeGroups = groups.filter(g => g.models.length > 0);
@@ -409,44 +463,40 @@ export class QuotaManager {
             }
         });
 
+        // Handle Item Info Button Click (shows full tooltip text like Antigravity info icon)
+        picker.onDidTriggerItemButton(event => {
+            const item = event.item;
+            if (item.model && item.infoTooltip) {
+                vscode.window.showInformationMessage(`${item.model.label}: ${item.infoTooltip}`);
+            }
+        });
+
         picker.onDidAccept(async () => {
             const selected = picker.selectedItems[0];
             if (!selected) return;
 
             // Handle "Plan" click
-            if (selected.label.includes(lm.t('Plan'))) {
-                vscode.env.openExternal(vscode.Uri.parse('https://one.google.com/ai'));
+            if (selected.isPlanItem) {
+                const rawStatus = snapshot.rawUserStatus;
+                const tierUri = rawStatus?.userStatus?.userTier?.upgradeSubscriptionUri || rawStatus?.userTier?.upgradeSubscriptionUri;
+                const targetUrl = typeof tierUri === 'string' && /^https?:\/\//i.test(tierUri)
+                    ? tierUri
+                    : 'https://one.google.com/ai';
+                vscode.env.openExternal(vscode.Uri.parse(targetUrl));
+                picker.selectedItems = [];
+                return;
+            }
+
+            // Disabled / unavailable models cannot be pinned; keep picker open
+            if (selected.model?.isDisabled) {
                 picker.selectedItems = [];
                 return;
             }
 
             // Handle Pinning
-            // We need to find the model corresponding to this item.
-            // Since 'detail' might now contain stats strings, we can't trust it as ID directly.
-            // We'll iterate models and match by label (removing icons)
-            if (snapshot.models) {
-                // Label format: "$(pin) $(check) ModelName"
-                // Let's strip icons.
-                // Or better, let's store the modelId in a custom property?
-                // QuickPickItem doesn't allow custom props easily without casting.
-                // Let's rely on finding standard separators.
-
-                // Let's try to match by label since we know the label format used in generation.
-                // But cleaner is to check if we can identify the model from the list.
-                // The iteration order is deterministic if we resort again, but that's risky.
-
-                // Hack: Let's assume detail IS unique enough? No.
-
-                // Match longest model label first so e.g. "Gemini 4 Neon" doesn't shadow "Gemini 4 Neon (High)"
-                const sortedByLabelLen = [...snapshot.models].sort((a, b) => b.label.length - a.label.length);
-                const targetModel = sortedByLabelLen.find(m =>
-                    selected.label.endsWith(` ${m.label}`) || selected.label.includes(m.label)
-                );
-
-                if (targetModel) {
-                    await this.statusBar.togglePinnedModel(targetModel.modelId, targetModel.label);
-                    updateItems();
-                }
+            if (selected.model) {
+                await this.statusBar.togglePinnedModel(selected.model.modelId, selected.model.label);
+                updateItems();
             }
 
             // Clear selection for all actions so user can click again

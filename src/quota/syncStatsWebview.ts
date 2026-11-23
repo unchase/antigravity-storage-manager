@@ -54,7 +54,6 @@ export interface McpServerStateData {
 export class SyncStatsWebview {
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static readonly viewType = 'syncStats';
-    private static extensionUri: vscode.Uri | undefined;
     private static devicesSort = { col: 'lastSync', dir: 'desc' as 'asc' | 'desc' };
     private static convsSort = { col: 'modified', dir: 'desc' as 'asc' | 'desc' };
     private static isSearching = false;
@@ -112,7 +111,6 @@ export class SyncStatsWebview {
             }
         );
 
-        SyncStatsWebview.extensionUri = context.extensionUri;
         SyncStatsWebview.currentPanel = panel;
 
         // Show skeleton immediately
@@ -163,8 +161,6 @@ export class SyncStatsWebview {
                 localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')]
             }
         );
-
-        SyncStatsWebview.extensionUri = context.extensionUri;
 
         SyncStatsWebview.currentPanel = panel;
         panel.webview.html = SyncStatsWebview.getHtmlContent(data);
@@ -1143,8 +1139,10 @@ export class SyncStatsWebview {
                                     const groupModels = models.filter((mdl: any) => !miniProcessed.has(mdl.modelId) && def.match(mdl));
                                     if (groupModels.length === 0) continue;
                                     groupModels.forEach((mdl: any) => miniProcessed.add(mdl.modelId));
-                                    const minPct = Math.min(...groupModels.map((mdl: any) => mdl.remainingPercentage ?? 0));
-                                    const anyExhausted = groupModels.some((mdl: any) => mdl.isExhausted);
+                                    const availableGroupModels = groupModels.filter((mdl: any) => !mdl.isDisabled);
+                                    const effectiveModels = availableGroupModels.length > 0 ? availableGroupModels : groupModels;
+                                    const minPct = Math.min(...effectiveModels.map((mdl: any) => mdl.remainingPercentage ?? 0));
+                                    const anyExhausted = effectiveModels.some((mdl: any) => mdl.isExhausted);
                                     const icon = getModelStatusIcon(minPct, anyExhausted);
                                     let resetSuffix = '';
                                     if (minPct === 0) {
@@ -1276,11 +1274,19 @@ export class SyncStatsWebview {
 
                                             // Ensure small even number of items works well, but we rely on auto-fit
                                             modelsHtml = modelsList.map(m => {
-                                                const isPinned = pinned.includes(m.label);
+                                                const isPinned = !m.isDisabled && pinned.includes(m.label);
                                                 const subLabel = getModelAbbreviation(m.label);
+                                                const hoverTip = m.isDisabled
+                                                    ? (m.disabledReason || m.tagDescription || `${m.label} (${lm.t('Unavailable')})`)
+                                                    : (m.tagDescription ? `${m.label} — ${m.tagTitle ? `${m.tagTitle}: ` : ''}${m.tagDescription}` : m.label);
+                                                const safeTitle = String(hoverTip)
+                                                    .replace(/&/g, '&amp;')
+                                                    .replace(/"/g, '&quot;')
+                                                    .replace(/</g, '&lt;')
+                                                    .replace(/>/g, '&gt;');
 
-                                                return `<div class="model-card ${isPinned ? 'pinned' : ''}" title="${m.label}">
-                                                    ${isPinned ? '<div style="position:absolute; top:2px; right:2px; opacity:0.8; font-size:8px;">📌</div>' : ''}
+                                                return `<div class="model-card ${isPinned ? 'pinned' : ''}" style="${m.isDisabled ? 'opacity:0.45; cursor:not-allowed;' : ''}" title="${safeTitle}">
+                                                    ${m.isDisabled ? '<div style="position:absolute; top:2px; right:2px; opacity:0.8; font-size:8px;">🔒</div>' : (isPinned ? '<div style="position:absolute; top:2px; right:2px; opacity:0.8; font-size:8px;">📌</div>' : '')}
                                                     <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${subLabel}</div>
                                                 </div>`;
                                             }).join('');
