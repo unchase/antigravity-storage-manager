@@ -47,10 +47,20 @@ export class WindowsProcessDetector implements IPlatformStrategy {
 
     private isAntigravityProcess(commandLine: string): boolean {
         const lowerCmd = commandLine.toLowerCase();
-        if (/--app_data_dir\s+antigravity\b/i.test(commandLine)) {
+        if (/--app_data_dir[=\s]+antigravity(?:-ide)?\b/i.test(commandLine)) {
             return true;
         }
-        if (lowerCmd.includes('\\antigravity\\') || lowerCmd.includes('/antigravity/')) {
+        if (
+            lowerCmd.includes('\\antigravity\\') ||
+            lowerCmd.includes('/antigravity/') ||
+            lowerCmd.includes('\\antigravity ide\\') ||
+            lowerCmd.includes('/antigravity ide/') ||
+            lowerCmd.includes('antigravity-ide')
+        ) {
+            return true;
+        }
+        // Antigravity 2.0 / CLI hub process: agy.exe --hub ... --csrf_token=...
+        if (/(?:^|[\\/\s"])agy(?:\.exe)?(?:["\s]|$)/i.test(commandLine) && /--hub\b/i.test(commandLine)) {
             return true;
         }
         return false;
@@ -63,23 +73,20 @@ export class WindowsProcessDetector implements IPlatformStrategy {
     } | null {
         if (this.usePowerShell || stdout.trim().startsWith('{') || stdout.trim().startsWith('[')) {
             try {
-                let data = JSON.parse(stdout.trim());
-                if (Array.isArray(data)) {
-                    if (data.length === 0) {
-                        return null;
-                    }
-                    const antigravityProcesses = data.filter((item: any) =>
-                        item.CommandLine && this.isAntigravityProcess(item.CommandLine)
-                    );
-                    if (antigravityProcesses.length === 0) {
-                        return null;
-                    }
-                    data = antigravityProcesses[0];
-                } else {
-                    if (!data.CommandLine || !this.isAntigravityProcess(data.CommandLine)) {
-                        return null;
-                    }
+                const parsed = JSON.parse(stdout.trim());
+                const items = Array.isArray(parsed) ? parsed : [parsed];
+                const antigravityProcesses = items.filter((item: any) =>
+                    item?.CommandLine &&
+                    this.isAntigravityProcess(item.CommandLine) &&
+                    /--csrf_token[=\s]+([a-f0-9-]+)/i.test(item.CommandLine)
+                );
+
+                if (antigravityProcesses.length === 0) {
+                    return null;
                 }
+
+                // Prefer --hub process if multiple candidates exist
+                const data = antigravityProcesses.find((item: any) => /--hub\b/i.test(item.CommandLine)) || antigravityProcesses[0];
 
                 const commandLine = data.CommandLine || '';
                 const pid = data.ProcessId;
@@ -88,7 +95,7 @@ export class WindowsProcessDetector implements IPlatformStrategy {
                     return null;
                 }
 
-                const portMatch = commandLine.match(/--extension_server_port[=\s]+(\d+)/);
+                const portMatch = commandLine.match(/--(?:extension_server_port|hub[-_]port)[=\s]+(\d+)/i);
                 const tokenMatch = commandLine.match(/--csrf_token[=\s]+([a-f0-9-]+)/i);
 
                 if (!tokenMatch || !tokenMatch[1]) {
@@ -122,7 +129,7 @@ export class WindowsProcessDetector implements IPlatformStrategy {
                 continue;
             }
 
-            const portMatch = commandLine.match(/--extension_server_port[=\s]+(\d+)/);
+            const portMatch = commandLine.match(/--(?:extension_server_port|hub[-_]port)[=\s]+(\d+)/i);
             const tokenMatch = commandLine.match(/--csrf_token[=\s]+([a-f0-9-]+)/i);
 
             if (!tokenMatch || !tokenMatch[1]) {

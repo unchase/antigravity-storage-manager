@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import * as https from 'https';
+import * as http from 'http';
 import { PlatformDetector } from './platformDetector';
 import { IPlatformStrategy } from './types';
 import { versionInfo } from './versionInfo';
@@ -15,6 +16,7 @@ export interface AntigravityProcessInfo {
     extensionPort: number;
     connectPort: number;
     csrfToken: string;
+    protocol?: 'https' | 'http';
 }
 
 export class ProcessPortDetector {
@@ -90,7 +92,7 @@ export class ProcessPortDetector {
                 }
 
                 if (!processInfo) {
-                    throw new Error('language_server process not found');
+                    throw new Error('language_server / agy process not found');
                 }
 
                 const { pid, extensionPort, csrfToken } = processInfo;
@@ -103,22 +105,31 @@ export class ProcessPortDetector {
                 console.log('PortDetector', `Found process: PID=${pid}, extensionPort=${extensionPort || 'N/A'}`);
 
                 const listeningPorts = await this.getProcessListeningPorts(pid);
+                const candidatePorts = [...listeningPorts];
+                if (extensionPort > 0 && !candidatePorts.includes(extensionPort)) {
+                    candidatePorts.push(extensionPort);
+                }
 
-                if (listeningPorts.length === 0) {
+                if (candidatePorts.length === 0) {
                     throw new Error('Process is not listening on any ports');
                 }
 
-                console.log('PortDetector', `Found ${listeningPorts.length} listening ports: ${listeningPorts.join(', ')}`);
+                console.log('PortDetector', `Found ${candidatePorts.length} candidate ports: ${candidatePorts.join(', ')}`);
 
-                const connectPort = await this.findWorkingPort(listeningPorts, csrfToken);
+                const workingEndpoint = await this.findWorkingPort(candidatePorts, csrfToken);
 
-                if (!connectPort) {
+                if (!workingEndpoint) {
                     throw new Error('Unable to find a working API port');
                 }
 
-                console.log('PortDetector', `Detection succeeded: connectPort=${connectPort}, extensionPort=${extensionPort}`);
+                console.log('PortDetector', `Detection succeeded: connectPort=${workingEndpoint.port} (${workingEndpoint.protocol}), extensionPort=${extensionPort}`);
 
-                return { extensionPort, connectPort, csrfToken };
+                return {
+                    extensionPort,
+                    connectPort: workingEndpoint.port,
+                    csrfToken,
+                    protocol: workingEndpoint.protocol
+                };
 
             } catch (error: any) {
                 const errorMsg = error?.message || String(error);
@@ -195,38 +206,84 @@ export class ProcessPortDetector {
         }
     }
 
-    private async findWorkingPort(ports: number[], csrfToken: string): Promise<number | null> {
+    private async findWorkingPort(ports: number[], csrfToken: string): Promise<{ port: number; protocol: 'https' | 'http' } | null> {
         for (const port of ports) {
-            const isWorking = await this.testPortConnectivity(port, csrfToken);
-            if (isWorking) {
-                return port;
+            const protocol = await this.testPortConnectivity(port, csrfToken);
+            if (protocol) {
+                return { port, protocol };
             }
         }
         return null;
     }
 
-    private async testPortConnectivity(port: number, csrfToken: string): Promise<boolean> {
-        return new Promise((resolve) => {
-            const requestBody = JSON.stringify({
-                context: {
-                    properties: {
-                        devMode: "false",
-                        extensionVersion: versionInfo.getExtensionVersion(),
-                        hasAnthropicModelAccess: "true",
-                        ide: "antigravity",
-                        ideVersion: versionInfo.getIdeVersion(),
-                        installationId: "test-detection",
-                        language: "UNSPECIFIED",
-                        os: versionInfo.getOs(),
-                        requestedModelId: "MODEL_UNSPECIFIED"
+    private async testPortConnectivity(port: number, csrfToken: string): Promise<'https' | 'http' | null> {
+        const probes: Array<{ path: string; body: object }> = [
+            {
+                path: '/exa.language_server_pb.LanguageServerService/GetUnleashData',
+                body: {
+                    context: {
+                        properties: {
+                            devMode: "false",
+                            extensionVersion: versionInfo.getExtensionVersion(),
+                            hasAnthropicModelAccess: "true",
+                            ide: "antigravity",
+                            ideVersion: versionInfo.getIdeVersion(),
+                            installationId: "test-detection",
+                            language: "UNSPECIFIED",
+                            os: versionInfo.getOs(),
+                            requestedModelId: "MODEL_UNSPECIFIED"
+                        }
                     }
                 }
-            });
+            },
+            {
+                path: '/exa.language_server_pb.LanguageServerService/GetUserStatus',
+                body: {
+                    metadata: {
+                        ideName: 'antigravity',
+                        extensionName: 'antigravity',
+                        ideVersion: versionInfo.getIdeVersion(),
+                        locale: 'en'
+                    }
+                }
+            },
+            {
+                path: '/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary',
+                body: {}
+            }
+        ];
 
-            const options = {
+        for (const protocol of ['https', 'http'] as const) {
+            for (const probe of probes) {
+                const status = await this.probeEndpoint(port, csrfToken, protocol, probe.path, probe.body);
+                if (status === 'ok') {
+                    return protocol;
+                }
+                if (status === 'network_error') {
+                    // Protocol mismatch or port unreachable on this scheme; try next protocol
+                    break;
+                }
+                // On HTTP 404/405/501/etc., try next probe endpoint on the same protocol
+            }
+        }
+
+        return null;
+    }
+
+    private probeEndpoint(
+        port: number,
+        csrfToken: string,
+        protocol: 'https' | 'http',
+        endpointPath: string,
+        body: object
+    ): Promise<'ok' | 'http_error' | 'network_error'> {
+        return new Promise((resolve) => {
+            const requestBody = JSON.stringify(body);
+
+            const options: https.RequestOptions = {
                 hostname: '127.0.0.1',
                 port: port,
-                path: '/exa.language_server_pb.LanguageServerService/GetUnleashData',
+                path: endpointPath,
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -238,20 +295,20 @@ export class ProcessPortDetector {
                 timeout: 2000
             };
 
-            const req = https.request(options, (res) => {
+            const client = protocol === 'https' ? https : http;
+            const req = client.request(options, (res) => {
                 const success = res.statusCode === 200;
                 res.resume();
-                resolve(success);
+                resolve(success ? 'ok' : 'http_error');
             });
 
-            req.on('error', (_err) => {
-                // logger.debug('ProcessPortDetector', `Port ${port} connection error: ${err.code || err.message}`);
-                resolve(false);
+            req.on('error', () => {
+                resolve('network_error');
             });
 
             req.on('timeout', () => {
                 req.destroy();
-                resolve(false);
+                resolve('network_error');
             });
 
             req.write(requestBody);

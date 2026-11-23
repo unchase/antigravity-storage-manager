@@ -1,4 +1,5 @@
 import * as https from 'https';
+import * as http from 'http';
 import { ProcessPortDetector } from './processPortDetector';
 
 
@@ -24,13 +25,13 @@ export interface SearchMatch {
 
 export class AntigravityClient {
     private portDetector: ProcessPortDetector;
-    private connectionInfo: { port: number; token: string } | null = null;
+    private connectionInfo: { port: number; token: string; protocol: 'https' | 'http' } | null = null;
 
     constructor() {
         this.portDetector = new ProcessPortDetector();
     }
 
-    private async ensureConnection(): Promise<{ port: number; token: string }> {
+    private async ensureConnection(): Promise<{ port: number; token: string; protocol: 'https' | 'http' }> {
         if (this.connectionInfo) return this.connectionInfo;
 
         const info = await this.portDetector.detectProcessInfo();
@@ -38,7 +39,7 @@ export class AntigravityClient {
             throw new Error('Antigravity Language Server not found. Please ensure the extension is running.');
         }
 
-        this.connectionInfo = { port: info.connectPort, token: info.csrfToken };
+        this.connectionInfo = { port: info.connectPort, token: info.csrfToken, protocol: info.protocol || 'https' };
         return this.connectionInfo;
     }
 
@@ -46,11 +47,11 @@ export class AntigravityClient {
      * Internal request helper
      */
     public async request(method: string, body: any): Promise<any> {
-        const { port, token } = await this.ensureConnection();
+        const { port, token, protocol } = await this.ensureConnection();
 
         return new Promise((resolve, reject) => {
             const requestBody = JSON.stringify(body);
-            const options = {
+            const options: https.RequestOptions = {
                 hostname: '127.0.0.1',
                 port: port,
                 path: `/exa.language_server_pb.LanguageServerService/${method}`,
@@ -64,7 +65,8 @@ export class AntigravityClient {
                 rejectUnauthorized: false
             };
 
-            const req = https.request(options, (res) => {
+            const client = protocol === 'http' ? http : https;
+            const req = client.request(options, (res) => {
                 const chunks: Buffer[] = [];
                 res.on('data', (d) => chunks.push(d));
                 res.on('end', () => {

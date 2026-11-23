@@ -58,12 +58,14 @@ export class QuotaStatusBar {
         md.supportThemeIcons = true;
         md.appendMarkdown(`\n🚀 [${LocalizationManager.getInstance().t('Show Dashboard')}](command:antigravity-storage-manager.showQuota)`);
         this.item.tooltip = md;
+        this.item.backgroundColor = undefined;
 
         this.item.show();
     }
 
     public showLoading(): void {
         this.item.text = '$(sync~spin) AGQ';
+        this.item.backgroundColor = undefined;
         this.item.show();
     }
 

@@ -38,26 +38,33 @@ export class PlatformDetector {
 
     /**
      * Returns all possible process names for the current platform (primary + fallback).
-     * Useful for ARM64 Windows where x64 may run under emulation.
+     * Includes legacy architecture-specific language_server binaries, unified language_server,
+     * and the Antigravity 2.0 / CLI hub process (agy).
      */
     getProcessNames(): string[] {
         const arch = os.arch();
         if (this.platform === 'win32') {
             if (arch === 'arm64') {
-                // ARM64 primary (arm.exe), arm64.exe alias fallback, then x64 under emulation
-                return ['language_server_windows_arm.exe', 'language_server_windows_arm64.exe', 'language_server_windows_x64.exe'];
+                // ARM64 primary (arm.exe), arm64.exe alias fallback, x64 under emulation, unified language_server, and agy hub
+                return [
+                    'language_server_windows_arm.exe',
+                    'language_server_windows_arm64.exe',
+                    'language_server_windows_x64.exe',
+                    'language_server.exe',
+                    'agy.exe'
+                ];
             }
-            return ['language_server_windows_x64.exe'];
+            return ['language_server_windows_x64.exe', 'language_server.exe', 'agy.exe'];
         } else if (this.platform === 'darwin') {
             if (arch === 'arm64') {
-                return ['language_server_macos_arm', 'language_server_macos'];
+                return ['language_server_macos_arm', 'language_server_macos', 'language_server', 'agy'];
             }
-            return ['language_server_macos'];
+            return ['language_server_macos', 'language_server', 'agy'];
         } else {
             if (arch === 'arm64') {
-                return ['language_server_linux_arm', 'language_server_linux_x64'];
+                return ['language_server_linux_arm', 'language_server_linux_x64', 'language_server', 'agy'];
             }
-            return ['language_server_linux_x64'];
+            return ['language_server_linux_x64', 'language_server', 'agy'];
         }
     }
 

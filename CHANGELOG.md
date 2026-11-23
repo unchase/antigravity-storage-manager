@@ -5,6 +5,16 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-11-24
+### Antigravity 2.0 / `agy --hub` & New Gemini 4 Models Support
+- **Process & Port Detection (`agy` Hub + Unified `language_server`)**: Updated `PlatformDetector`, `WindowsProcessDetector`, `UnixProcessDetector`, `ProcessPortDetector`, and `AntigravityClient` to detect `agy.exe`/`agy` (`--hub` / `--hub-port=...`) and unified `language_server.exe`/`language_server` processes alongside legacy architecture-specific binaries, fixing `language_server process not found` errors in newer Antigravity IDE versions.
+- **CLI Flag & Protocol Resilience**: Fixed `--app_data_dir=antigravity` (`=` syntax) parsing, added `--hub-port` extraction, prioritized `--hub` processes with `--csrf_token`, and added automatic HTTPS/HTTP protocol detection with multi-endpoint health probes (`GetUnleashData`, `GetUserStatus`, `RetrieveUserQuotaSummary`).
+- **`RetrieveUserQuotaSummary` Fallback**: Added `parseQuotaSummaryResponse` and automatic fallback in `QuotaService` when `GetUserStatus` is unavailable or returns no model quotas, supporting grouped 5-hour and weekly quota buckets.
+- **Gemini 4, Orchestrator & Claude 5.5 Adaptation**: Added full abbreviation, cycle duration, high-tier detection, and family grouping support for **Gemini 4 Neon / Carbon / Argon / Hydrogen** (Low / Medium / High / XHigh), **Orchestrator** (Neon / Carbon / Argon), **Gemini 3.8 Flash**, **Claude Opus 5.5**, **Claude Sonnet 5.5**, and **GPT-OSS 120B** across the status bar, QuickPick, rich tooltips, Telegram reports, Account Info Webview, Sync Statistics Dashboard, Proxy Dashboard, and MCP Proxy static model registry.
+- **Quota Grouping & Status Bar Fixes**: Prevented incompatible quota pools (different reset times or percentages, such as 5-hour vs. weekly buckets) from collapsing in tooltips/Telegram reports, fixed QuickPick model matching for overlapping names, and cleared the error background color in `QuotaStatusBar` once connectivity recovers.
+- **Profile Manager Updates**: Added `Antigravity IDE` / `.antigravity-ide` directory discovery, `Antigravity IDE.exe` executable detection, and `language_server.exe` / `agy.exe` termination handling during profile switches.
+- **Unit Tests**: Added `processDetector.test.ts` and expanded `platformDetector.test.ts`, `quotaService.test.ts`, and `utils.test.ts` to cover `agy --hub`, `RetrieveUserQuotaSummary`, and Gemini 4 / Orchestrator / Claude 5.5 models.
+
 ## [0.14.8] - 2026-09-09
 ### Synchronization & Conflict Resolution ([#18](https://github.com/unchase/antigravity-storage-manager/issues/18))
 - **Same-Device False Conflict Prevention**: Fixed an issue where syncing on a single device triggered false conflict warnings when `lastSyncedHash` was not yet established. The extension now compares `remote.modifiedBy` against `this.config.machineId` and automatically resolves the merge when changes originate from the same machine.

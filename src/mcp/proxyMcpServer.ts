@@ -42,6 +42,12 @@ interface ModelDef {
 
 const STATIC_MODEL_REGISTRY: ModelDef[] = [
     // Claude Models
+    { id: "claude-opus-5-5-high", type: "claude" },
+    { id: "claude-opus-5-5-medium", type: "claude" },
+    { id: "claude-opus-5-5-low", type: "claude" },
+    { id: "claude-sonnet-5-5-high", type: "claude" },
+    { id: "claude-sonnet-5-5-medium", type: "claude" },
+    { id: "claude-sonnet-5-5-low", type: "claude" },
     { id: "claude-haiku-4-5-20251001", type: "claude" },
     { id: "claude-sonnet-4-5-20250929", type: "claude" },
     { id: "claude-opus-4-6", type: "claude" },
@@ -52,7 +58,29 @@ const STATIC_MODEL_REGISTRY: ModelDef[] = [
     { id: "claude-3-7-sonnet-20250219", type: "claude" },
     { id: "claude-3-5-haiku-20241022", type: "claude" },
 
-    // Gemini Models (Pro/Flash/Lite/Preview/Image)
+    // Gemini 4 & Orchestrator Models
+    { id: "gemini-4-neon-xhigh", type: "gemini" },
+    { id: "gemini-4-neon-high", type: "gemini" },
+    { id: "gemini-4-neon-medium", type: "gemini" },
+    { id: "gemini-4-neon-low", type: "gemini" },
+    { id: "gemini-4-carbon-high", type: "gemini" },
+    { id: "gemini-4-carbon-medium", type: "gemini" },
+    { id: "gemini-4-carbon-low", type: "gemini" },
+    { id: "gemini-4-argon-high", type: "gemini" },
+    { id: "gemini-4-argon-medium", type: "gemini" },
+    { id: "gemini-4-argon-low", type: "gemini" },
+    { id: "gemini-4-hydrogen-xhigh", type: "gemini" },
+    { id: "gemini-4-hydrogen-high", type: "gemini" },
+    { id: "gemini-4-hydrogen-medium", type: "gemini" },
+    { id: "gemini-4-hydrogen-low", type: "gemini" },
+    { id: "gemini-pro-orchestrator-neon", type: "gemini" },
+    { id: "gemini-pro-orchestrator", type: "gemini" },
+    { id: "gemini-pro-orchestrator-argon", type: "gemini" },
+
+    // Gemini 3.x / 2.5 Models (Pro/Flash/Lite/Preview/Image)
+    { id: "gemini-3.8-flash-high", type: "gemini" },
+    { id: "gemini-3.8-flash-medium", type: "gemini" },
+    { id: "gemini-3.8-flash-low", type: "gemini" },
     { id: "gemini-2.5-pro", type: "gemini" },
     { id: "gemini-2.5-flash", type: "gemini" },
     { id: "gemini-2.5-flash-lite", type: "gemini" },
@@ -71,7 +99,8 @@ const STATIC_MODEL_REGISTRY: ModelDef[] = [
     { id: "imagen-3.0-fast-generate-001", type: "gemini" },
     { id: "imagen-4.0-fast-generate-001", type: "gemini" },
 
-    // OpenAI Models
+    // OpenAI / GPT-OSS Models
+    { id: "gpt-oss-120b-medium", type: "openai" },
     { id: "gpt-5", type: "openai" },
     { id: "gpt-5-codex", type: "openai" },
     { id: "gpt-5-codex-mini", type: "openai" },

@@ -7,7 +7,7 @@ import { versionInfo } from './versionInfo';
 import { LocalizationManager } from '../l10n/localizationManager';
 
 import { QuotaStatusBar } from './quotaStatusBar';
-import { drawProgressBar, formatResetTime, compareModels, formatDuration } from './utils';
+import { drawProgressBar, formatResetTime, compareModels, formatDuration, isGeminiModel } from './utils';
 import { QuotaUsageTracker } from './quotaUsageTracker';
 import { AccountInfoWebview } from './accountInfoWebview';
 import { GoogleAuthProvider } from '../googleAuth';
@@ -259,8 +259,8 @@ export class QuotaManager {
             throw new Error('Antigravity Language Server not found. Please ensure Antigravity extension is installed and running.');
         }
 
-        // 2. Initialize service with current port and token
-        this.quotaService = new QuotaService(processInfo.connectPort, processInfo.csrfToken, processInfo.extensionPort);
+        // 2. Initialize service with current port, token, and detected protocol
+        this.quotaService = new QuotaService(processInfo.connectPort, processInfo.csrfToken, processInfo.extensionPort, processInfo.protocol);
 
         // 3. Fetch quota
         return await this.quotaService.fetchQuota();
@@ -353,7 +353,7 @@ export class QuotaManager {
                 ];
 
                 for (const m of models) {
-                    if (m.label.includes('Gemini')) {
+                    if (isGeminiModel(m.label, m.modelId)) {
                         groups[1].models.push(m);
                     } else {
                         groups[0].models.push(m);
@@ -437,11 +437,11 @@ export class QuotaManager {
 
                 // Hack: Let's assume detail IS unique enough? No.
 
-                // Let's look for the model in the snapshot
-                const targetModel = snapshot.models.find(m => {
-                    // Check if selected label contains the model label
-                    return selected.label.includes(m.label);
-                });
+                // Match longest model label first so e.g. "Gemini 4 Neon" doesn't shadow "Gemini 4 Neon (High)"
+                const sortedByLabelLen = [...snapshot.models].sort((a, b) => b.label.length - a.label.length);
+                const targetModel = sortedByLabelLen.find(m =>
+                    selected.label.endsWith(` ${m.label}`) || selected.label.includes(m.label)
+                );
 
                 if (targetModel) {
                     await this.statusBar.togglePinnedModel(targetModel.modelId, targetModel.label);

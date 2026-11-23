@@ -91,7 +91,7 @@ export class ProfileManager {
         // IDE names to search (covers all known VS Code forks)
         const ideNames = [
             'Code', 'Code - Insiders',
-            'Antigravity',
+            'Antigravity IDE', 'Antigravity',
             'Codeium', 'Windsurf',
             'Cursor',
             'Codium', 'VSCodium'
@@ -108,6 +108,7 @@ export class ProfileManager {
 
             // Standalone App Roots (non-VS Code based IDEs)
             standaloneRoots.push(
+                path.join(base, 'Antigravity IDE', 'User', 'globalStorage'),
                 path.join(base, 'Antigravity', 'User', 'globalStorage'),
                 path.join(base, 'Codeium', 'User', 'globalStorage'),
                 path.join(base, 'Windsurf', 'User', 'globalStorage')
@@ -115,9 +116,9 @@ export class ProfileManager {
         }
 
         // Hidden dot-directories in home folder (some IDEs use this on macOS/Linux)
-        // e.g. ~/.antigravity/, ~/.codeium/, ~/.windsurf/
+        // e.g. ~/.antigravity/, ~/.antigravity-ide/, ~/.codeium/, ~/.windsurf/
         const home = os.homedir();
-        const dotDirNames = ['.antigravity', '.codeium', '.windsurf'];
+        const dotDirNames = ['.antigravity-ide', '.antigravity', '.codeium', '.windsurf'];
         for (const dotDir of dotDirNames) {
             const dotPath = path.join(home, dotDir);
             if (fs.existsSync(dotPath)) {
@@ -542,13 +543,13 @@ export class ProfileManager {
         return new Promise((resolve) => {
             let cmd: string;
             if (process.platform === 'win32') {
-                // Kill only language_server processes, NOT the IDE itself (Antigravity.exe).
-                // Try x64, arm (ARM64), and arm64 variants; ignore errors if process not found.
-                cmd = 'taskkill /IM language_server_windows_x64.exe /F 2>nul & taskkill /IM language_server_windows_arm.exe /F 2>nul & taskkill /IM language_server_windows_arm64.exe /F 2>nul & exit /b 0';
+                // Kill only language_server / agy hub processes, NOT the IDE itself (Antigravity.exe / Antigravity IDE.exe).
+                // Try x64, arm (ARM64), arm64, unified language_server, and agy variants; ignore errors if process not found.
+                cmd = 'taskkill /IM language_server_windows_x64.exe /F 2>nul & taskkill /IM language_server_windows_arm.exe /F 2>nul & taskkill /IM language_server_windows_arm64.exe /F 2>nul & taskkill /IM language_server.exe /F 2>nul & taskkill /IM agy.exe /F 2>nul & exit /b 0';
             } else {
-                // On macOS/Linux: kill only the language_server process, NOT the IDE itself.
+                // On macOS/Linux: kill only the language_server / agy hub process, NOT the IDE itself.
                 // Using 'pkill -f Antigravity' would kill the IDE we're running inside of!
-                cmd = 'pkill -f language_server || true';
+                cmd = 'pkill -f language_server || true; pkill -f "agy --hub" || true';
             }
 
             // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -591,12 +592,14 @@ export class ProfileManager {
             const candidates: string[] = [];
 
             if (localAppData) {
-                // %LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe
+                // %LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe & legacy Antigravity.exe
+                candidates.push(path.join(localAppData, 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'));
                 candidates.push(path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'));
             }
 
             // Checking Program Files just in case
             if (programFiles) {
+                candidates.push(path.join(programFiles, 'Antigravity IDE', 'Antigravity IDE.exe'));
                 candidates.push(path.join(programFiles, 'Antigravity', 'Antigravity.exe'));
             }
 

@@ -43,12 +43,12 @@ If you find this extension useful, consider supporting the development:
 
 ![Status Bar Menu](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/screenshots/status-menu.png)
 
-- 🚀 **Antigravity Proxy** — Unified AI Gateway with visual dashboard to manage multiple AI providers (Antigravity, Copilot, Claude, Codex, Gemini, Z.AI, and more) through a single endpoint.
-- 🤖 **Telegram Bot Integration** — Real-time quota alerts, system stats, and remote sync control via interactive bot.
-- 👤 **Multi-Account Profiles** — Seamlessly switch between different Antigravity accounts (e.g., Personal vs Work) with separate quotas and settings.
-- 📊 **Advanced Quota Dashboard** — Comprehensive real-time tracking of consumption speed, reset cycles, and remaining time estimates with visual indicators.
+- 🚀 **Antigravity Proxy** — Unified AI Gateway with visual dashboard to manage multiple AI providers (Antigravity, Copilot, Claude, Codex, Gemini, Gemini CLI, Qwen, Kimi, Z.AI, and more) through a single endpoint.
+- 🤖 **Telegram Bot Integration** — Real-time quota alerts, system stats, and remote sync control via interactive bot with out-of-band confirmation security.
+- 👤 **Multi-Account Profiles** — Seamlessly switch between different Antigravity / Antigravity IDE accounts (e.g., Personal vs Work) with separate quotas and settings.
+- 📊 **Advanced Quota Dashboard** — Comprehensive real-time tracking of consumption speed, reset cycles, and remaining time estimates for Gemini 4 (Neon, Carbon, Argon, Hydrogen), Orchestrator, Gemini 3.8 Flash, Claude 5.5 (Opus / Sonnet), and GPT-OSS models via `agy --hub` or `language_server`.
 - 🔌 **MCP Server Monitoring** — Monitor the connection status and resource availability of your Model Context Protocol servers.
-- ☁️ **Google Drive Sync** — Automatically sync conversations between devices with end-to-end encryption and parallel processing.
+- ☁️ **Google Drive & Local Sync** — Automatically sync conversations (`.db` + SQLite WAL and `.pb`) between devices using encrypted Google Drive or a local/network folder with parallel processing.
 - 🌍 **Global Localization** — Native support for **16 languages** (English, Russian, Chinese, Japanese, Korean, German, French, Spanish, Italian, Portuguese, Polish, Vietnamese, Arabic, Czech, Turkish).
 - 🔄 **Live Updates** — Seamlessly syncs data between the status bar and dashboard every minute for up-to-the-second accuracy.
 - 🔍 **Account Insights** — Monitor your Plan/Tier, specific feature availability (Web Search, Browser Tool), and raw Google API responses.
@@ -120,11 +120,12 @@ Monitor your AI usage limits and remaining credits directly within VS Code.
 
 ### Features
 - **Real-time Synchronization**: The dashboard automatically refreshes data every minute, staying perfectly in sync with the status bar.
+- **Antigravity IDE & `agy` Hub Support**: Automatically discovers both modern `agy` (`--hub` / `--hub-port`) and `language_server` processes across HTTPS and HTTP, with automatic fallback from `GetUserStatus` to `RetrieveUserQuotaSummary` (5-hour and weekly quota windows).
 - **Plan & Tier Analysis**: View your exact plan name and tier description directly from authenticated Google API data.
-- **Model Monitoring**: Pin specific models (e.g., Gemini 3 Pro, Claude Sonnet 4.6) to the status bar for quick access.
+- **Model Monitoring**: Pin specific models (e.g., Gemini 4 Neon/Carbon/Argon/Hydrogen, Orchestrator, Gemini 3.8 Flash, Claude Opus/Sonnet 5.5, GPT-OSS 120B) to the status bar with compact readable abbreviations.
 - **Feature Availability**: Check which tools (Web Search, MCP, Browser) are enabled for your current subscription level.
 - **Visual Indicators**: Color-coded status dots (🟢/🟡/🟠/🔴) and high-resolution progress bars show usage at a glance.
-- **Cycle Tracking**: High-tier models show a visual time scale `[████░░]` indicating positions within their specific quota cycles.
+- **Cycle Tracking**: High-tier models and quota buckets show a visual time scale `[████░░]` indicating positions within their specific 5-hour or weekly quota cycles.
 - **Detailed Statistics**: Precise counters for request usage and token limits for every model.
 
 ### Usage
@@ -162,7 +163,7 @@ Monitor your Model Context Protocol (MCP) server connections directly from the S
 - **Manual Refresh**: Reconnect to all configured MCP servers with a single click.
 
 ### Configuration
-MCP servers are configured in `~/.gemini/antigravity/mcp/mcp_config.json`. The panel will automatically display all servers defined in your configuration.
+MCP servers are configured in `~/.gemini/antigravity/mcp_config.json` (legacy path `~/.gemini/antigravity/mcp/mcp_config.json` is also supported). The panel will automatically display all servers defined in your configuration.
 
 ---
 
@@ -177,7 +178,11 @@ The **Antigravity Proxy** is a local proxy server that unifies access to multipl
 ### Supported Providers
 - **OAuth Providers** (one-click Sign In):
     - **Antigravity** (Google AI Studio)
+    - **Gemini CLI** (Google Cloud Code)
     - **Codex** (OpenAI Codex CLI)
+    - **Claude** (Anthropic OAuth / API Key)
+    - **Qwen** (Alibaba)
+    - **Kimi** (Moonshot)
     - **GitHub Copilot** (using VS Code's built-in authentication)
 - **API Key Providers**:
     - **Claude** (Anthropic)
@@ -205,10 +210,11 @@ The **Antigravity Proxy** is a local proxy server that unifies access to multipl
 6. Use the generated API Key in your applications with endpoint `http://127.0.0.1:8317/v1`.
 
 ### Configuration
-- **Port**: `antigravity.proxy.port` (default: `8317`)
-- **Auto-Start**: `antigravity.proxy.enabled` — Start proxy automatically when VS Code launches.
-- **Upstream Proxy**: `antigravity.proxy.upstreamUrl` — Route proxy traffic through corporate proxy.
-- **Binary Path**: `antigravity.proxy.binaryPath` — Custom path to `cliproxy` executable.
+- **Port**: `antigravity-storage-manager.proxy.port` (default: `8317`)
+- **Auto-Start**: `antigravity-storage-manager.proxy.enabled` — Start proxy automatically when VS Code launches.
+- **Auto-Configure**: `antigravity-storage-manager.proxy.autoConfig` — Automatically configure VS Code proxy settings when started.
+- **Upstream Proxy**: `antigravity.config.proxy.upstreamUrl` — Route proxy traffic through corporate proxy.
+- **Binary Path**: `antigravity-storage-manager.proxy.binaryPath` — Custom path to `cliproxy` executable.
 
 ### Commands
 - `Antigravity Proxy: Dashboard` — Open the visual dashboard.
@@ -220,9 +226,9 @@ The **Antigravity Proxy** is a local proxy server that unifies access to multipl
 
 ---
 
-## Antigravity Proxy MCP Server (New in v0.14.0!)
+## Antigravity Proxy MCP Server
 
-The extension now includes a built-in **Model Context Protocol (MCP)** server that wraps the Antigravity Proxy. This allows AI clients to directly interact with the proxy and its configured providers using standard tools.
+The extension includes a built-in **Model Context Protocol (MCP)** server that wraps the Antigravity Proxy. This allows AI clients to directly interact with the proxy and its configured providers (including Gemini 4 Neon/Carbon/Argon/Hydrogen, Orchestrator, Gemini 3.8 Flash, Claude 5.5, and GPT-OSS 120B) using standard tools.
 
 ![Antigravity Proxy MCP Server](https://raw.githubusercontent.com/unchase/antigravity-storage-manager/master/images/proxy-mcp-server.png)
 
@@ -281,7 +287,7 @@ Receive real-time notifications about your quota usage, system statistics, and s
     - `/stats` — View system resource usage (CPU, RAM) and uptime.
     - `/sync` — Trigger a synchronization remotely.
     - `/ping` — Check bot health.
-- **Secure Access**: Restrict bot access to specific Telegram User IDs or Usernames. Unauthorized users receive an instant "Access Denied" response with their Chat ID for easy configuration.
+- **Secure Access**: Restrict bot access to specific Telegram User IDs or Usernames. Linking a `@username` requires out-of-band confirmation via a 6-digit verification code displayed in VS Code (with brute-force rate limiting). Unauthorized users receive an instant "Access Denied" response with their Chat ID for easy configuration.
 
 ### Setup Guide
 
@@ -303,10 +309,10 @@ Receive real-time notifications about your quota usage, system statistics, and s
     - Send `/start` or `/help` to your bot to begin.
 
 ### Configuration Options
-- `antigravity.telegram.botToken`: Your bot's API token.
-- `antigravity.telegram.userIds`: List of authorized numeric user IDs.
-- `antigravity.telegram.usernames`: List of authorized usernames.
-- `antigravity.telegram.statsIntervalCron`: Cron expression for periodic stats (default: `0 9 * * *` - every day at 9 AM).
+- `antigravity-storage-manager.telegram.botToken`: Your bot's API token.
+- `antigravity-storage-manager.telegram.userIds`: List of authorized numeric user IDs.
+- `antigravity-storage-manager.telegram.usernames`: List of authorized usernames (requires 6-digit confirmation code in VS Code on first link).
+- `antigravity-storage-manager.telegram.statsIntervalCron`: Cron expression for periodic stats (default: `0 */12 * * *` — every 12 hours).
 
 ---
 
@@ -335,7 +341,7 @@ Easily switch between different Antigravity accounts (e.g., Personal vs Work) wi
 
 ### Configuration
 By default, profiles are stored in the extension's global storage. To prevent data loss upon uninstallation, set a custom path in settings:
-- **Setting**: `antigravity.profiles.profilesDirectory`
+- **Setting**: `antigravity-storage-manager.profilesDirectory`
 - **Value**: Absolute path to your desired folder (e.g., `C:\MyProfiles\Antigravity`).
 
 ---
@@ -431,17 +437,23 @@ Antigravity IDE stores chat session history and active tab order in its global d
 
 ## Data Location
 
-Conversations are stored locally in:
-- **Brain data:** `~/.gemini/antigravity/brain/`
-- **Conversation files:** `~/.gemini/antigravity/conversations/`
+The extension automatically detects your active Antigravity storage root (`~/.gemini/antigravity-ide/` or `~/.gemini/antigravity/`), or uses your custom `antigravity-storage-manager.storagePath` setting:
+- **Brain data:** `<storageRoot>/brain/`
+- **Conversation files:** `<storageRoot>/conversations/` (supports both SQLite `.db`/`.db-wal` and legacy Protobuf `.pb` formats)
 
-Synced data is stored in your Google Drive in the `AntigravitySync` folder.
+Synced data is stored in your Google Drive in the `AntigravitySync` folder (or in the configured `antigravity-storage-manager.sync.localPath` when using the `local` storage provider).
 
 ## Keyboard Shortcuts
 
 The extension comes with default keybindings for common actions:
 - `Ctrl+Alt+S` (Windows/Linux) / `Cmd+Alt+S` (Mac): **Sync Now**
 - `Ctrl+Alt+I` (Windows/Linux) / `Cmd+Alt+I` (Mac): **Show Sync Statistics**
+- `Ctrl+Alt+Q` (Windows/Linux) / `Cmd+Alt+Q` (Mac): **Show Quota**
+- `Ctrl+Alt+B` (Windows/Linux) / `Cmd+Alt+B` (Mac): **Trigger Backup**
+- `Ctrl+Alt+E` (Windows/Linux) / `Cmd+Alt+E` (Mac): **Export Conversations**
+- `Ctrl+Alt+O` (Windows/Linux) / `Cmd+Alt+O` (Mac): **Import Conversations**
+- `Ctrl+Alt+R` (Windows/Linux) / `Cmd+Alt+R` (Mac): **Rename Conversation**
+- `Ctrl+Alt+L` (Windows/Linux) / `Cmd+Alt+L` (Mac): **Manage Sync**
 
 ### Customizing Shortcuts
 You can customize these shortcuts to fit your workflow:
@@ -452,7 +464,12 @@ You can customize these shortcuts to fit your workflow:
 
 ## Development
 
-### Testing
+### Testing & Checks
+
+Run full check (TypeScript typecheck, ESLint, and unit tests):
+```bash
+npm run check
+```
 
 Run all unit tests:
 ```bash
@@ -464,10 +481,11 @@ Run localization tests (validates all `package.nls.*.json` and `l10n/bundle.l10n
 npm run test:localization
 ```
 
-Or run specific tests:
+Or run specific localization checks / sync scripts:
 ```bash
-npm run test:nls    # Test package.nls.*.json files only
-npm run test:l10n   # Test l10n/bundle.l10n.*.json files only
+npm run test:nls           # Test package.nls.*.json files only
+npm run test:l10n          # Test l10n/bundle.l10n.*.json files only
+npm run sync:localization  # Check & sync missing keys across all locales
 ```
 
 ---

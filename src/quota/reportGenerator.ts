@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { QuotaSnapshot } from './types';
-import { formatResetTime, drawProgressBar, formatDuration, getCycleDuration, getModelStatusIcon } from './utils';
+import { formatResetTime, drawProgressBar, formatDuration, getCycleDuration, getModelStatusIcon, isGeminiModel, isThirdPartyModel, isHighTierModel } from './utils';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaUsageTracker } from './quotaUsageTracker';
 
@@ -65,18 +65,28 @@ export function generateQuotaReportMarkdown(snapshot: QuotaSnapshot, pinnedModel
     const processed = new Set<string>();
 
     const groupDefinitions = [
-        { name: 'Gemini', match: (l: string) => l.includes('Gemini') },
-        { name: 'Claude & GPT-OSS', match: (l: string) => l.includes('Claude') || l.includes('GPT-OSS') }
+        { name: 'Gemini', match: (m: typeof snapshot.models[number]) => isGeminiModel(m.label, m.modelId) },
+        { name: 'Claude & GPT-OSS', match: (m: typeof snapshot.models[number]) => isThirdPartyModel(m.label, m.modelId) }
     ];
+
+    const areModelsCompatible = (a: typeof snapshot.models[number], b: typeof snapshot.models[number]) => {
+        const resetA = a.resetTime ? new Date(a.resetTime).getTime() : 0;
+        const resetB = b.resetTime ? new Date(b.resetTime).getTime() : 0;
+        const pctA = Math.round((a.remainingPercentage ?? -1) * 10);
+        const pctB = Math.round((b.remainingPercentage ?? -1) * 10);
+        return resetA === resetB && pctA === pctB;
+    };
 
     for (const model of relevantModels) {
         if (processed.has(model.modelId)) continue;
 
         let groupFound = false;
         for (const def of groupDefinitions) {
-            if (def.match(model.label)) {
-                const groupModels = relevantModels.filter(m => !processed.has(m.modelId) && def.match(m.label));
-                if (groupModels.length > 0) {
+            if (def.match(model)) {
+                const groupModels = relevantModels.filter(m =>
+                    !processed.has(m.modelId) && def.match(m) && areModelsCompatible(m, model)
+                );
+                if (groupModels.length > 1) {
                     groups.push({ name: def.name, models: groupModels });
                     groupModels.forEach(m => processed.add(m.modelId));
                     groupFound = true;
@@ -159,9 +169,9 @@ export function generateQuotaReportMarkdown(snapshot: QuotaSnapshot, pinnedModel
                     }
                 }
 
-                const hasHighTier = g.models.some(gm => gm.label.includes('Pro') || gm.label.includes('Ultra') || gm.label.includes('Thinking') || gm.label.includes('Opus'));
+                const hasHighTier = g.models.some(gm => isHighTierModel(gm.label));
                 if (hasHighTier) {
-                    const highTierModel = g.models.find(gm => gm.label.includes('Pro') || gm.label.includes('Ultra') || gm.label.includes('Thinking') || gm.label.includes('Opus')) || m;
+                    const highTierModel = g.models.find(gm => isHighTierModel(gm.label)) || m;
                     const cycleDuration = getCycleDuration(highTierModel.label);
                     const progress = Math.max(0, Math.min(1, 1 - (msUntilReset / cycleDuration)));
                     const progressBar = drawProgressBar(progress * 100);

@@ -61,10 +61,18 @@ export class UnixProcessDetector implements IPlatformStrategy {
 
     private isAntigravityProcess(commandLine: string): boolean {
         const lowerCmd = commandLine.toLowerCase();
-        if (/--app_data_dir\s+antigravity\b/i.test(commandLine)) {
+        if (/--app_data_dir[=\s]+antigravity(?:-ide)?\b/i.test(commandLine)) {
             return true;
         }
-        if (lowerCmd.includes('/antigravity/') || lowerCmd.includes('\\antigravity\\')) {
+        if (
+            lowerCmd.includes('/antigravity/') ||
+            lowerCmd.includes('\\antigravity\\') ||
+            lowerCmd.includes('/antigravity ide/') ||
+            lowerCmd.includes('antigravity-ide')
+        ) {
+            return true;
+        }
+        if (/(?:^|[\\/\s"])agy(?:["\s]|$)/i.test(commandLine) && /--hub\b/i.test(commandLine)) {
             return true;
         }
         return false;
@@ -107,7 +115,7 @@ export class UnixProcessDetector implements IPlatformStrategy {
                 continue;
             }
 
-            const portMatch = cmd.match(/--extension_server_port[=\s]+(\d+)/);
+            const portMatch = cmd.match(/--(?:extension_server_port|hub[-_]port)[=\s]+(\d+)/i);
             const tokenMatch = cmd.match(/--csrf_token[=\s]+([a-f0-9-]+)/i);
 
             if (tokenMatch && tokenMatch[1] && this.isAntigravityProcess(cmd)) {

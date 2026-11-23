@@ -14,7 +14,8 @@ async function makeRequest(
     config: RequestConfig,
     port: number,
     httpPort: number | undefined,
-    csrfToken: string | undefined
+    csrfToken: string | undefined,
+    protocol: 'https' | 'http' = 'https'
 ): Promise<any> {
     const requestBody = JSON.stringify(config.body);
 
@@ -71,13 +72,25 @@ async function makeRequest(
         req.end();
     });
 
+    if (protocol === 'http') {
+        try {
+            return await doRequest(false, port);
+        } catch (error: any) {
+            if (httpPort && httpPort !== port) {
+                return await doRequest(false, httpPort);
+            }
+            throw error;
+        }
+    }
+
     try {
         return await doRequest(true, port);
     } catch (error: any) {
         const msg = (error?.message || '').toLowerCase();
-        const shouldRetryHttp = httpPort !== undefined && (error.code === 'EPROTO' || msg.includes('wrong_version_number'));
-        if (shouldRetryHttp && httpPort) {
-            return await doRequest(false, httpPort);
+        const shouldRetryHttp = error.code === 'EPROTO' || msg.includes('wrong_version_number') || msg.includes('wrong version number');
+        if (shouldRetryHttp) {
+            const fallbackPort = httpPort && httpPort > 0 ? httpPort : port;
+            return await doRequest(false, fallbackPort);
         }
         throw error;
     }
@@ -85,20 +98,49 @@ async function makeRequest(
 
 export class QuotaService {
     private readonly GET_USER_STATUS_PATH = '/exa.language_server_pb.LanguageServerService/GetUserStatus';
+    private readonly RETRIEVE_USER_QUOTA_SUMMARY_PATH = '/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary';
 
     private port: number;
     private httpPort?: number;
     private csrfToken: string;
+    private protocol: 'https' | 'http';
 
-    constructor(port: number, csrfToken: string, httpPort?: number) {
+    constructor(port: number, csrfToken: string, httpPort?: number, protocol: 'https' | 'http' = 'https') {
         this.port = port;
         this.csrfToken = csrfToken;
         this.httpPort = httpPort;
+        this.protocol = protocol;
     }
 
     async fetchQuota(): Promise<QuotaSnapshot> {
-        const userStatusResponse = await this.makeGetUserStatusRequest();
-        return parseQuotaResponse(userStatusResponse);
+        let userStatusSnapshot: QuotaSnapshot | null = null;
+        let userStatusError: unknown = null;
+
+        try {
+            const userStatusResponse = await this.makeGetUserStatusRequest();
+            userStatusSnapshot = parseQuotaResponse(userStatusResponse);
+            if (userStatusSnapshot.models.length > 0) {
+                return userStatusSnapshot;
+            }
+        } catch (error) {
+            userStatusError = error;
+        }
+
+        // Fallback to RetrieveUserQuotaSummary (Antigravity 2.0 / agy hub bucketed quota endpoint)
+        try {
+            const summaryResponse = await this.makeRetrieveUserQuotaSummaryRequest();
+            const summarySnapshot = parseQuotaSummaryResponse(summaryResponse, userStatusSnapshot || undefined);
+            if (summarySnapshot.models.length > 0 || !userStatusSnapshot) {
+                return summarySnapshot;
+            }
+        } catch (summaryError) {
+            if (userStatusSnapshot) {
+                return userStatusSnapshot;
+            }
+            throw userStatusError || summaryError;
+        }
+
+        return userStatusSnapshot!;
     }
 
     private async makeGetUserStatusRequest(): Promise<any> {
@@ -116,7 +158,21 @@ export class QuotaService {
             },
             this.port,
             this.httpPort,
-            this.csrfToken
+            this.csrfToken,
+            this.protocol
+        );
+    }
+
+    private async makeRetrieveUserQuotaSummaryRequest(): Promise<any> {
+        return makeRequest(
+            {
+                path: this.RETRIEVE_USER_QUOTA_SUMMARY_PATH,
+                body: {}
+            },
+            this.port,
+            this.httpPort,
+            this.csrfToken,
+            this.protocol
         );
     }
 }
@@ -167,15 +223,74 @@ export function parseQuotaResponse(response: any): QuotaSnapshot {
     };
 }
 
+export function parseQuotaSummaryResponse(summaryResponse: any, baseSnapshot?: QuotaSnapshot): QuotaSnapshot {
+    const payload = summaryResponse?.response || summaryResponse;
+    const groups = payload?.groups;
+
+    if (!Array.isArray(groups)) {
+        throw new Error('API response format is invalid; missing quota groups');
+    }
+
+    const models: ModelQuotaInfo[] = [];
+
+    for (const group of groups) {
+        const groupName = group.displayName || group.name || 'Quota';
+        const rawBuckets = Array.isArray(group.buckets) ? group.buckets : [];
+        const activeBuckets = rawBuckets.filter((b: any) => !b.disabled);
+        const bucketsToUse = activeBuckets.length > 0 ? activeBuckets : rawBuckets;
+
+        for (const bucket of bucketsToUse) {
+            const remainingFraction = bucket.remainingFraction !== undefined
+                ? Number(bucket.remainingFraction)
+                : (bucket.remaining_fraction !== undefined ? Number(bucket.remaining_fraction) : undefined);
+
+            const resetTimeRaw = bucket.resetTime || bucket.reset_time;
+            const resetTime = resetTimeRaw ? new Date(resetTimeRaw) : new Date(0);
+            const isValidResetTime = !isNaN(resetTime.getTime()) && resetTime.getTime() > 0;
+            const timeUntilReset = isValidResetTime ? resetTime.getTime() - Date.now() : 0;
+
+            const bucketSuffix = bucket.displayName || bucket.window || bucket.bucketId;
+            const label = bucketsToUse.length > 1 && bucketSuffix
+                ? `${groupName} (${bucketSuffix})`
+                : (groupName || bucketSuffix || 'Unknown');
+
+            const modelId = bucket.bucketId || bucket.bucket_id || label;
+
+            models.push({
+                label,
+                modelId,
+                remainingFraction,
+                remainingPercentage: remainingFraction !== undefined ? remainingFraction * 100 : undefined,
+                isExhausted: remainingFraction === undefined || remainingFraction === 0,
+                resetTime,
+                timeUntilReset,
+                timeUntilResetFormatted: formatTimeUntilReset(timeUntilReset)
+            });
+        }
+    }
+
+    return {
+        timestamp: new Date(),
+        promptCredits: baseSnapshot?.promptCredits,
+        models,
+        planName: baseSnapshot?.planName,
+        userEmail: baseSnapshot?.userEmail,
+        rawUserStatus: baseSnapshot?.rawUserStatus || summaryResponse
+    };
+}
+
 function parseModelQuota(config: any): ModelQuotaInfo {
     const quotaInfo = config.quotaInfo;
     const remainingFraction = quotaInfo?.remainingFraction;
-    const resetTime = new Date(quotaInfo.resetTime);
-    const timeUntilReset = resetTime.getTime() - Date.now();
+    const resetTimeRaw = quotaInfo?.resetTime;
+    const resetTime = resetTimeRaw ? new Date(resetTimeRaw) : new Date(0);
+    const isValidResetTime = !isNaN(resetTime.getTime()) && resetTime.getTime() > 0;
+    const timeUntilReset = isValidResetTime ? resetTime.getTime() - Date.now() : 0;
+    const modelId = config.modelOrAlias?.model || config.modelOrAlias?.alias || config.modelId || config.label;
 
     return {
         label: config.label,
-        modelId: config.modelOrAlias.model,
+        modelId,
         remainingFraction,
         remainingPercentage: remainingFraction !== undefined ? remainingFraction * 100 : undefined,
         isExhausted: remainingFraction === undefined || remainingFraction === 0,

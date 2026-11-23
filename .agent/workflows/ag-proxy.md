@@ -36,5 +36,7 @@ return response.content;
 
 ## Usage Examples
 
-- `/ag-proxy model:gpt-5 Explain this code` — sends request with context
+- `/ag-proxy model:gemini-4-neon-high Explain this code` — sends request with context using Gemini 4 Neon
+- `/ag-proxy model:claude-opus-5-5-medium Review this diff` — sends request with context using Claude Opus 5.5
+- `/ag-proxy model:gpt-5 Explain this architecture` — sends request with context using GPT-5
 - `/ag-proxy How to optimize this function?` — uses default model

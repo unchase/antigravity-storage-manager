@@ -1,12 +1,14 @@
 # Antigravity Synchronization Setup Guide
 
-This guide describes how to set up and use the **Google Drive Synchronization** feature in Antigravity Storage Manager. This feature allows you to keep your AI conversation history synchronized across multiple computers (e.g., work and home) using your private Google Drive.
+This guide describes how to set up and use the **Synchronization** feature in Antigravity Storage Manager. It supports both **Google Drive** (end-to-end encrypted cloud sync) and **Local / Network Folder** (`sync.storageProvider: "local"`) to keep your AI conversation history (`.db` + SQLite WAL and `.pb`) synchronized across multiple computers.
 
 ## Prerequisites
 
-1. **VS Code** (version 1.96.0 or higher).
-2. **Antigravity Storage Manager** extension installed (v0.3.0+).
-3. A **Google Account** (Gmail) to store your data.
+1. **VS Code** or **Antigravity IDE** (version 1.96.0 or higher).
+2. **Antigravity Storage Manager** extension installed.
+3. A **Google Account** (Gmail) if using Google Drive sync (not required for the `local` storage provider).
+
+> **Tip (Local / NAS / Cloud Folder Sync):** If you prefer syncing via a local, NAS, Dropbox, or OneDrive folder without Google Cloud setup, open Settings (`Ctrl+,`), set `antigravity-storage-manager.sync.storageProvider` to `local`, and specify `antigravity-storage-manager.sync.localPath`. Then skip straight to Step 1 (Master Password & Initial Sync).
 
 ---
 
@@ -104,11 +106,13 @@ Now, set up synchronization on your second computer (e.g., your home laptop).
 
 ## Managing Conflicts
 
-If you edit the same conversation on both computers while offline, a **Conflict** may occur when you reconnect. The extension will ask you how to resolve it:
+If you edit the same conversation on multiple computers while offline, a **Conflict** may occur when you reconnect. You can configure the default policy via `antigravity-storage-manager.sync.conflictResolution`:
 
-- **Keep Local**: Overwrites the version in the cloud with your current local version.
-- **Keep Remote**: Discards your local changes and accepts the version from the cloud.
-- **Keep Both**: Keeps both versions (renaming one with a `-conflict` suffix) so you don't lose any data.
+- **`prompt`** *(default)*: Prompts you with single-click batch options (**Keep All Local**, **Keep All Remote**, **Keep All Newer**, **Keep All Larger**) or **Review One-by-One** (including **Keep Both**, which saves a `-conflict` copy).
+- **`keepLocal`**: Always overwrites the remote version with your local version.
+- **`keepRemote`**: Always overwrites your local version with the remote version.
+- **`keepNewer`**: Automatically keeps the most recently modified version (Last-Write-Wins).
+- **`keepLarger`**: Automatically keeps whichever version has the larger file size.
 
 ## Troubleshooting
 
@@ -133,4 +137,4 @@ If you lost your Master Password or want to start over:
 1. **Disconnect** the extension on all machines (`Antigravity Storage: Disconnect Google Drive Sync`).
 2. Go to your **Google Drive** (in a web browser).
 3. Delete the folder named `AntigravitySync`.
-4. Run setup again on your main machine to check create a new sync store with a new password.
+4. Run setup again on your main machine to create a new sync store with a new password.

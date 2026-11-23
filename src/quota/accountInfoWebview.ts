@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { LocalizationManager } from '../l10n/localizationManager';
 import { QuotaSnapshot } from './types';
-import { formatResetTime, formatDuration, getCycleDuration } from './utils';
+import { formatResetTime, formatDuration, getCycleDuration, isHighTierModel } from './utils';
 import { QuotaUsageTracker } from './quotaUsageTracker';
 import { StoredAccount } from '../googleAuth';
 
@@ -224,7 +224,7 @@ export class AccountInfoWebview {
             const resetTimeStr = formatResetTime(model.resetTime);
 
             let cycleInfo = '';
-            const isHighTier = model.label.includes('Pro') || model.label.includes('Ultra') || model.label.includes('Thinking') || model.label.includes('Opus');
+            const isHighTier = isHighTierModel(model.label);
             if (isHighTier && model.timeUntilReset > 0) {
                 const cycleDuration = getCycleDuration(model.label);
                 const progress = Math.max(0, Math.min(1, 1 - (model.timeUntilReset / cycleDuration)));

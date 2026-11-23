@@ -1,4 +1,13 @@
-import { drawProgressBar, getModelAbbreviation, formatResetTime, compareModels } from '../../../quota/utils';
+import {
+    drawProgressBar,
+    getModelAbbreviation,
+    formatResetTime,
+    compareModels,
+    isGeminiModel,
+    isThirdPartyModel,
+    isHighTierModel,
+    getCycleDuration
+} from '../../../quota/utils';
 import { ModelQuotaInfo } from '../../../quota/types';
 import { LocalizationManager } from '../../../l10n/localizationManager';
 
@@ -40,10 +49,52 @@ describe('Quota Utilities', () => {
             expect(getModelAbbreviation('Claude Opus 4.6 (Thinking)')).toBe('Claude O4.6T');
             expect(getModelAbbreviation('GPT-OSS 120B (Medium)')).toBe('GPT-OSS (M)');
 
+            // Gemini 4, Orchestrator & Claude 5.5 models
+            expect(getModelAbbreviation('Gemini 4 Neon (High)')).toBe('Gemini 4 Neon (H)');
+            expect(getModelAbbreviation('Gemini 4 Neon High')).toBe('Gemini 4 Neon (H)');
+            expect(getModelAbbreviation('Gemini 4 Neon (XHigh)')).toBe('Gemini 4 Neon (XH)');
+            expect(getModelAbbreviation('Gemini 4 Carbon (Medium)')).toBe('Gemini 4 Carbon (M)');
+            expect(getModelAbbreviation('Gemini 4 Argon (Medium)')).toBe('Gemini 4 Argon (M)');
+            expect(getModelAbbreviation('Gemini 4 Hydrogen (Low)')).toBe('Gemini 4 Hydrogen (L)');
+            expect(getModelAbbreviation('Orchestrator (Neon)')).toBe('Orch (Neon)');
+            expect(getModelAbbreviation('Orchestrator (Carbon)')).toBe('Orch (Carbon)');
+            expect(getModelAbbreviation('Orchestrator Gemini 4 Neon High')).toBe('Orch G4 Neon (H)');
+            expect(getModelAbbreviation('Claude Opus 5.5 (Medium)')).toBe('Claude O5.5 (M)');
+            expect(getModelAbbreviation('Claude Sonnet 5.5 (High)')).toBe('Claude S5.5 (H)');
+            expect(getModelAbbreviation('Claude Opus 5.5 Low')).toBe('Claude O5.5 (L)');
+
+            // Bucketed quota summary labels
+            expect(getModelAbbreviation('Gemini Models (5-Hour Limit)')).toBe('Gemini (5h)');
+            expect(getModelAbbreviation('Gemini Models (Weekly Limit)')).toBe('Gemini (7d)');
+            expect(getModelAbbreviation('Claude and GPT models (5-Hour Session)')).toBe('Claude/GPT (5h)');
+            expect(getModelAbbreviation('Claude and GPT models (Weekly Limit)')).toBe('Claude/GPT (7d)');
+
             // Dynamic fallback
             expect(getModelAbbreviation('My Custom Model')).toBe('MCM');
             expect(getModelAbbreviation('GPT-4')).toBe('G4');
             expect(getModelAbbreviation('Llama-3-70b')).toBe('L370');
+        });
+    });
+
+    describe('model classification & cycle helpers', () => {
+        test('classifies Gemini and Orchestrator models correctly', () => {
+            expect(isGeminiModel('Gemini 4 Neon (High)')).toBe(true);
+            expect(isGeminiModel('Orchestrator (Neon)', 'gemini-pro-orchestrator-neon')).toBe(true);
+            expect(isGeminiModel('Orchestrator (Carbon)')).toBe(true);
+            expect(isGeminiModel('Claude Opus 5.5 (Medium)')).toBe(false);
+            expect(isThirdPartyModel('Claude Opus 5.5 (Medium)')).toBe(true);
+            expect(isThirdPartyModel('GPT-OSS 120B (Medium)')).toBe(true);
+            expect(isThirdPartyModel('3p-5h', '3p-5h')).toBe(true);
+            expect(isThirdPartyModel('Gemini 4 Carbon (High)')).toBe(false);
+        });
+
+        test('detects high-tier models and cycle durations', () => {
+            expect(isHighTierModel('Gemini 4 Neon (High)')).toBe(true);
+            expect(isHighTierModel('Orchestrator (Neon)')).toBe(true);
+            expect(isHighTierModel('Claude Opus 5.5 (Medium)')).toBe(true);
+            expect(getCycleDuration('Gemini 4 Neon (High)')).toBe(5 * 60 * 60 * 1000);
+            expect(getCycleDuration('Gemini Models (Weekly Limit)')).toBe(7 * 24 * 60 * 60 * 1000);
+            expect(getCycleDuration('Gemini Models (5-Hour Limit)')).toBe(5 * 60 * 60 * 1000);
         });
     });
 

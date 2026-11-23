@@ -3520,8 +3520,13 @@ return response.content;
                                     if (bucket.tokenType !== 'REQUESTS' && bucket.tokenType !== 'TOKENS') return; 
 
                                     let series = 'Other';
-                                    const mId = bucket.modelId || '';
-                                    if (mId.includes('flash-lite')) series = 'Gemini Flash Lite Series';
+                                    const mId = (bucket.modelId || '').toLowerCase();
+                                    if (mId.includes('neon')) series = 'Gemini 4 Neon Series';
+                                    else if (mId.includes('carbon')) series = 'Gemini 4 Carbon Series';
+                                    else if (mId.includes('argon')) series = 'Gemini 4 Argon Series';
+                                    else if (mId.includes('hydrogen')) series = 'Gemini 4 Hydrogen Series';
+                                    else if (mId.includes('orchestrator')) series = 'Gemini Orchestrator Series';
+                                    else if (mId.includes('flash-lite')) series = 'Gemini Flash Lite Series';
                                     else if (mId.includes('flash')) series = 'Gemini Flash Series';
                                     else if (mId.includes('pro')) series = 'Gemini Pro Series';
                                     else if (mId.includes('ultra')) series = 'Gemini Ultra Series';
@@ -3615,9 +3620,9 @@ return response.content;
                                 
                                 quotas.forEach(q => {
                                     const name = q.name || '';
-                                    if (name.includes('Gemini')) {
+                                    if (name.includes('Gemini') || name.includes('Orchestrator')) {
                                         groups['Gemini'].push(q);
-                                    } else if (name.includes('Claude') || name.includes('GPT-OSS')) {
+                                    } else if (name.includes('Claude') || name.includes('GPT-OSS') || name.includes('GPT')) {
                                         groups['Claude & GPT-OSS'].push(q);
                                     } else {
                                         groups['Other'].push(q);

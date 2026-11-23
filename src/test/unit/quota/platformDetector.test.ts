@@ -18,11 +18,15 @@ describe('PlatformDetector', () => {
             mockPlatform = 'win32';
         });
 
-        test('returns language_server_windows_x64.exe on win32 x64', () => {
+        test('returns language_server_windows_x64.exe on win32 x64 with language_server and agy fallbacks', () => {
             mockArch = 'x64';
             const detector = new PlatformDetector();
             expect(detector.getProcessName()).toBe('language_server_windows_x64.exe');
-            expect(detector.getProcessNames()).toEqual(['language_server_windows_x64.exe']);
+            expect(detector.getProcessNames()).toEqual([
+                'language_server_windows_x64.exe',
+                'language_server.exe',
+                'agy.exe'
+            ]);
         });
 
         test('returns language_server_windows_arm.exe on win32 arm64 with fallbacks', () => {
@@ -32,7 +36,9 @@ describe('PlatformDetector', () => {
             expect(detector.getProcessNames()).toEqual([
                 'language_server_windows_arm.exe',
                 'language_server_windows_arm64.exe',
-                'language_server_windows_x64.exe'
+                'language_server_windows_x64.exe',
+                'language_server.exe',
+                'agy.exe'
             ]);
         });
     });
@@ -42,18 +48,27 @@ describe('PlatformDetector', () => {
             mockPlatform = 'darwin';
         });
 
-        test('returns language_server_macos on darwin x64', () => {
+        test('returns language_server_macos on darwin x64 with fallbacks', () => {
             mockArch = 'x64';
             const detector = new PlatformDetector();
             expect(detector.getProcessName()).toBe('language_server_macos');
-            expect(detector.getProcessNames()).toEqual(['language_server_macos']);
+            expect(detector.getProcessNames()).toEqual([
+                'language_server_macos',
+                'language_server',
+                'agy'
+            ]);
         });
 
-        test('returns language_server_macos_arm on darwin arm64 with fallback', () => {
+        test('returns language_server_macos_arm on darwin arm64 with fallbacks', () => {
             mockArch = 'arm64';
             const detector = new PlatformDetector();
             expect(detector.getProcessName()).toBe('language_server_macos_arm');
-            expect(detector.getProcessNames()).toEqual(['language_server_macos_arm', 'language_server_macos']);
+            expect(detector.getProcessNames()).toEqual([
+                'language_server_macos_arm',
+                'language_server_macos',
+                'language_server',
+                'agy'
+            ]);
         });
     });
 
@@ -62,18 +77,27 @@ describe('PlatformDetector', () => {
             mockPlatform = 'linux';
         });
 
-        test('returns language_server_linux_x64 on linux x64', () => {
+        test('returns language_server_linux_x64 on linux x64 with fallbacks', () => {
             mockArch = 'x64';
             const detector = new PlatformDetector();
             expect(detector.getProcessName()).toBe('language_server_linux_x64');
-            expect(detector.getProcessNames()).toEqual(['language_server_linux_x64']);
+            expect(detector.getProcessNames()).toEqual([
+                'language_server_linux_x64',
+                'language_server',
+                'agy'
+            ]);
         });
 
-        test('returns language_server_linux_arm on linux arm64 with fallback', () => {
+        test('returns language_server_linux_arm on linux arm64 with fallbacks', () => {
             mockArch = 'arm64';
             const detector = new PlatformDetector();
             expect(detector.getProcessName()).toBe('language_server_linux_arm');
-            expect(detector.getProcessNames()).toEqual(['language_server_linux_arm', 'language_server_linux_x64']);
+            expect(detector.getProcessNames()).toEqual([
+                'language_server_linux_arm',
+                'language_server_linux_x64',
+                'language_server',
+                'agy'
+            ]);
         });
     });
 });

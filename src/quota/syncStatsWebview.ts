@@ -3,7 +3,7 @@ import { LocalizationManager } from '../l10n/localizationManager';
 import { SyncManifest } from '../googleDrive';
 import { getFileIconSvg } from './fileIcons';
 import { QuotaSnapshot } from './types';
-import { formatResetTime, formatDuration, getCycleDuration, getModelAbbreviation, getModelStatusIcon } from './utils';
+import { formatResetTime, formatDuration, getCycleDuration, getModelAbbreviation, getModelStatusIcon, isGeminiModel, isThirdPartyModel } from './utils';
 import { SearchResult } from './antigravityClient';
 
 export { SearchResult };
@@ -1134,13 +1134,13 @@ export class SyncStatsWebview {
                                 // Mini quota summary (status-bar style)
                                 // Mini quota summary — grouped (models in same group share quota)
                                 const miniGroupDefs = [
-                                    { name: 'Claude/GPT', match: (l: string) => l.includes('Claude') || l.includes('GPT-OSS') },
-                                    { name: 'Gemini', match: (l: string) => l.includes('Gemini') },
+                                    { name: 'Claude/GPT', match: (mdl: any) => isThirdPartyModel(mdl.label, mdl.modelId) },
+                                    { name: 'Gemini', match: (mdl: any) => isGeminiModel(mdl.label, mdl.modelId) },
                                 ];
                                 const miniProcessed = new Set<string>();
                                 const miniParts: string[] = [];
                                 for (const def of miniGroupDefs) {
-                                    const groupModels = models.filter((mdl: any) => !miniProcessed.has(mdl.modelId) && def.match(mdl.label));
+                                    const groupModels = models.filter((mdl: any) => !miniProcessed.has(mdl.modelId) && def.match(mdl));
                                     if (groupModels.length === 0) continue;
                                     groupModels.forEach((mdl: any) => miniProcessed.add(mdl.modelId));
                                     const minPct = Math.min(...groupModels.map((mdl: any) => mdl.remainingPercentage ?? 0));
@@ -1207,7 +1207,9 @@ export class SyncStatsWebview {
                                         const areModelsCompatible = (a: any, b: any) => {
                                             const resetA = a.resetTime ? new Date(a.resetTime).getTime() : 0;
                                             const resetB = b.resetTime ? new Date(b.resetTime).getTime() : 0;
-                                            return resetA === resetB;
+                                            const pctA = Math.round((a.remainingPercentage ?? -1) * 10);
+                                            const pctB = Math.round((b.remainingPercentage ?? -1) * 10);
+                                            return resetA === resetB && pctA === pctB;
                                         };
 
                                         // Prepare Groups
@@ -1215,8 +1217,8 @@ export class SyncStatsWebview {
                                         const processed = new Set<string>();
 
                                         const definitions = [
-                                            { name: 'Gemini', match: (l: string) => l.includes('Gemini') },
-                                            { name: 'Claude & GPT-OSS', match: (l: string) => l.includes('Claude') || l.includes('GPT-OSS') }
+                                            { name: 'Gemini', match: (mdl: any) => isGeminiModel(mdl.label, mdl.modelId) },
+                                            { name: 'Claude & GPT-OSS', match: (mdl: any) => isThirdPartyModel(mdl.label, mdl.modelId) }
                                         ];
 
                                         models.sort((a: any, b: any) => {
@@ -1231,9 +1233,9 @@ export class SyncStatsWebview {
                                             if (processed.has(model.modelId)) continue;
                                             let groupFound = false;
                                             for (const def of definitions) {
-                                                if (def.match(model.label)) {
-                                                    const groupModels = models.filter(m => !processed.has(m.modelId) && def.match(m.label));
-                                                    if (groupModels.length > 0 && groupModels.every(m => areModelsCompatible(m, model))) {
+                                                if (def.match(model)) {
+                                                    const groupModels = models.filter(m => !processed.has(m.modelId) && def.match(m) && areModelsCompatible(m, model));
+                                                    if (groupModels.length > 0) {
                                                         if (groupModels.length > 1) {
                                                             groups.push({ name: def.name, models: groupModels, type: 'group' });
                                                         } else {
