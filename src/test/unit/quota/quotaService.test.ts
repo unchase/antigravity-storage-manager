@@ -387,17 +387,18 @@ describe('QuotaService', () => {
 
             expect(snapshot.userEmail).toBe('user@example.com');
             expect(snapshot.models).toHaveLength(4);
-            expect(snapshot.models[0].label).toBe('Gemini Models (Weekly Limit Remaining)');
+            expect(snapshot.models[0].label).toBe('Gemini Models (Weekly Limit)');
             expect(snapshot.models[0].modelId).toBe('gemini-weekly');
             expect(snapshot.models[0].canonicalModelId).toBe('gemini-weekly');
             expect(snapshot.models[0].remainingPercentage).toBeCloseTo(75.73);
             expect(snapshot.models[0].tagDescription).toContain('You have used some of your weekly limit.');
             expect(snapshot.models[0].tagDescription).toContain('Gemini 4 Neon');
-            expect(snapshot.models[1].label).toBe('Gemini Models (Five Hour Limit Remaining)');
+            expect(snapshot.models[1].label).toBe('Gemini Models (5-Hour Limit)');
             expect(snapshot.models[1].remainingPercentage).toBeCloseTo(45.5);
-            expect(snapshot.models[2].label).toBe('Claude and GPT models (Weekly Limit Remaining)');
+            expect(snapshot.models[2].label).toBe('Claude and GPT models (Weekly Limit)');
             expect(snapshot.models[2].timeUntilReset).toBe(0);
             expect(snapshot.models[2].isExhausted).toBe(false);
+            expect(snapshot.models[3].label).toBe('Claude and GPT models (5-Hour Limit)');
             expect(snapshot.models[3].modelId).toBe('3p-5h');
         });
 

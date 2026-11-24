@@ -964,5 +964,7 @@
     "Documents": "Documentos",
     "Audio": "Áudio",
     "Video": "Vídeo",
-    "Usage History": "Histórico de uso"
+    "Usage History": "Histórico de uso",
+    "Data Source": "Fonte de dados",
+    "Showing live 5-hour and weekly quota pools via Antigravity CLI. Plan details and feature flags require an active local Language Server.": "Exibindo cotas ao vivo de 5 horas e semanais via Antigravity CLI. Detalhes do plano e recursos exigem um Language Server local ativo."
 }

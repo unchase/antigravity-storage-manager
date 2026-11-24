@@ -964,5 +964,7 @@
     "Documents": "Tài liệu",
     "Audio": "Âm thanh",
     "Video": "Video",
-    "Usage History": "Lịch sử sử dụng"
+    "Usage History": "Lịch sử sử dụng",
+    "Data Source": "Nguồn dữ liệu",
+    "Showing live 5-hour and weekly quota pools via Antigravity CLI. Plan details and feature flags require an active local Language Server.": "Đang hiển thị hạn mức 5 giờ và hàng tuần trực tiếp qua Antigravity CLI. Chi tiết gói và cờ tính năng yêu cầu Language Server cục bộ đang chạy."
 }

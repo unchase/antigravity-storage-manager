@@ -5,6 +5,12 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.4] - 2026-11-25
+### Account Information & `agy CLI` UX Polish
+- **Cleaner Bucket Labels**: Normalized `agy CLI` bucket labels from `Five Hour Limit Remaining` / `Weekly Limit Remaining` to concise `5-Hour Limit` and `Weekly Limit` across the QuickPick, rich status bar tooltip, and Account Information dashboard.
+- **`Account Information` CLI Mode Polish**: When displaying data from the `agy CLI` fallback, the **Account Information** page now shows a **`Data Source: agy CLI`** badge and an informational quota-pool banner, falls back to the active synced Google account for profile name and email instead of `N/A`, and hides misleading empty `Plan`/`Tier` (`Free`), `Credits Balance` (`0 / 0`), and `Features` (`Disabled`) sections.
+- **Localization**: Added `Data Source` and the `agy CLI` info banner message across all 16 `l10n/bundle.l10n.*.json` bundles.
+
 ## [0.15.3] - 2026-11-25
 ### Official Antigravity CLI (`/usage`) Quota Fallback
 - **Automatic `agy -p /usage --output-format json` Fallback**: Added `findAgyExecutable` and `fetchQuotaViaAgyCli` in `QuotaService`, and integrated automatic fallback in `QuotaManager`. When the local `language_server` is unavailable or `agy.exe --hub` runs without a CLI `--csrf_token`, the extension seamlessly fetches live 5-hour and weekly quota pools (`Gemini Models`, `Claude and GPT models`) via the official zero-token Antigravity CLI `/usage` command with `windowsHide: true`, caching CLI mode across polling cycles and enriching the snapshot with the active profile email.

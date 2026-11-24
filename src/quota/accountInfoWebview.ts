@@ -267,12 +267,20 @@ export class AccountInfoWebview {
         const pinnedIds = config.get<string[]>('quota.pinnedModels') || [];
         const allModels = [...(snapshot.models || [])];
 
-        // Profile extras from rawUserStatus
+        // Profile extras from rawUserStatus (with fallback to active synced Google account in CLI mode)
+        const isCliFallback = snapshot.rawUserStatus?.command?.name === 'usage';
+        const hasPlanInfo = Boolean(planInfo);
+        const hasTierInfo = Boolean(userTier?.name || userTier?.description || snapshot.planName);
+        const activeAccount = AccountInfoWebview.latestAccounts.find(a => a.id === AccountInfoWebview.latestCurrentAccountId)
+            || AccountInfoWebview.latestAccounts[0];
         const rawAvatar = typeof data.profilePictureUrl === 'string' && data.profilePictureUrl.startsWith('data:image/')
             ? data.profilePictureUrl
             : undefined;
-        const displayName = data.name || 'N/A';
-        const displayEmail = snapshot.userEmail || data.email || 'N/A';
+        const displayName = data.name || activeAccount?.name || 'N/A';
+        const displayEmail = snapshot.userEmail || data.email || activeAccount?.email || 'N/A';
+        const cliUsageSummary: string | undefined = typeof snapshot.rawUserStatus?.command?.data?.description === 'string' && snapshot.rawUserStatus.command.data.description.trim()
+            ? snapshot.rawUserStatus.command.data.description.trim()
+            : undefined;
         const defaultModelRef: string | undefined = data.cascadeModelConfigData?.defaultOverrideModelConfig?.modelOrAlias?.model;
         const defaultModelMatch = defaultModelRef
             ? allModels.find(m => m.modelId === defaultModelRef || m.canonicalModelId === defaultModelRef)
@@ -1432,6 +1440,30 @@ export class AccountInfoWebview {
             font-weight: 600;
             color: var(--text-main);
         }
+        .source-badge {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: rgba(47, 129, 247, 0.14);
+            border: 1px solid rgba(47, 129, 247, 0.35);
+            color: #79c0ff;
+            width: fit-content;
+        }
+        .cli-info-banner {
+            background: rgba(47, 129, 247, 0.07);
+            border: 1px solid rgba(47, 129, 247, 0.28);
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 14px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-dim);
+        }
+        .cli-info-banner strong {
+            color: #79c0ff;
+        }
     </style>
 </head>
 <body>
@@ -1498,15 +1530,21 @@ export class AccountInfoWebview {
                 ? `<span class="p-value copyable-value" onclick="copyText('${escapeJsAttr(displayEmail)}')" title="${escapeAttr(l.t('Click to copy'))}">${escapeAttr(displayEmail)} <span class="copy-icon-hint">📋</span></span>`
                 : `<span class="p-value">N/A</span>`}
             </div>
+            ${hasTierInfo ? `
             <div class="profile-box">
                 <span class="p-label">${l.t('Plan')}</span>
-                <div><span class="plan-tag">${escapeAttr(userTier?.name || 'Free')}</span></div>
+                <div><span class="plan-tag">${escapeAttr(userTier?.name || snapshot.planName || 'Free')}</span></div>
                 ${upgradeSubText ? `<div class="upgrade-hint">${escapeAttr(upgradeSubText)}</div>` : ''}
             </div>
             <div class="profile-box">
                 <span class="p-label">${l.t('Tier')}</span>
-                <span class="p-value">${escapeAttr(userTier?.description || 'Free')}</span>
-            </div>
+                <span class="p-value">${escapeAttr(userTier?.description || snapshot.planName || 'Free')}</span>
+            </div>` : ''}
+            ${isCliFallback ? `
+            <div class="profile-box">
+                <span class="p-label">${l.t('Data Source')}</span>
+                <span class="source-badge">agy CLI</span>
+            </div>` : ''}
             ${defaultModelLabel ? `
             <div class="profile-box">
                 <span class="p-label">${l.t('Default Model')}</span>
@@ -1523,18 +1561,19 @@ export class AccountInfoWebview {
             </div>
         </div>
 
-        ${vscode.workspace.getConfiguration('antigravity-storage-manager').get('showCreditsBalance', false) ? `
+        ${vscode.workspace.getConfiguration('antigravity-storage-manager').get('showCreditsBalance', false) && (promptCredits || flowCredits || (flexPurchaseAmount && flexPurchaseAmount > 0)) ? `
         <div class="section-title">${l.t('Credits Balance')}</div>
         <div class="credits-card">
+            ${promptCredits ? `
             <div class="credit-row">
                 <div class="cred-info">
                     <span class="cred-title">${l.t('Prompt Credits')}</span>
-                    <span class="cred-val">${promptCredits?.available?.toLocaleString() || '0'} / ${promptCredits?.monthly?.toLocaleString() || '0'}</span>
+                    <span class="cred-val">${promptCredits.available.toLocaleString()} / ${promptCredits.monthly.toLocaleString()}</span>
                 </div>
                 <div class="bar-outer">
                     <div class="bar-inner" style="width: ${promptPercent}%; background: ${getProgressBarColor(promptPercent, false)};"></div>
                 </div>
-            </div>
+            </div>` : ''}
             ${flowCredits ? `
             <div class="credit-row">
                 <div class="cred-info">
@@ -1562,6 +1601,11 @@ export class AccountInfoWebview {
                 <button class="toolbar-btn" onclick="setAllModelGroups(false)">${l.t('Collapse All')}</button>
             </div>
         </div>
+        ${isCliFallback ? `
+        <div class="cli-info-banner">
+            <strong>ℹ️ agy CLI:</strong> ${escapeAttr(l.t('Showing live 5-hour and weekly quota pools via Antigravity CLI. Plan details and feature flags require an active local Language Server.'))}
+            ${cliUsageSummary ? `<div style="margin-top: 6px; opacity: 0.9;">${escapeAttr(cliUsageSummary)}</div>` : ''}
+        </div>` : ''}
         ${noticesHtml}
         <div class="models-list">
             ${modelsHtml}
@@ -1569,10 +1613,11 @@ export class AccountInfoWebview {
 
         ${planLimitsHtml}
 
+        ${hasPlanInfo ? `
         <div class="section-title">${l.t('Features')}</div>
         <div class="features-grid">
             ${featuresHtml}
-        </div>
+        </div>` : ''}
 
         <div style="margin-top: 48px; text-align: center; color: var(--text-dim); font-size: 12px; border-top: 1px solid var(--border); padding-top: 24px;">
             ${l.t('Last updated: {0}', formatResetTime(new Date(snapshot.timestamp)))}

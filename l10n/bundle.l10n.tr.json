@@ -964,5 +964,7 @@
     "Documents": "Belgeler",
     "Audio": "Ses",
     "Video": "Video",
-    "Usage History": "Kullanım Geçmişi"
+    "Usage History": "Kullanım Geçmişi",
+    "Data Source": "Veri Kaynağı",
+    "Showing live 5-hour and weekly quota pools via Antigravity CLI. Plan details and feature flags require an active local Language Server.": "Antigravity CLI üzerinden canlı 5 saatlik ve haftalık kota havuzları gösteriliyor. Plan ayrıntıları ve özellik bayrakları için aktif bir yerel Language Server gerekir."
 }

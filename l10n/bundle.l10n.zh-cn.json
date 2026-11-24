@@ -964,5 +964,7 @@
     "Documents": "文档",
     "Audio": "音频",
     "Video": "视频",
-    "Usage History": "使用历史"
+    "Usage History": "使用历史",
+    "Data Source": "数据来源",
+    "Showing live 5-hour and weekly quota pools via Antigravity CLI. Plan details and feature flags require an active local Language Server.": "正在通过 Antigravity CLI 实时显示 5 小时与每周配额池。套餐详情和功能开关需要运行中的本地 Language Server。"
 }

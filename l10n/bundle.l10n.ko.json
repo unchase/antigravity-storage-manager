@@ -964,5 +964,7 @@
     "Documents": "문서",
     "Audio": "오디오",
     "Video": "비디오",
-    "Usage History": "사용 기록"
+    "Usage History": "사용 기록",
+    "Data Source": "데이터 소스",
+    "Showing live 5-hour and weekly quota pools via Antigravity CLI. Plan details and feature flags require an active local Language Server.": "Antigravity CLI를 통해 실시간 5시간 및 주간 할당량 풀을 표시하고 있습니다. 요금제 세부 정보와 기능 플래그는 활성 로컬 Language Server가 필요합니다."
 }

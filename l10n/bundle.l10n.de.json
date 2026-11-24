@@ -964,5 +964,7 @@
     "Documents": "Dokumente",
     "Audio": "Audio",
     "Video": "Video",
-    "Usage History": "Nutzungsverlauf"
+    "Usage History": "Nutzungsverlauf",
+    "Data Source": "Datenquelle",
+    "Showing live 5-hour and weekly quota pools via Antigravity CLI. Plan details and feature flags require an active local Language Server.": "Zeigt aktuelle 5-Stunden- und Wochenkontingente über die Antigravity CLI an. Tarifdetails und Funktionsflags erfordern einen aktiven lokalen Language Server."
 }

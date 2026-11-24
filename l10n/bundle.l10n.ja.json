@@ -964,5 +964,7 @@
     "Documents": "ドキュメント",
     "Audio": "音声",
     "Video": "動画",
-    "Usage History": "使用履歴"
+    "Usage History": "使用履歴",
+    "Data Source": "データソース",
+    "Showing live 5-hour and weekly quota pools via Antigravity CLI. Plan details and feature flags require an active local Language Server.": "Antigravity CLI 経由で 5 時間および週間クォータをリアルタイム表示しています。プラン詳細と機能フラグの表示にはローカル Language Server が必要です。"
 }

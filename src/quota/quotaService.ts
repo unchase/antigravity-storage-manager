@@ -291,7 +291,13 @@ export function parseQuotaSummaryResponse(summaryResponse: any, baseSnapshot?: Q
             const isValidResetTime = !isNaN(resetTime.getTime()) && resetTime.getTime() > 0;
             const timeUntilReset = isValidResetTime ? Math.max(0, resetTime.getTime() - Date.now()) : 0;
 
-            const bucketSuffix = bucket.displayName || bucket.name || bucket.window || bucket.bucketId || bucket.id;
+            const rawBucketSuffix = bucket.displayName || bucket.name || bucket.window || bucket.bucketId || bucket.id;
+            const bucketSuffix = typeof rawBucketSuffix === 'string'
+                ? rawBucketSuffix
+                    .replace(/\bFive[\s-]+Hour\b/gi, '5-Hour')
+                    .replace(/\s+Remaining$/i, '')
+                    .trim()
+                : rawBucketSuffix;
             const label = bucketsToUse.length > 1 && bucketSuffix
                 ? `${groupName} (${bucketSuffix})`
                 : (groupName || bucketSuffix || 'Unknown');

@@ -964,5 +964,7 @@
     "Documents": "Dokumenty",
     "Audio": "Zvuk",
     "Video": "Video",
-    "Usage History": "Historie používání"
+    "Usage History": "Historie používání",
+    "Data Source": "Zdroj dat",
+    "Showing live 5-hour and weekly quota pools via Antigravity CLI. Plan details and feature flags require an active local Language Server.": "Zobrazují se živé 5hodinové a týdenní kvóty přes Antigravity CLI. Podrobnosti tarifu a dostupné funkce vyžadují aktivní lokální Language Server."
 }
