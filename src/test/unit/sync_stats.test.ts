@@ -206,4 +206,70 @@ describe('Sync Statistics Logic', () => {
             SyncStatsWebview.setConversationsFilter('active');
         }
     });
+
+    test('SyncStatsWebview renders Search Matches for .db conversations, escapes HTML, and force-updates while search input is focused', () => {
+        const data: SyncStatsData = {
+            localConversations: [
+                {
+                    id: 'conv-db-1',
+                    title: 'SQLite Chat',
+                    lastModified: '2026-11-25T01:00:00Z',
+                    files: {
+                        'conversations/conv-db-1.db': { hash: 'h1', size: 1024, lastModified: '2026-11-25T01:00:00Z' }
+                    }
+                }
+            ],
+            remoteManifest: {
+                version: 1,
+                createdAt: '2026-01-01T00:00:00Z',
+                lastModified: '2026-11-25T01:00:00Z',
+                passwordVerificationSalt: 's',
+                passwordVerificationHash: 'h',
+                conversations: []
+            },
+            searchQuery: 'audit "test"',
+            searchResults: [
+                {
+                    cascadeId: 'conv-db-1',
+                    title: 'SQLite Chat',
+                    lastModified: Date.now(),
+                    matches: [
+                        { role: 'user', text: 'Found <script>alert(1)</script> audit match' }
+                    ]
+                }
+            ],
+            localCount: 1,
+            remoteCount: 0,
+            lastSync: '2026-11-25T01:00:00Z',
+            machines: [],
+            loadTime: 5,
+            currentMachineId: 'machine-1'
+        };
+
+        const html: string = (SyncStatsWebview as any).getHtmlContent(data);
+        expect(html).toContain('Search Matches');
+        expect(html).toContain('audit match');
+        expect(html).not.toContain('<script>alert(1)</script>');
+        expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+        expect(html).toContain('value="audit &quot;test&quot;"');
+        // Clicking .db file routes to built-in chat viewer
+        expect(html).toContain("postCommand('viewPb', {id: 'conv-db-1', file: 'conversations/conv-db-1.db'})");
+
+        // Force update must still render when search input has focus (isSearching = true)
+        const fakePanel: any = { webview: { html: '' } };
+        (SyncStatsWebview as any).currentPanel = fakePanel;
+        (SyncStatsWebview as any).isSearching = true;
+        try {
+            // Non-forced background update is skipped while typing
+            SyncStatsWebview.update(data, false);
+            expect(fakePanel.webview.html).toBe('');
+            // Forced search result update renders immediately and resets isSearching
+            SyncStatsWebview.update(data, true);
+            expect(fakePanel.webview.html).toContain('Search Matches');
+            expect(SyncStatsWebview.isUserSearching()).toBe(false);
+        } finally {
+            (SyncStatsWebview as any).currentPanel = undefined;
+            (SyncStatsWebview as any).isSearching = false;
+        }
+    });
 });

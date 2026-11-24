@@ -19,7 +19,7 @@ import { validateExtractedDirectory } from './ideState';
 import { SyncStatsWebview, SyncStatsData } from './quota/syncStatsWebview';
 import { QuotaManager } from './quota/quotaManager';
 import { drawProgressBar } from './quota/utils';
-import { AntigravityClient } from './quota/antigravityClient';
+import { AntigravityClient, SearchResult } from './quota/antigravityClient';
 import { PbParser } from './quota/pbParser';
 import { getFileIconSvg } from './quota/fileIcons';
 
@@ -4318,7 +4318,7 @@ export class SyncManager implements vscode.Disposable {
             case 'sort': {
                 SyncStatsWebview.updateSort(message.table, message.col);
                 if (this.lastStatsData) {
-                    SyncStatsWebview.update(this.lastStatsData);
+                    SyncStatsWebview.update(this.lastStatsData, true);
                 } else {
                     this.refreshStatistics();
                 }
@@ -4329,7 +4329,7 @@ export class SyncManager implements vscode.Disposable {
                 if (filter === 'active' || filter === 'archived' || filter === 'all') {
                     SyncStatsWebview.setConversationsFilter(filter);
                     if (this.lastStatsData) {
-                        SyncStatsWebview.update(this.lastStatsData);
+                        SyncStatsWebview.update(this.lastStatsData, true);
                     } else {
                         this.refreshStatistics();
                     }
@@ -4343,7 +4343,7 @@ export class SyncManager implements vscode.Disposable {
                         const archivedSet = new Set<string>(this.lastStatsData.archivedIds || []);
                         archivedSet.add(message.id);
                         this.lastStatsData.archivedIds = Array.from(archivedSet);
-                        SyncStatsWebview.update(this.lastStatsData);
+                        SyncStatsWebview.update(this.lastStatsData, true);
                     } else {
                         this.refreshStatistics(true, false, true);
                     }
@@ -4360,7 +4360,7 @@ export class SyncManager implements vscode.Disposable {
                         const archivedSet = new Set<string>(this.lastStatsData.archivedIds || []);
                         archivedSet.delete(message.id);
                         this.lastStatsData.archivedIds = Array.from(archivedSet);
-                        SyncStatsWebview.update(this.lastStatsData);
+                        SyncStatsWebview.update(this.lastStatsData, true);
                     } else {
                         this.refreshStatistics(true, false, true);
                     }
@@ -4729,29 +4729,30 @@ export class SyncManager implements vscode.Disposable {
                 this.refreshStatistics();
                 break;
             case 'searchPb': {
-                const query = message.query;
+                const query = typeof message.query === 'string' ? message.query.trim() : '';
                 if (!query) {
                     // Clear search
                     if (this.lastStatsData) {
                         this.lastStatsData.searchResults = undefined;
                         this.lastStatsData.searchQuery = undefined;
-                        SyncStatsWebview.update(this.lastStatsData);
+                        SyncStatsWebview.update(this.lastStatsData, true);
                     }
                     return;
                 }
 
-                // Perform Search
+                // Perform hybrid search (local titles, brain/*.md, transcript.jsonl, .db/.pb + optional RPC)
                 await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: lm.t('Searching history...'),
                     cancellable: true
-                }, async () => {
+                }, async (_progress, token) => {
                     try {
-                        const results = await this.apiClient.search(query);
+                        const results = await this.searchConversations(query, token);
+                        if (token.isCancellationRequested) return;
                         if (this.lastStatsData) {
                             this.lastStatsData.searchResults = results;
                             this.lastStatsData.searchQuery = query;
-                            SyncStatsWebview.update(this.lastStatsData);
+                            SyncStatsWebview.update(this.lastStatsData, true);
                         }
                     } catch (e: any) {
                         vscode.window.showErrorMessage(lm.t('Search failed: {0}', e.message));
@@ -5239,6 +5240,230 @@ export class SyncManager implements vscode.Disposable {
             }
             panel.webview.html = this.getChatErrorHtml(e.message);
         }
+    }
+
+    /**
+     * Hybrid search across conversation titles/IDs, local brain/*.md files, transcript.jsonl,
+     * conversation .db/.db-wal/.pb files (bounded chunk scan), plus optional language server RPC.
+     */
+    public async searchConversations(query: string, token?: vscode.CancellationToken): Promise<SearchResult[]> {
+        const trimmed = query.trim();
+        if (!trimmed) return [];
+        const queryLower = trimmed.toLowerCase();
+
+        const MAX_MATCHES_PER_CONV = 5;
+        const MAX_MD_BYTES = 2 * 1024 * 1024;       // 2 MB per markdown file
+        const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024; // 8 MB per transcript.jsonl
+        const MAX_BINARY_SCAN_BYTES = 16 * 1024 * 1024; // 16 MB scan cap per .db/.pb file
+        const CHUNK_SIZE = 1024 * 1024;             // 1 MB streaming chunks
+        const CHUNK_OVERLAP = 512;
+
+        const cleanSnippet = (raw: string): string =>
+            // eslint-disable-next-line no-control-regex
+            raw.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\uFFFD]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+        const extractSnippet = (text: string, idx: number, qLen: number): string => {
+            const start = Math.max(0, idx - 100);
+            const end = Math.min(text.length, idx + qLen + 140);
+            const prefix = start > 0 ? '...' : '';
+            const suffix = end < text.length ? '...' : '';
+            return `${prefix}${cleanSnippet(text.slice(start, end))}${suffix}`;
+        };
+
+        const addUniqueMatch = (matches: Array<{ text: string; role: 'user' | 'model' }>, text: string, role: 'user' | 'model') => {
+            if (matches.length >= MAX_MATCHES_PER_CONV) return;
+            const cleaned = cleanSnippet(text);
+            if (!cleaned) return;
+            const key = cleaned.slice(0, 120).toLowerCase();
+            if (matches.some(m => m.text.slice(0, 120).toLowerCase() === key)) return;
+            matches.push({ text: cleaned.slice(0, 400) + (cleaned.length > 400 ? '...' : ''), role });
+        };
+
+        const scanBinaryFile = async (filePath: string, matches: Array<{ text: string; role: 'user' | 'model' }>): Promise<void> => {
+            if (matches.length >= MAX_MATCHES_PER_CONV || !fs.existsSync(filePath)) return;
+            let fd: fs.promises.FileHandle | undefined;
+            try {
+                const stat = await fs.promises.stat(filePath);
+                const maxRead = Math.min(stat.size, MAX_BINARY_SCAN_BYTES);
+                if (maxRead <= 0) return;
+                fd = await fs.promises.open(filePath, 'r');
+                const buf = Buffer.alloc(Math.min(CHUNK_SIZE, maxRead));
+                let offset = 0;
+                let tail = '';
+                while (offset < maxRead && matches.length < MAX_MATCHES_PER_CONV) {
+                    if (token?.isCancellationRequested) return;
+                    const toRead = Math.min(buf.length, maxRead - offset);
+                    const { bytesRead } = await fd.read(buf, 0, toRead, offset);
+                    if (bytesRead <= 0) break;
+                    const text = tail + buf.subarray(0, bytesRead).toString('utf8');
+                    const lower = text.toLowerCase();
+                    let searchFrom = 0;
+                    while (matches.length < MAX_MATCHES_PER_CONV) {
+                        const hit = lower.indexOf(queryLower, searchFrom);
+                        if (hit === -1) break;
+                        const snippet = extractSnippet(text, hit, queryLower.length);
+                        addUniqueMatch(matches, snippet, 'model');
+                        searchFrom = hit + Math.max(queryLower.length, 160);
+                    }
+                    tail = text.length > CHUNK_OVERLAP ? text.slice(-CHUNK_OVERLAP) : text;
+                    offset += bytesRead;
+                }
+            } catch {
+                // ignore unreadable binary files
+            } finally {
+                if (fd) {
+                    await fd.close().catch(() => { /* ignore */ });
+                }
+            }
+        };
+
+        // Gather candidate conversations from current stats / local disk / cached manifest
+        const candidates = new Map<string, { id: string; title: string; lastModified: number }>();
+        const localConvs = this.lastStatsData?.localConversations
+            || await this.getLocalConversationsAsync({ skipHashes: true }).catch(() => []);
+        for (const c of localConvs) {
+            candidates.set(c.id, {
+                id: c.id,
+                title: c.title || c.id,
+                lastModified: c.lastModified ? new Date(c.lastModified).getTime() : 0
+            });
+        }
+        const remoteConvs = this.lastStatsData?.remoteManifest?.conversations
+            || this.cachedManifest?.conversations
+            || [];
+        for (const r of remoteConvs) {
+            const existing = candidates.get(r.id);
+            const remoteTitle = r.title && r.title !== r.id ? r.title : undefined;
+            const remoteTs = r.lastModified ? new Date(r.lastModified).getTime() : 0;
+            if (existing) {
+                if (remoteTitle && existing.title === r.id) existing.title = remoteTitle;
+                if (remoteTs > existing.lastModified) existing.lastModified = remoteTs;
+            } else {
+                candidates.set(r.id, {
+                    id: r.id,
+                    title: r.title || r.id,
+                    lastModified: remoteTs
+                });
+            }
+        }
+
+        const resultsById = new Map<string, SearchResult>();
+        const brainDir = getBrainDir();
+        const convDir = getConvDir();
+        const queue = Array.from(candidates.values());
+
+        const worker = async () => {
+            while (queue.length > 0) {
+                if (token?.isCancellationRequested) return;
+                const item = queue.shift();
+                if (!item) break;
+
+                const matches: Array<{ text: string; role: 'user' | 'model' }> = [];
+
+                // 1. Title & ID match
+                if (item.title.toLowerCase().includes(queryLower) || item.id.toLowerCase().includes(queryLower)) {
+                    addUniqueMatch(matches, item.title, 'user');
+                }
+
+                // 2. Local brain/<id>/*.md files (task.md, implementation_plan.md, walkthrough.md, etc.)
+                const itemBrainDir = path.join(brainDir, item.id);
+                if (matches.length < MAX_MATCHES_PER_CONV && fs.existsSync(itemBrainDir)) {
+                    try {
+                        const entries = await fs.promises.readdir(itemBrainDir, { withFileTypes: true });
+                        for (const entry of entries) {
+                            if (token?.isCancellationRequested) return;
+                            if (matches.length >= MAX_MATCHES_PER_CONV) break;
+                            if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue;
+                            const mdPath = path.join(itemBrainDir, entry.name);
+                            try {
+                                const stat = await fs.promises.stat(mdPath);
+                                if (stat.size > MAX_MD_BYTES) continue;
+                                const content = await fs.promises.readFile(mdPath, 'utf8');
+                                const lower = content.toLowerCase();
+                                let searchFrom = 0;
+                                while (matches.length < MAX_MATCHES_PER_CONV) {
+                                    const hit = lower.indexOf(queryLower, searchFrom);
+                                    if (hit === -1) break;
+                                    addUniqueMatch(matches, `[${entry.name}] ${extractSnippet(content, hit, queryLower.length)}`, 'model');
+                                    searchFrom = hit + Math.max(queryLower.length, 160);
+                                }
+                            } catch { /* ignore */ }
+                        }
+                    } catch { /* ignore */ }
+                }
+
+                // 3. Local transcript.jsonl
+                const transcriptPath = path.join(itemBrainDir, '.system_generated', 'logs', 'transcript.jsonl');
+                if (matches.length < MAX_MATCHES_PER_CONV && fs.existsSync(transcriptPath)) {
+                    try {
+                        const stat = await fs.promises.stat(transcriptPath);
+                        if (stat.size <= MAX_TRANSCRIPT_BYTES) {
+                            const content = await fs.promises.readFile(transcriptPath, 'utf8');
+                            if (content.toLowerCase().includes(queryLower)) {
+                                for (const line of content.split('\n')) {
+                                    if (matches.length >= MAX_MATCHES_PER_CONV) break;
+                                    if (!line.toLowerCase().includes(queryLower)) continue;
+                                    try {
+                                        const parsed = JSON.parse(line);
+                                        const isUser = parsed.type === 'USER_INPUT' || parsed.source === 'USER_EXPLICIT' || parsed.role === 'user';
+                                        const text = typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content ?? parsed);
+                                        const hit = text.toLowerCase().indexOf(queryLower);
+                                        if (hit !== -1) {
+                                            addUniqueMatch(matches, extractSnippet(text, hit, queryLower.length), isUser ? 'user' : 'model');
+                                        }
+                                    } catch {
+                                        const hit = line.toLowerCase().indexOf(queryLower);
+                                        if (hit !== -1) {
+                                            addUniqueMatch(matches, extractSnippet(line, hit, queryLower.length), 'model');
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch { /* ignore */ }
+                }
+
+                // 4. Local conversation binary/SQLite files (.db, .db-wal, .pb)
+                if (matches.length < MAX_MATCHES_PER_CONV) {
+                    for (const ext of ['.db', '.db-wal', '.pb']) {
+                        if (matches.length >= MAX_MATCHES_PER_CONV || token?.isCancellationRequested) break;
+                        await scanBinaryFile(path.join(convDir, `${item.id}${ext}`), matches);
+                    }
+                }
+
+                if (matches.length > 0) {
+                    resultsById.set(item.id, {
+                        cascadeId: item.id,
+                        title: item.title,
+                        matches,
+                        lastModified: item.lastModified || Date.now()
+                    });
+                }
+            }
+        };
+
+        await Promise.all(Array(Math.min(6, queue.length || 1)).fill(null).map(() => worker()));
+
+        // 5. Optional language server RPC search (merged silently if server is available)
+        if (!token?.isCancellationRequested) {
+            try {
+                const rpcResults = await this.apiClient.search(trimmed);
+                for (const rpc of rpcResults) {
+                    const existing = resultsById.get(rpc.cascadeId);
+                    if (existing) {
+                        for (const m of rpc.matches || []) {
+                            addUniqueMatch(existing.matches, m.text, m.role);
+                        }
+                    } else {
+                        resultsById.set(rpc.cascadeId, rpc);
+                    }
+                }
+            } catch {
+                // Local server unavailable or RPC restricted — local search results remain intact
+            }
+        }
+
+        return Array.from(resultsById.values()).sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
     }
 
     /**

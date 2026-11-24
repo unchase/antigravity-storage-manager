@@ -719,4 +719,60 @@ describe('SyncManager Core Engine & Webview Security', () => {
         await syncManager.unarchiveConversation(localOnlyId);
         expect(syncManager.isConversationArchived(localOnlyId, null)).toBe(false);
     });
+
+    test('searchConversations finds matches across titles, brain/*.md, transcript.jsonl, and .db files even when RPC fails', async () => {
+        const idTitle = '1111aaaa-1111-1111-1111-111111111111';
+        const idMd = '2222bbbb-2222-2222-2222-222222222222';
+        const idTranscript = '3333cccc-3333-3333-3333-333333333333';
+        const idDb = '4444dddd-4444-4444-4444-444444444444';
+        const idUnrelated = '5555eeee-5555-5555-5555-555555555555';
+
+        // 1. Title match
+        fs.mkdirSync(path.join(brainDir, idTitle), { recursive: true });
+        fs.writeFileSync(path.join(brainDir, idTitle, 'task.md'), '# Аудит безопасности КвантовыйКот');
+
+        // 2. Markdown body match
+        fs.mkdirSync(path.join(brainDir, idMd), { recursive: true });
+        fs.writeFileSync(path.join(brainDir, idMd, 'task.md'), '# Ordinary Title');
+        fs.writeFileSync(path.join(brainDir, idMd, 'walkthrough.md'), 'Details about квантовыйкот integration.');
+
+        // 3. transcript.jsonl match
+        const logsDir = path.join(brainDir, idTranscript, '.system_generated', 'logs');
+        fs.mkdirSync(logsDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(logsDir, 'transcript.jsonl'),
+            JSON.stringify({ role: 'user', content: 'Please fix КВАНТОВЫЙКОТ parser' }) + '\n'
+        );
+
+        // 4. SQLite .db binary match
+        fs.writeFileSync(
+            path.join(convDir, `${idDb}.db`),
+            Buffer.concat([
+                Buffer.from('SQLite format 3\0'),
+                Buffer.from([0x00, 0x01, 0x02]),
+                Buffer.from('payload with квантовыйкот inside sqlite', 'utf8'),
+                Buffer.from([0x00, 0x00])
+            ])
+        );
+
+        // 5. Unrelated conversation
+        fs.mkdirSync(path.join(brainDir, idUnrelated), { recursive: true });
+        fs.writeFileSync(path.join(brainDir, idUnrelated, 'task.md'), '# Completely different topic');
+
+        // Simulate Antigravity 2.0 RPC failure (403/404/unavailable)
+        (syncManager as any).apiClient.search = jest.fn().mockRejectedValue(new Error('API Error 403'));
+
+        const results = await syncManager.searchConversations('квантовыйкот');
+        const foundIds = new Set(results.map(r => r.cascadeId));
+
+        expect(foundIds.has(idTitle)).toBe(true);
+        expect(foundIds.has(idMd)).toBe(true);
+        expect(foundIds.has(idTranscript)).toBe(true);
+        expect(foundIds.has(idDb)).toBe(true);
+        expect(foundIds.has(idUnrelated)).toBe(false);
+
+        const transcriptResult = results.find(r => r.cascadeId === idTranscript);
+        expect(transcriptResult?.matches[0].role).toBe('user');
+        expect(transcriptResult?.matches[0].text.toLowerCase()).toContain('квантовыйкот');
+    });
 });

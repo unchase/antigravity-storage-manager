@@ -5,6 +5,13 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2026-11-25
+### Conversation History Search Fixes
+- **Fixed Dashboard Search Not Rendering on Enter**: Added a `force` parameter to `SyncStatsWebview.update(data, force)` and passed `force = true` for search results, search clearing, sorting, filter tabs, and archive/unarchive actions so active focus in the search input (`isSearching = true`) only suppresses background auto-refreshes and never swallows explicit user actions. Pressing Enter with an empty query now clears the search.
+- **Hybrid Local + RPC Search**: Added `SyncManager.searchConversations(query, token)` to search conversation titles, IDs, local `brain/<id>/*.md` notes, `.system_generated/logs/transcript.jsonl`, and `.db`/`.db-wal`/`.pb` files (via bounded streaming UTF-8 chunk scans), merging optional `AntigravityClient` RPC results when available without failing on Antigravity 2.0 `403`/`404` or offline servers.
+- **SQLite `.db` Search Matches & XSS Escaping**: Decoupled the **Search Matches** preview block in `SyncStatsWebview` from the legacy `.pb`-only file check so snippets display for `.db`, `.pb`, `brain/*.md`, and title matches; routed `.db` file clicks to the built-in chat viewer; and escaped both `searchQuery` and match snippets against HTML injection.
+- **Unit Tests (26 suites / 227 tests)**: Added tests in `sync_engine.test.ts` and `sync_stats.test.ts` covering hybrid local search with failing RPC, `.db` match rendering, HTML escaping, and forced webview updates while the search input is focused.
+
 ## [0.16.0] - 2026-11-25
 ### Conversation Archiving
 - **Archive & Unarchive Conversations**: Added non-destructive conversation archiving so older chats can be frozen without moving or deleting files. Archived conversations are completely excluded from `syncNow`, auto-sync, conflict detection, and `forceSync`, while preserving their previous `lastSyncedHash` in machine state until restored.

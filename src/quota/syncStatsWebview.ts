@@ -190,8 +190,11 @@ export class SyncStatsWebview {
         );
     }
 
-    public static update(data: SyncStatsData): void {
-        if (SyncStatsWebview.currentPanel && !SyncStatsWebview.isSearching) {
+    public static update(data: SyncStatsData, force: boolean = false): void {
+        if (SyncStatsWebview.currentPanel && (force || !SyncStatsWebview.isSearching)) {
+            if (force) {
+                SyncStatsWebview.isSearching = false;
+            }
             SyncStatsWebview.currentPanel.webview.html = SyncStatsWebview.getHtmlContent(data);
         }
     }
@@ -1566,7 +1569,7 @@ export class SyncStatsWebview {
                             <input type="text" id="pbSearchInput" placeholder="${lm.t('Search .pb history...')}" 
                                 style="background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 6px 28px 6px 8px; border-radius: 4px; width: 200px; font-family: inherit; font-size: 12px; outline: none;"
                                 onkeydown="if(event.key === 'Enter') performSearch()"
-                                value="${data.searchQuery || ''}"
+                                value="${(data.searchQuery || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}"
                             >
                             <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; opacity: 0.6;" onclick="performSearch()">🔍</span>
                         </div>
@@ -1679,6 +1682,27 @@ export class SyncStatsWebview {
                         totalSize = Object.values(files).reduce((acc: number, f: any) => acc + (f.size || 0), 0);
                     }
 
+                    const searchResult = data.searchResults ? data.searchResults.find(r => r.cascadeId === id) : undefined;
+                    const escapeMatchHtml = (s: string) => String(s || '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
+
+                    const searchMatchesHtml = searchResult && searchResult.matches && searchResult.matches.length > 0
+                        ? `<div class="file-item" style="flex-direction: column; align-items: stretch; cursor: pointer; background: rgba(var(--accent-rgb, 0, 122, 204), 0.06);" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})">
+                                <div style="font-size: 11px; font-weight: 600; opacity: 0.8; margin-bottom: 6px;">🔍 ${lm.t('Search Matches')} (${searchResult.matches.length}):</div>
+                                <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                                    ${searchResult.matches.map(m => `
+                                        <div style="display:flex; gap:6px; font-size: 11px; background: rgba(255,255,255,0.03); padding: 6px 8px; border-radius: 4px;">
+                                            <span style="font-weight:bold; opacity:0.7; min-width:34px; font-size: 10px; align-self: flex-start; margin-top:2px;">${m.role === 'user' ? 'USER' : 'AI'}</span>
+                                            <div style="font-family: monospace; white-space: pre-wrap; word-break: break-word; opacity: 0.92; flex: 1;">${escapeMatchHtml(m.text)}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                           </div>`
+                        : '';
+
                     let fileListHtml = '';
                     if (files) {
                         // Sort files by filename (basename)
@@ -1691,10 +1715,9 @@ export class SyncStatsWebview {
                             fileListHtml = fileEntries.map(([fPath, fInfo]) => {
                                 const size = (fInfo as any).size || 0;
                                 const icon = getFileIconSvg(fPath);
-                                const isPb = fPath.endsWith('.pb');
-                                const searchResult = isPb && data.searchResults ? data.searchResults.find(r => r.cascadeId === id) : undefined;
+                                const isChatBinary = fPath.endsWith('.pb') || fPath.endsWith('.db');
 
-                                return `<div class="file-item" style="flex-direction: column; align-items: stretch; cursor: pointer" onclick="event.stopPropagation(); ${isPb ? `postCommand('viewPb', {id: '${id}', file: '${fPath}'})` : `postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})`}">
+                                return `<div class="file-item" style="flex-direction: column; align-items: stretch; cursor: pointer" onclick="event.stopPropagation(); ${isChatBinary ? `postCommand('viewPb', {id: '${id}', file: '${fPath}'})` : `postCommand('openConversationFile', {id: '${id}', file: '${fPath}'})`}">
                                         <div style="display:flex; justify-content: space-between; align-items: center; width: 100%;">
                                             <div style="display:flex; align-items:center;">
                                                 <span class="file-icon">${icon}</span>
@@ -1706,25 +1729,12 @@ export class SyncStatsWebview {
                                                 <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversationFile', {id:'${id}', file:'${fPath}'})" title="${lm.t('Delete')}">🗑️</button>
                                             </div>
                                         </div>
-                                        ${searchResult ? `
-                                            <div style="margin-top: 8px; padding-left: 24px; width: 100%;">
-                                                <div style="font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 4px;">${lm.t('Search Matches')}:</div>
-                                                <div style="display: flex; flex-direction: column; gap: 4px;">
-                                                    ${searchResult.matches.map(m => `
-                                                        <div style="display:flex; gap:6px; font-size: 11px; background: rgba(255,255,255,0.03); padding: 4px; border-radius: 4px;">
-                                                            <span style="font-weight:bold; opacity:0.7; min-width:30px; font-size: 10px; align-self: flex-start; margin-top:2px;">${m.role === 'user' ? 'USER' : 'AI'}</span>
-                                                            <div class="markdown-body" style="font-family: monospace; white-space: pre-wrap; word-break: break-all; opacity: 0.9;">
-                                                                ${SyncStatsWebview.md ? SyncStatsWebview.md.render(m.text) : m.text}
-                                                            </div>
-                                                        </div>
-                                                    `).join('')}
-                                                </div>
-                                            </div>
-                                        ` : ''}
                                     </div>`;
                             }).join('');
                         }
                     }
+
+                    const detailsHtml = searchMatchesHtml + fileListHtml;
 
                     const rowClasses = [
                         id === data.activeConversationId ? 'active-conversation' : '',
@@ -1754,11 +1764,11 @@ export class SyncStatsWebview {
                                                 <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Delete')}">🗑️</button>
                                             </td>
                                         </tr>
-                                        ${fileListHtml ? `
-                                        <tr id="files-${id}" class="file-list-row" style="${data.searchResults?.some(r => r.cascadeId === id) ? 'display: table-row' : ''}">
+                                        ${detailsHtml ? `
+                                        <tr id="files-${id}" class="file-list-row" style="${searchResult ? 'display: table-row' : ''}">
                                             <td colspan="5" style="padding: 0;">
                                                 <div class="file-list-wrapper">
-                                                    ${fileListHtml}
+                                                    ${detailsHtml}
                                                 </div>
                                             </td>
                                         </tr>
@@ -1788,8 +1798,8 @@ export class SyncStatsWebview {
 
                 function performSearch() {
                     const input = document.getElementById('pbSearchInput');
-                    if (input && input.value.trim()) {
-                         postCommand('searchPb', { query: input.value.trim() });
+                    if (input) {
+                        postCommand('searchPb', { query: input.value.trim() });
                     }
                 }
 
