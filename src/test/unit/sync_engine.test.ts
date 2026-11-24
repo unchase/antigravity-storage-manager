@@ -775,4 +775,98 @@ describe('SyncManager Core Engine & Webview Security', () => {
         expect(transcriptResult?.matches[0].role).toBe('user');
         expect(transcriptResult?.matches[0].text.toLowerCase()).toContain('квантовыйкот');
     });
+
+    test('parseTranscriptJsonl extracts clean USER_REQUEST, folds thinking/tool_calls/tool outputs, skips empty {}, and preserves visible AI responses', () => {
+        const transcriptLines = [
+            JSON.stringify({
+                step_index: 0,
+                source: 'USER_EXPLICIT',
+                type: 'USER_INPUT',
+                status: 'DONE',
+                created_at: '2026-10-26T23:25:28Z',
+                content: '<USER_REQUEST>\nпроведи аудит приложения\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: 2026-10-27T02:25:28+03:00.\n</ADDITIONAL_METADATA>\n<USER_SETTINGS_CHANGE>\nThe user changed setting Model Selection\n</USER_SETTINGS_CHANGE>'
+            }),
+            JSON.stringify({
+                step_index: 1,
+                source: 'MODEL',
+                type: 'PLANNER_RESPONSE',
+                status: 'DONE',
+                created_at: '2026-10-26T23:25:30Z',
+                model: 'claude-opus-5.5',
+                input_tokens: 1500,
+                cache_read_tokens: 200,
+                output_tokens: 120,
+                thinking: 'Checking repository files first.',
+                tool_calls: [
+                    { name: 'run_command', args: { CommandLine: '"git status"' } }
+                ]
+            }),
+            JSON.stringify({
+                step_index: 2,
+                source: 'MODEL',
+                type: 'GENERIC',
+                status: 'DONE',
+                created_at: '2026-10-26T23:25:32Z',
+                content: 'Created At: 2026-10-27\nCommand output:\nOn branch master'
+            }),
+            JSON.stringify({
+                step_index: 3,
+                source: 'SYSTEM',
+                type: 'SYSTEM_MESSAGE',
+                status: 'DONE',
+                created_at: '2026-10-26T23:25:33Z',
+                content: 'The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n<SYSTEM_MESSAGE>\nReminder: work efficiently. In this turn, issue in parallel...\n</SYSTEM_MESSAGE>'
+            }),
+            JSON.stringify({
+                step_index: 4,
+                source: 'MODEL',
+                type: 'PLANNER_RESPONSE',
+                status: 'DONE',
+                created_at: '2026-10-26T23:25:35Z',
+                input_tokens: 2100,
+                output_tokens: 80,
+                content: 'Аудит завершён: найдено 3 проблемы.'
+            }),
+            JSON.stringify({
+                step_index: 5,
+                source: 'SYSTEM',
+                type: 'ERROR_MESSAGE',
+                status: 'ERROR',
+                created_at: '2026-10-26T23:25:36Z',
+                error: 'Rate limit exceeded'
+            })
+        ].join('\n');
+
+        const parsed = (syncManager as any).parseTranscriptJsonl(transcriptLines);
+        expect(parsed.steps.length).toBeGreaterThanOrEqual(4);
+        expect(parsed.metadata.length).toBe(2);
+
+        // User message is stripped of internal XML wrappers
+        expect(parsed.steps[0].type).toBe('CORTEX_STEP_TYPE_USER_INPUT');
+        expect(parsed.steps[0].userInput.userResponse).toBe('проведи аудит приложения');
+        expect(parsed.steps[0].timestamp).toBe(new Date('2026-10-26T23:25:28Z').getTime());
+
+        // Tool output from GENERIC is attached to the pending toolCall instead of creating a raw AI bubble
+        expect(parsed.steps[1].type).toBe('CORTEX_STEP_TYPE_PLANNER_RESPONSE');
+        expect(parsed.steps[1].plannerResponse.toolCalls[0].name).toBe('run_command');
+        expect(parsed.steps[1].plannerResponse.toolCalls[0].arguments.CommandLine).toBe('git status');
+        expect(parsed.steps[1].plannerResponse.toolCalls[0].output).toContain('On branch master');
+
+        // Visible AI reply is an open MODEL_RESPONSE
+        const modelReply = parsed.steps.find((s: any) => s.type === 'CORTEX_STEP_TYPE_MODEL_RESPONSE');
+        expect(modelReply?.modelResponse.text).toBe('Аудит завершён: найдено 3 проблемы.');
+
+        // Render via getChatHtml: no empty `{}` JSON dumps, no raw XML tags, clean user/AI text, folded thought-box
+        const html: string = (syncManager as any).getChatHtml('audit.db', parsed.steps, parsed.metadata);
+        expect(html).toContain('проведи аудит приложения');
+        expect(html).toContain('Аудит завершён: найдено 3 проблемы.');
+        expect(html).toContain('thought-box');
+        expect(html).toContain('run_command');
+        expect(html).toContain('Rate limit exceeded');
+        expect(html).not.toContain('&lt;USER_REQUEST&gt;');
+        expect(html).not.toContain('ADDITIONAL_METADATA');
+        expect(html).not.toContain('USER_SETTINGS_CHANGE');
+        expect(html).not.toContain('Reminder: work efficiently');
+        expect(html).not.toContain('<code class="language-json">{}\n</code>');
+    });
 });

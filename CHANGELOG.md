@@ -5,6 +5,16 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.2] - 2026-11-25
+### Antigravity 2.0 Conversation Viewer (`.db` / `transcript.jsonl`) Fixes
+- **Structured `transcript.jsonl` Parsing**: Rewrote local conversation fallback (`parseTranscriptJsonl` / `getLocalConversationData`) to match the Antigravity 2.0 transcript schema instead of dumping raw JSON and `{}` placeholders:
+  - Extracts clean user prompts from `<USER_REQUEST>` (stripping `<ADDITIONAL_METADATA>` and `<USER_SETTINGS_CHANGE>`) and loads attached local images from `media` (up to 5 MB).
+  - Splits `PLANNER_RESPONSE` records into collapsible `thought-box` blocks (`thinking` + `tool_calls` with unwrapped arguments) and open `MODEL_RESPONSE` bubbles for visible AI replies, eliminating empty `{}` boxes.
+  - Attaches `MODEL | GENERIC` tool outputs directly to their corresponding pending `tool_calls` instead of dumping raw command/file outputs into AI message bubbles.
+  - Filters noisy internal harness reminders from `SYSTEM_MESSAGE`, folds system notices and `CHECKPOINT` compaction summaries into collapsible blocks, renders `ERROR_MESSAGE` records cleanly, and restores `created_at` timestamps and token usage metadata (`input_tokens`, `output_tokens`, `cache_read_tokens`).
+- **Empty Server Response Fallback & Tool-Only Folding**: Triggered the local transcript fallback in `openPbChat` when the server returns an empty step list (`steps.length === 0`) as well as on RPC errors, and folded tool-only planner steps into `thought-box` in `getChatHtml`.
+- **Unit Tests (26 suites / 228 tests)**: Added a comprehensive unit test in `sync_engine.test.ts` verifying Antigravity 2.0 `transcript.jsonl` parsing and `getChatHtml` rendering.
+
 ## [0.16.1] - 2026-11-25
 ### Conversation History Search Fixes
 - **Fixed Dashboard Search Not Rendering on Enter**: Added a `force` parameter to `SyncStatsWebview.update(data, force)` and passed `force = true` for search results, search clearing, sorting, filter tabs, and archive/unarchive actions so active focus in the search input (`isSearching = true`) only suppresses background auto-refreshes and never swallows explicit user actions. Pressing Enter with an empty query now clears the search.

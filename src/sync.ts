@@ -5226,13 +5226,21 @@ export class SyncManager implements vscode.Disposable {
                 });
             }
 
+            if (steps.length === 0) {
+                const localData = await this.getLocalConversationData(id);
+                if (localData && localData.steps.length > 0) {
+                    panel.webview.html = this.getChatHtml(filename, localData.steps, localData.metadata);
+                    return;
+                }
+            }
+
             panel.webview.html = this.getChatHtml(filename, steps, metadata);
         } catch (e: any) {
             // Attempt fallback to local transcript.jsonl or task.md if trajectory was not found on server
             try {
-                const localSteps = await this.getLocalConversationSteps(id);
-                if (localSteps && localSteps.length > 0) {
-                    panel.webview.html = this.getChatHtml(filename, localSteps, []);
+                const localData = await this.getLocalConversationData(id);
+                if (localData && localData.steps.length > 0) {
+                    panel.webview.html = this.getChatHtml(filename, localData.steps, localData.metadata);
                     return;
                 }
             } catch {
@@ -5467,39 +5475,298 @@ export class SyncManager implements vscode.Disposable {
     }
 
     /**
-     * Reads local conversation steps from transcript.jsonl or task.md when language server is unavailable.
+     * Parses Antigravity 2.0 transcript.jsonl content into structured chat steps and token metadata
+     * compatible with getChatHtml().
      */
-    private async getLocalConversationSteps(id: string): Promise<any[] | null> {
+    private parseTranscriptJsonl(content: string): { steps: any[]; metadata: any[] } {
+        const lines = content.split('\n');
+        const steps: any[] = [];
+        const metadata: any[] = [];
+        const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
+        const MAX_TOOL_OUTPUT_CHARS = 8000;
+
+        const cleanUserPrompt = (raw: string): string => {
+            if (!raw) return '';
+            const reqMatch = raw.match(/<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/i);
+            if (reqMatch && reqMatch[1].trim()) {
+                return reqMatch[1].trim();
+            }
+            const stripped = raw
+                .replace(/<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>/gi, '')
+                .replace(/<USER_SETTINGS_CHANGE>[\s\S]*?<\/USER_SETTINGS_CHANGE>/gi, '')
+                .replace(/<CONTEXT_SUMMARY>[\s\S]*?<\/CONTEXT_SUMMARY>/gi, '')
+                .replace(/<SYSTEM_MESSAGE>[\s\S]*?<\/SYSTEM_MESSAGE>/gi, '')
+                .replace(/<\/?USER_REQUEST>/gi, '')
+                .trim();
+            return stripped || raw.trim();
+        };
+
+        const unwrapTranscriptArgs = (rawArgs: any): Record<string, any> => {
+            if (!rawArgs || typeof rawArgs !== 'object') return {};
+            const out: Record<string, any> = {};
+            for (const [k, v] of Object.entries(rawArgs)) {
+                if (typeof v === 'string') {
+                    const trimmed = v.trim();
+                    if (
+                        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+                        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+                        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+                    ) {
+                        try {
+                            out[k] = JSON.parse(trimmed);
+                            continue;
+                        } catch { /* keep raw string */ }
+                    }
+                }
+                out[k] = v;
+            }
+            return out;
+        };
+
+        const loadMediaItems = (mediaArr: any): any[] => {
+            if (!Array.isArray(mediaArr) || mediaArr.length === 0) return [];
+            const result: any[] = [];
+            for (const m of mediaArr) {
+                const mimeType = m?.mime_type || m?.mimeType || '';
+                const uri = typeof m?.uri === 'string' ? m.uri : '';
+                if (!mimeType.startsWith('image/') || !uri) continue;
+                try {
+                    const cleanPath = uri.startsWith('file:///') ? decodeURIComponent(uri.slice(8)) : uri;
+                    if (isSafeLocalFsPath(cleanPath) && fs.existsSync(cleanPath)) {
+                        const stat = fs.statSync(cleanPath);
+                        if (stat.isFile() && stat.size > 0 && stat.size <= MAX_INLINE_IMAGE_BYTES) {
+                            const data = fs.readFileSync(cleanPath).toString('base64');
+                            result.push({
+                                image: {
+                                    mimeType,
+                                    data,
+                                    uri: cleanPath,
+                                    name: path.basename(cleanPath)
+                                }
+                            });
+                        }
+                    }
+                } catch {
+                    // ignore unreadable media
+                }
+            }
+            return result;
+        };
+
+        const pushUsageMeta = (stepIdx: number, parsed: any) => {
+            const inputTokens = Number(parsed.input_tokens) || 0;
+            const outputTokens = Number(parsed.output_tokens) || 0;
+            const cacheReadTokens = Number(parsed.cache_read_tokens) || 0;
+            if (inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0) {
+                metadata.push({
+                    stepIndices: [stepIdx],
+                    usage: { inputTokens, outputTokens, cacheReadTokens }
+                });
+            }
+        };
+
+        // Queue of tool calls from the most recent PLANNER_RESPONSE waiting for MODEL|GENERIC outputs
+        let pendingToolCalls: any[] = [];
+
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            const line = lines[lineIdx];
+            if (!line.trim()) continue;
+            let parsed: any;
+            try {
+                parsed = JSON.parse(line);
+            } catch {
+                continue;
+            }
+
+            const rawTs = parsed.created_at || parsed.timestamp;
+            const timestamp = rawTs ? new Date(rawTs).getTime() : undefined;
+            const validTs = timestamp && !isNaN(timestamp) ? timestamp : undefined;
+            const stepIndex = parsed.step_index ?? lineIdx;
+            const type = String(parsed.type || '').toUpperCase();
+            const source = String(parsed.source || '').toUpperCase();
+
+            // 1. User messages
+            if (type === 'USER_INPUT' || source === 'USER_EXPLICIT' || parsed.role === 'user') {
+                pendingToolCalls = [];
+                const rawText = typeof parsed.content === 'string' ? parsed.content : (parsed.content ? JSON.stringify(parsed.content) : '');
+                const cleanText = cleanUserPrompt(rawText);
+                const mediaItems = loadMediaItems(parsed.media);
+                if (!cleanText && mediaItems.length === 0) continue;
+
+                steps.push({
+                    type: 'CORTEX_STEP_TYPE_USER_INPUT',
+                    userInput: {
+                        userResponse: cleanText,
+                        items: cleanText ? [{ text: { content: cleanText } }] : [],
+                        media: mediaItems
+                    },
+                    timestamp: validTs
+                });
+                continue;
+            }
+
+            // 2. Errors
+            if (type === 'ERROR_MESSAGE') {
+                pendingToolCalls = [];
+                const errText = parsed.error || (typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content || 'Unknown error'));
+                steps.push({
+                    type: 'CORTEX_STEP_TYPE_ERROR_MESSAGE',
+                    errorMessage: { message: String(errText) },
+                    timestamp: validTs
+                });
+                continue;
+            }
+
+            // 3. Context compaction checkpoints -> fold inside thought-box
+            if (type === 'CHECKPOINT') {
+                pendingToolCalls = [];
+                const text = typeof parsed.content === 'string' ? parsed.content.trim() : '';
+                if (!text) continue;
+                const preview = text.length > 4000 ? text.slice(0, 4000) + '\n\n...[truncated]' : text;
+                const idx = steps.length;
+                steps.push({
+                    type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
+                    plannerResponse: {
+                        thinking: `**[Context Compaction Summary]**\n\n${preview}`
+                    },
+                    timestamp: validTs
+                });
+                pushUsageMeta(idx, parsed);
+                continue;
+            }
+
+            // 4. System messages -> drop noisy internal reminders, fold real notices cleanly
+            if (type === 'SYSTEM_MESSAGE' || source === 'SYSTEM') {
+                const rawContent = typeof parsed.content === 'string' ? parsed.content : '';
+                const strippedBanner = rawContent.replace(/^The following is a <SYSTEM_MESSAGE>[^\n]*\n*/i, '');
+                const sysMatch = strippedBanner.match(/<SYSTEM_MESSAGE>\s*([\s\S]*?)\s*<\/SYSTEM_MESSAGE>/i);
+                const sysText = (sysMatch ? sysMatch[1] : strippedBanner).trim();
+                if (!sysText) continue;
+                // Skip repetitive internal harness reminders
+                if (/^Reminder:\s*work efficiently\./i.test(sysText)) {
+                    continue;
+                }
+                const compact = sysText.length > 1500 ? sysText.slice(0, 1500) + '\n...[truncated]' : sysText;
+                steps.push({
+                    type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
+                    plannerResponse: {
+                        thinking: `**[System Notice]**\n\n${compact}`
+                    },
+                    timestamp: validTs
+                });
+                continue;
+            }
+
+            // 5. Tool outputs (MODEL | GENERIC) -> attach to pending tool calls from previous PLANNER_RESPONSE
+            if (type === 'GENERIC') {
+                const rawOut = parsed.error
+                    ? `Error: ${parsed.error}`
+                    : (typeof parsed.content === 'string' ? parsed.content : (parsed.content !== undefined ? JSON.stringify(parsed.content) : ''));
+                const trimmedOut = rawOut.length > MAX_TOOL_OUTPUT_CHARS
+                    ? rawOut.slice(0, MAX_TOOL_OUTPUT_CHARS) + '\n...[truncated]'
+                    : rawOut;
+
+                if (pendingToolCalls.length > 0) {
+                    const tc = pendingToolCalls.shift()!;
+                    if (trimmedOut.trim()) {
+                        tc.output = trimmedOut;
+                    }
+                    continue;
+                }
+
+                // Orphaned tool result without preceding tool_call
+                if (parsed.error) {
+                    steps.push({
+                        type: 'CORTEX_STEP_TYPE_ERROR_MESSAGE',
+                        errorMessage: { message: String(parsed.error) },
+                        timestamp: validTs
+                    });
+                } else if (trimmedOut.trim()) {
+                    steps.push({
+                        type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
+                        plannerResponse: {
+                            thinking: `**[Tool Output]**\n\n\`\`\`\n${trimmedOut.slice(0, 2000)}\n\`\`\``
+                        },
+                        timestamp: validTs
+                    });
+                }
+                continue;
+            }
+
+            // 6. Model planner response (thinking, tool_calls, and/or visible response content)
+            if (type === 'PLANNER_RESPONSE' || type === 'MODEL_RESPONSE' || source === 'MODEL') {
+                pendingToolCalls = [];
+                const thinking = typeof parsed.thinking === 'string' ? parsed.thinking.trim() : '';
+                const visibleContent = typeof parsed.content === 'string' ? parsed.content.trim() : '';
+                const rawToolCalls = Array.isArray(parsed.tool_calls) ? parsed.tool_calls : [];
+
+                const normalizedToolCalls = rawToolCalls.map((tc: any, tcIdx: number) => {
+                    const unwrappedArgs = unwrapTranscriptArgs(tc?.args || tc?.arguments);
+                    return {
+                        name: tc?.name || 'unknown_tool',
+                        arguments: unwrappedArgs,
+                        argumentsJson: JSON.stringify(unwrappedArgs),
+                        executionId: `local-${stepIndex}-${tcIdx}`
+                    };
+                });
+
+                let usageAttached = false;
+
+                // Fold thinking + tool calls together into a collapsible thought-box step
+                if (thinking || normalizedToolCalls.length > 0) {
+                    const idx = steps.length;
+                    steps.push({
+                        type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
+                        plannerResponse: {
+                            thinking: thinking || undefined,
+                            toolCalls: normalizedToolCalls.length > 0 ? normalizedToolCalls : undefined
+                        },
+                        timestamp: validTs
+                    });
+                    pushUsageMeta(idx, parsed);
+                    usageAttached = true;
+                    pendingToolCalls = [...normalizedToolCalls];
+                }
+
+                // Render visible model text as an open AI response bubble (never empty `{}`)
+                if (visibleContent) {
+                    const idx = steps.length;
+                    steps.push({
+                        type: 'CORTEX_STEP_TYPE_MODEL_RESPONSE',
+                        modelResponse: { text: visibleContent },
+                        timestamp: validTs
+                    });
+                    if (!usageAttached) {
+                        pushUsageMeta(idx, parsed);
+                    }
+                }
+                continue;
+            }
+
+            // Fallback for legacy/unknown transcript lines with plain string content
+            if (typeof parsed.content === 'string' && parsed.content.trim()) {
+                steps.push({
+                    type: 'CORTEX_STEP_TYPE_MODEL_RESPONSE',
+                    modelResponse: { text: parsed.content.trim() },
+                    timestamp: validTs
+                });
+            }
+        }
+
+        return { steps, metadata };
+    }
+
+    /**
+     * Reads local conversation steps and token metadata from transcript.jsonl or task.md
+     * when language server is unavailable.
+     */
+    private async getLocalConversationData(id: string): Promise<{ steps: any[]; metadata: any[] } | null> {
         const transcriptPath = path.join(getBrainDir(), id, '.system_generated', 'logs', 'transcript.jsonl');
         if (fs.existsSync(transcriptPath)) {
             try {
                 const content = await fs.promises.readFile(transcriptPath, 'utf8');
-                const lines = content.split('\n');
-                const steps: any[] = [];
-                for (const line of lines) {
-                    if (!line.trim()) continue;
-                    try {
-                        const parsed = JSON.parse(line);
-                        const isUser = parsed.type === 'USER_INPUT' || parsed.source === 'USER_EXPLICIT' || parsed.role === 'user';
-                        const text = typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content);
-                        if (isUser) {
-                            steps.push({
-                                type: 'CORTEX_STEP_TYPE_USER_INPUT',
-                                userInput: { query: text },
-                                timestamp: parsed.timestamp ? new Date(parsed.timestamp).getTime() : undefined
-                            });
-                        } else {
-                            steps.push({
-                                type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
-                                plannerResponse: { response: text },
-                                timestamp: parsed.timestamp ? new Date(parsed.timestamp).getTime() : undefined
-                            });
-                        }
-                    } catch {
-                        // ignore malformed line
-                    }
-                }
-                if (steps.length > 0) return steps;
+                const parsed = this.parseTranscriptJsonl(content);
+                if (parsed.steps.length > 0) return parsed;
             } catch {
                 // ignore read error
             }
@@ -5509,22 +5776,30 @@ export class SyncManager implements vscode.Disposable {
         if (fs.existsSync(taskPath)) {
             try {
                 const taskContent = await fs.promises.readFile(taskPath, 'utf8');
-                return [
-                    {
-                        type: 'CORTEX_STEP_TYPE_USER_INPUT',
-                        userInput: { query: this.getConversationTitle(id) }
-                    },
-                    {
-                        type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
-                        plannerResponse: { response: taskContent }
-                    }
-                ];
+                return {
+                    steps: [
+                        {
+                            type: 'CORTEX_STEP_TYPE_USER_INPUT',
+                            userInput: { userResponse: this.getConversationTitle(id) }
+                        },
+                        {
+                            type: 'CORTEX_STEP_TYPE_MODEL_RESPONSE',
+                            modelResponse: { text: taskContent }
+                        }
+                    ],
+                    metadata: []
+                };
             } catch {
                 // ignore
             }
         }
 
         return null;
+    }
+
+    private async getLocalConversationSteps(id: string): Promise<any[] | null> {
+        const data = await this.getLocalConversationData(id);
+        return data ? data.steps : null;
     }
 
     /**
@@ -5701,8 +5976,12 @@ export class SyncManager implements vscode.Disposable {
             const hasModelResponse = !!step.modelResponse;
             const details = this.parseStepDetails(step);
 
-            // Thinking is only folded if it has actual 'thinking' field and NO principal model response
-            const hasThoughts = !!(step.plannerResponse?.thinking || step.plannerResponse?.thought);
+            // Thinking and tool-only planner steps are folded into a collapsible thought-box
+            const hasThoughts = !!(
+                step.plannerResponse?.thinking ||
+                step.plannerResponse?.thought ||
+                (Array.isArray(step.plannerResponse?.toolCalls) && step.plannerResponse.toolCalls.length > 0 && !step.plannerResponse?.response)
+            );
             const isThinking = hasThoughts && !hasModelResponse && !details.isUser;
 
             if (isThinking && content) {

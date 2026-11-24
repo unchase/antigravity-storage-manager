@@ -372,7 +372,7 @@ For power users and troubleshooting, you can view the raw JSON data received fro
 Need to review a long conversation without scrolling through the small chat window? Open any conversation in a full-screen, dedicated editor tab.
 
 ### Features
-- **Distraction-Free Reading**: Full-width view optimized for readability.
+- **Distraction-Free Reading**: Full-width view optimized for readability across both legacy `.pb` and Antigravity 2.0 `.db` / `transcript.jsonl` conversations (with collapsible thinking, tool calls/outputs, inline images, timestamps, and token usage).
 - **Rich Markdown Support**: Code blocks, tables, and formatting rendered safely (strict nonce-based CSP, XSS hardening, and UNC path blocking).
 - **Syntax Highlighting**: Complete language support for all code snippets.
 - **Quick Access**: Just click on any conversation in the **Sync Statistics** dashboard or use the `Antigravity Storage: Open Current Conversation` command.
