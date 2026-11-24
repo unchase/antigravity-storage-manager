@@ -68,7 +68,7 @@ export class ProcessPortDetector {
         return null;
     }
 
-    async detectProcessInfo(maxRetries: number = 3, retryDelay: number = 2000): Promise<AntigravityProcessInfo | null> {
+    async detectProcessInfo(maxRetries: number = 3, retryDelay: number = 2000, silent: boolean = false): Promise<AntigravityProcessInfo | null> {
         const envInfo = await this.detectFromEnvironment();
         if (envInfo) {
             return envInfo;
@@ -184,8 +184,8 @@ export class ProcessPortDetector {
 
             } catch (error: any) {
                 const errorMsg = error?.message || String(error);
-                if (attempt >= maxRetries) {
-                    // Show error to user only on final attempt
+                if (!silent && attempt >= maxRetries) {
+                    // Show error to user only on final attempt when not in silent fallback mode
                     const lm = LocalizationManager.getInstance();
                     vscode.window.showErrorMessage(lm.t('PortDetector: Attempt {0} failed ({1})', attempt, errorMsg));
                 } else {
@@ -355,7 +355,7 @@ export class ProcessPortDetector {
             const req = client.request(options, (res) => {
                 const success = res.statusCode === 200;
                 if (!success) {
-                    console.debug('PortDetector', `Probe ${protocol}://127.0.0.1:${port}${endpointPath} returned HTTP ${res.statusCode}`);
+                    console.log('PortDetector', `Probe ${protocol}://127.0.0.1:${port}${endpointPath} returned HTTP ${res.statusCode}`);
                 }
                 res.resume();
                 resolve(success ? 'ok' : 'http_error');

@@ -1,7 +1,7 @@
 
 import * as vscode from 'vscode';
 import { ProcessPortDetector } from './processPortDetector';
-import { QuotaService } from './quotaService';
+import { QuotaService, fetchQuotaViaAgyCli } from './quotaService';
 import { QuotaSnapshot, ModelQuotaInfo } from './types';
 import { versionInfo } from './versionInfo';
 import { LocalizationManager } from '../l10n/localizationManager';
@@ -29,6 +29,8 @@ export class QuotaManager {
     private sortMethod: 'quota' | 'time' = 'quota';
     private lastNotifiedModels: Map<string, boolean> = new Map(); // modelId -> wasExhausted
     private syncManager: any | null = null; // SyncManager type to be imported or use any to avoid cycle if needed. Ideally interface.
+    private preferCliFallback: boolean = false;
+    private cliFallbackCycles: number = 0;
 
     constructor(context: vscode.ExtensionContext, authProvider: GoogleAuthProvider, telegramService: TelegramService) {
         this.context = context;
@@ -104,6 +106,8 @@ export class QuotaManager {
     }
 
     public async refresh(): Promise<void> {
+        this.preferCliFallback = false;
+        this.cliFallbackCycles = 0;
         await this.fetchAndUpdate(true);
     }
 
@@ -252,18 +256,49 @@ export class QuotaManager {
     }
 
     public async getQuota(): Promise<QuotaSnapshot> {
-        // 1. Detect process and port
-        const processInfo = await this.portDetector.detectProcessInfo();
+        const shouldProbeLocalServer = !this.preferCliFallback || this.cliFallbackCycles >= 10;
+        let localServerError: unknown = null;
 
-        if (!processInfo) {
-            throw new Error('Antigravity Language Server not found. Please ensure Antigravity extension is installed and running.');
+        if (shouldProbeLocalServer) {
+            this.cliFallbackCycles = 0;
+            // 1. Try local language_server / env endpoint silently first
+            const processInfo = await this.portDetector.detectProcessInfo(1, 1000, true);
+            if (processInfo) {
+                try {
+                    this.quotaService = new QuotaService(processInfo.connectPort, processInfo.csrfToken, processInfo.extensionPort, processInfo.protocol);
+                    const snapshot = await this.quotaService.fetchQuota();
+                    this.preferCliFallback = false;
+                    return snapshot;
+                } catch (err) {
+                    localServerError = err;
+                    console.warn('QuotaManager', 'Local language server fetch failed, trying agy CLI /usage fallback:', err);
+                }
+            }
+        } else {
+            this.cliFallbackCycles++;
         }
 
-        // 2. Initialize service with current port, token, and detected protocol
-        this.quotaService = new QuotaService(processInfo.connectPort, processInfo.csrfToken, processInfo.extensionPort, processInfo.protocol);
-
-        // 3. Fetch quota
-        return await this.quotaService.fetchQuota();
+        // 2. Fallback to official Antigravity CLI (`agy -p /usage --output-format json`)
+        try {
+            let fallbackEmail: string | undefined;
+            if (this.profileManager && this.profileManager.activeProfile) {
+                const profiles = await this.profileManager.loadProfiles();
+                const active = profiles.find(p => p.name === this.profileManager?.activeProfile);
+                fallbackEmail = active?.antigravityEmail;
+            }
+            const cliSnapshot = await fetchQuotaViaAgyCli(
+                fallbackEmail ? { timestamp: new Date(), models: [], userEmail: fallbackEmail } : undefined
+            );
+            this.preferCliFallback = true;
+            return cliSnapshot;
+        } catch (cliError: any) {
+            const cliMsg = cliError?.message || String(cliError);
+            console.warn('QuotaManager', `agy CLI /usage fallback failed: ${cliMsg}`);
+            if (localServerError instanceof Error) {
+                throw localServerError;
+            }
+            throw new Error(`Antigravity Language Server not found and agy CLI fallback failed (${cliMsg}). Please ensure Antigravity is installed and running.`);
+        }
     }
 
     private async checkAndNotifyResets(snapshot: QuotaSnapshot) {

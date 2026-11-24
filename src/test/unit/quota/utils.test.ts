@@ -65,8 +65,11 @@ describe('Quota Utilities', () => {
 
             // Bucketed quota summary labels
             expect(getModelAbbreviation('Gemini Models (5-Hour Limit)')).toBe('Gemini (5h)');
+            expect(getModelAbbreviation('Gemini Models (Five Hour Limit Remaining)')).toBe('Gemini (5h)');
             expect(getModelAbbreviation('Gemini Models (Weekly Limit)')).toBe('Gemini (7d)');
+            expect(getModelAbbreviation('Gemini Models (Weekly Limit Remaining)')).toBe('Gemini (7d)');
             expect(getModelAbbreviation('Claude and GPT models (5-Hour Session)')).toBe('Claude/GPT (5h)');
+            expect(getModelAbbreviation('Claude and GPT models (Five Hour Limit Remaining)')).toBe('Claude/GPT (5h)');
             expect(getModelAbbreviation('Claude and GPT models (Weekly Limit)')).toBe('Claude/GPT (7d)');
 
             // Dynamic fallback
@@ -93,8 +96,10 @@ describe('Quota Utilities', () => {
             expect(isHighTierModel('Orchestrator (Neon)')).toBe(true);
             expect(isHighTierModel('Claude Opus 5.5 (Medium)')).toBe(true);
             expect(getCycleDuration('Gemini 4 Neon (High)')).toBe(5 * 60 * 60 * 1000);
+            expect(isHighTierModel('Gemini Models (Five Hour Limit Remaining)')).toBe(true);
             expect(getCycleDuration('Gemini Models (Weekly Limit)')).toBe(7 * 24 * 60 * 60 * 1000);
             expect(getCycleDuration('Gemini Models (5-Hour Limit)')).toBe(5 * 60 * 60 * 1000);
+            expect(getCycleDuration('Gemini Models (Five Hour Limit Remaining)')).toBe(5 * 60 * 60 * 1000);
         });
     });
 

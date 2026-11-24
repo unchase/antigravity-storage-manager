@@ -1,8 +1,15 @@
 
 import * as https from "https";
 import * as http from "http";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { QuotaSnapshot, PromptCreditsInfo, ModelQuotaInfo, ModelCapabilities } from "./types";
 import { versionInfo } from "./versionInfo";
+
+const execFileAsync = promisify(execFile);
 
 interface RequestConfig {
     path: string;
@@ -256,7 +263,7 @@ export function parseQuotaResponse(response: any): QuotaSnapshot {
 }
 
 export function parseQuotaSummaryResponse(summaryResponse: any, baseSnapshot?: QuotaSnapshot): QuotaSnapshot {
-    const payload = summaryResponse?.response || summaryResponse;
+    const payload = summaryResponse?.command?.data || summaryResponse?.response || summaryResponse;
     const groups = payload?.groups;
 
     if (!Array.isArray(groups)) {
@@ -267,6 +274,9 @@ export function parseQuotaSummaryResponse(summaryResponse: any, baseSnapshot?: Q
 
     for (const group of groups) {
         const groupName = group.displayName || group.name || 'Quota';
+        const groupDescription: string | undefined = typeof group.description === 'string' && group.description.trim()
+            ? group.description.trim()
+            : undefined;
         const rawBuckets = Array.isArray(group.buckets) ? group.buckets : [];
         const activeBuckets = rawBuckets.filter((b: any) => !b.disabled);
         const bucketsToUse = activeBuckets.length > 0 ? activeBuckets : rawBuckets;
@@ -279,21 +289,34 @@ export function parseQuotaSummaryResponse(summaryResponse: any, baseSnapshot?: Q
             const resetTimeRaw = bucket.resetTime || bucket.reset_time;
             const resetTime = resetTimeRaw ? new Date(resetTimeRaw) : new Date(0);
             const isValidResetTime = !isNaN(resetTime.getTime()) && resetTime.getTime() > 0;
-            const timeUntilReset = isValidResetTime ? resetTime.getTime() - Date.now() : 0;
+            const timeUntilReset = isValidResetTime ? Math.max(0, resetTime.getTime() - Date.now()) : 0;
 
-            const bucketSuffix = bucket.displayName || bucket.window || bucket.bucketId;
+            const bucketSuffix = bucket.displayName || bucket.name || bucket.window || bucket.bucketId || bucket.id;
             const label = bucketsToUse.length > 1 && bucketSuffix
                 ? `${groupName} (${bucketSuffix})`
                 : (groupName || bucketSuffix || 'Unknown');
 
-            const modelId = bucket.bucketId || bucket.bucket_id || label;
+            const modelId = bucket.bucketId || bucket.bucket_id || bucket.id || label;
+            const canonicalModelId: string | undefined = typeof (bucket.id || bucket.bucketId || bucket.bucket_id) === 'string'
+                ? String(bucket.id || bucket.bucketId || bucket.bucket_id)
+                : undefined;
+
+            const bucketDescription: string | undefined = typeof bucket.description === 'string' && bucket.description.trim()
+                ? bucket.description.trim()
+                : undefined;
+            const descParts = [bucketDescription, groupDescription].filter((p): p is string => Boolean(p));
+            const tagDescription = descParts.length > 0 ? descParts.join(' • ') : undefined;
+            const isDisabled = Boolean(bucket.disabled);
 
             models.push({
                 label,
                 modelId,
+                canonicalModelId,
                 remainingFraction,
-                remainingPercentage: remainingFraction !== undefined ? remainingFraction * 100 : undefined,
-                isExhausted: remainingFraction === undefined || remainingFraction === 0,
+                remainingPercentage: remainingFraction !== undefined && !isNaN(remainingFraction) ? remainingFraction * 100 : undefined,
+                isExhausted: isDisabled || remainingFraction === undefined || remainingFraction === 0,
+                isDisabled,
+                tagDescription,
                 resetTime,
                 timeUntilReset,
                 timeUntilResetFormatted: formatTimeUntilReset(timeUntilReset)
@@ -310,6 +333,55 @@ export function parseQuotaSummaryResponse(summaryResponse: any, baseSnapshot?: Q
         userEmail: baseSnapshot?.userEmail,
         rawUserStatus: baseSnapshot?.rawUserStatus || summaryResponse
     };
+}
+
+export function findAgyExecutable(): string {
+    const isWin = process.platform === 'win32';
+    const binName = isWin ? 'agy.exe' : 'agy';
+    const candidates: string[] = [
+        path.join(os.homedir(), '.gemini', 'bin', binName)
+    ];
+
+    if (isWin && process.env.LOCALAPPDATA) {
+        candidates.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'Antigravity', 'bin', binName));
+    } else if (!isWin) {
+        candidates.push('/usr/local/bin/agy', '/opt/homebrew/bin/agy');
+    }
+
+    for (const candidate of candidates) {
+        try {
+            if (fs.existsSync(candidate)) {
+                return candidate;
+            }
+        } catch {
+            // Ignore fs errors and continue
+        }
+    }
+
+    return binName;
+}
+
+export async function fetchQuotaViaAgyCli(baseSnapshot?: QuotaSnapshot): Promise<QuotaSnapshot> {
+    const agyExecutable = findAgyExecutable();
+    const { stdout } = await execFileAsync(
+        agyExecutable,
+        ['-p', '/usage', '--output-format', 'json', '--print-timeout', '15s'],
+        {
+            timeout: 20000,
+            windowsHide: true,
+            maxBuffer: 2 * 1024 * 1024
+        }
+    );
+
+    const trimmed = (stdout || '').trim();
+    const jsonStart = trimmed.indexOf('{');
+    const jsonEnd = trimmed.lastIndexOf('}');
+    if (jsonStart === -1 || jsonEnd <= jsonStart) {
+        throw new Error('agy CLI /usage did not return valid JSON');
+    }
+
+    const parsed = JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1));
+    return parseQuotaSummaryResponse(parsed, baseSnapshot);
 }
 
 function parseModelQuota(config: any, userTeamsTier?: string, upgradeSubscriptionText?: string): ModelQuotaInfo {

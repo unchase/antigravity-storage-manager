@@ -5,6 +5,13 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.3] - 2026-11-25
+### Official Antigravity CLI (`/usage`) Quota Fallback
+- **Automatic `agy -p /usage --output-format json` Fallback**: Added `findAgyExecutable` and `fetchQuotaViaAgyCli` in `QuotaService`, and integrated automatic fallback in `QuotaManager`. When the local `language_server` is unavailable or `agy.exe --hub` runs without a CLI `--csrf_token`, the extension seamlessly fetches live 5-hour and weekly quota pools (`Gemini Models`, `Claude and GPT models`) via the official zero-token Antigravity CLI `/usage` command with `windowsHide: true`, caching CLI mode across polling cycles and enriching the snapshot with the active profile email.
+- **Silent Probing & Cleaner Error Handling**: Added a `silent` mode to `ProcessPortDetector.detectProcessInfo` so failed local server probes no longer spam `PortDetector: Attempt 3 failed` popups when the CLI fallback succeeds, and promoted non-200 HTTP probe diagnostics to `console.log`.
+- **Bucket Window & Date Formatting Fixes**: Extended `parseQuotaSummaryResponse` for `agy` CLI `command.data.groups` (`id`, `name`, `remaining_fraction`, `reset_time`, and hover `tagDescription` from bucket/group descriptions), added `Five Hour Limit Remaining` support in `getModelAbbreviation`, `isHighTierModel`, and `getCycleDuration`, and prevented `AccountInfoWebview` from rendering epoch `1970-01-01T00:00:00Z` as a reset timestamp.
+- **Unit Tests**: Added tests in `quotaService.test.ts` and `utils.test.ts` covering `agy -p /usage --output-format json` responses and `Five Hour Limit Remaining` bucket formatting.
+
 ## [0.15.2] - 2026-11-25
 ### Bug Fixes & Process Detection Resilience
 - **Support `agy --hub` Without CLI `--csrf_token`**: Fixed `PortDetector: Attempt 3 failed (language_server / agy process not found)` when Antigravity 2.0 launches `agy.exe --hub --hub-port=<port> --app_data_dir=antigravity` without a `--csrf_token` argument in the command line. Both `WindowsProcessDetector` and `UnixProcessDetector` now accept `--hub` / port-bearing processes without CLI tokens (still preferring tokenized processes when present), support `--csrf-token` and non-hex tokens, and include a `Get-CimInstance` fallback in the Windows PowerShell detector.

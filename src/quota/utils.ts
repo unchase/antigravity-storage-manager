@@ -94,7 +94,7 @@ export function isHighTierModel(label: string): boolean {
         label.includes('Opus') ||
         label.includes('Gemini 4') ||
         label.includes('Orchestrator') ||
-        /5-hour|\b5h\b|weekly/i.test(label)
+        /5-hour|five[\s-]?hour|\b5h\b|weekly/i.test(label)
     );
 }
 
@@ -111,7 +111,7 @@ export function getModelAbbreviation(label: string): string {
     if (bucketMatch) {
         const family = bucketMatch[1].toLowerCase().includes('gemini') ? 'Gemini' : 'Claude/GPT';
         const windowStr = bucketMatch[2].toLowerCase();
-        if (windowStr.includes('5-hour') || windowStr.includes('5h')) return `${family} (5h)`;
+        if (windowStr.includes('5-hour') || windowStr.includes('five hour') || windowStr.includes('five-hour') || windowStr.includes('5h')) return `${family} (5h)`;
         if (windowStr.includes('weekly') || windowStr.includes('7d')) return `${family} (7d)`;
         return `${family} (${bucketMatch[2].trim()})`;
     }
@@ -256,7 +256,7 @@ export function getCycleDuration(label: string): number {
 
     // 5h cycle models: Gemini 4, Orchestrator, Gemini 3.1 Pro, Gemini 3.8, Opus, Claude 5.x, Thinking, explicit 5-hour buckets
     if (
-        /\b5h\b|5-hour/i.test(label) ||
+        /\b5h\b|5-hour|five[\s-]?hour/i.test(label) ||
         label.includes('Gemini 4') ||
         label.includes('Orchestrator') ||
         label.includes('Gemini 3.1 Pro') ||

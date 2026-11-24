@@ -321,6 +321,86 @@ describe('QuotaService', () => {
             expect(snapshot.models[2].isExhausted).toBe(true);
         });
 
+        test('parses agy CLI /usage --output-format json response', () => {
+            const resetWeekly = new Date(Date.now() + 86400000 * 6).toISOString();
+            const reset5h = new Date(Date.now() + 3600000 * 2).toISOString();
+            const agyUsageResponse = {
+                conversation_id: '',
+                status: 'SUCCESS',
+                num_turns: 0,
+                command: {
+                    name: 'usage',
+                    data: {
+                        groups: [
+                            {
+                                name: 'Gemini Models',
+                                description: 'Models within this group: Gemini 4 Neon, Gemini 4 Carbon',
+                                buckets: [
+                                    {
+                                        id: 'gemini-weekly',
+                                        name: 'Weekly Limit Remaining',
+                                        description: 'You have used some of your weekly limit.',
+                                        window: 'weekly',
+                                        remaining_fraction: 0.7573,
+                                        reset_time: resetWeekly
+                                    },
+                                    {
+                                        id: 'gemini-5h',
+                                        name: 'Five Hour Limit Remaining',
+                                        description: 'You have used some of your 5-hour limit.',
+                                        window: '5h',
+                                        remaining_fraction: 0.455,
+                                        reset_time: reset5h
+                                    }
+                                ]
+                            },
+                            {
+                                name: 'Claude and GPT models',
+                                description: 'Models within this group: Claude Opus 5.5, GPT-OSS 120B',
+                                buckets: [
+                                    {
+                                        id: '3p-weekly',
+                                        name: 'Weekly Limit Remaining',
+                                        window: 'weekly',
+                                        remaining_fraction: 1,
+                                        reset_time: '1970-01-01T00:00:00Z'
+                                    },
+                                    {
+                                        id: '3p-5h',
+                                        name: 'Five Hour Limit Remaining',
+                                        window: '5h',
+                                        remaining_fraction: 1,
+                                        reset_time: '1970-01-01T00:00:00Z'
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            };
+
+            const snapshot = parseQuotaSummaryResponse(agyUsageResponse, {
+                timestamp: new Date(),
+                models: [],
+                userEmail: 'user@example.com'
+            });
+
+            expect(snapshot.userEmail).toBe('user@example.com');
+            expect(snapshot.models).toHaveLength(4);
+            expect(snapshot.models[0].label).toBe('Gemini Models (Weekly Limit Remaining)');
+            expect(snapshot.models[0].modelId).toBe('gemini-weekly');
+            expect(snapshot.models[0].canonicalModelId).toBe('gemini-weekly');
+            expect(snapshot.models[0].remainingPercentage).toBeCloseTo(75.73);
+            expect(snapshot.models[0].tagDescription).toContain('You have used some of your weekly limit.');
+            expect(snapshot.models[0].tagDescription).toContain('Gemini 4 Neon');
+            expect(snapshot.models[1].label).toBe('Gemini Models (Five Hour Limit Remaining)');
+            expect(snapshot.models[1].remainingPercentage).toBeCloseTo(45.5);
+            expect(snapshot.models[2].label).toBe('Claude and GPT models (Weekly Limit Remaining)');
+            expect(snapshot.models[2].timeUntilReset).toBe(0);
+            expect(snapshot.models[2].isExhausted).toBe(false);
+            expect(snapshot.models[3].modelId).toBe('3p-5h');
+        });
+
         test('ignores non-numeric credit values safely', () => {
             const response = {
                 userStatus: {

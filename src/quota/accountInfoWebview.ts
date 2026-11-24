@@ -408,7 +408,10 @@ export class AccountInfoWebview {
             const pct = model.remainingPercentage ?? 0;
             const statusIcon = getStatusIcon(pct, model.isExhausted);
             const color = getProgressBarColor(pct, model.isExhausted);
-            const resetTimeStr = formatResetTime(model.resetTime);
+            const resetDate = model.resetTime ? new Date(model.resetTime) : null;
+            const resetTimeStr = resetDate && !isNaN(resetDate.getTime()) && resetDate.getTime() > 0
+                ? formatResetTime(resetDate)
+                : '';
 
             let cycleInfo = '';
             const isHighTier = isHighTierModel(model.label);
