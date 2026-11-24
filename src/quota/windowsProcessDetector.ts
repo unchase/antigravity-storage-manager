@@ -19,13 +19,16 @@ export class WindowsProcessDetector implements IPlatformStrategy {
         return this.usePowerShell;
     }
 
+    private buildPowerShellProcessScript(procNameNoExt: string): string {
+        return `$procs = @(Get-Process -Name '${procNameNoExt}' -ErrorAction SilentlyContinue); if ($procs.Count -gt 0) { $result = @(); foreach ($p in $procs) { $cmd = $null; try { $wmi = [System.Management.ManagementObject]::new("Win32_Process.Handle='$($p.Id)'"); $cmd = $wmi['CommandLine'] } catch { try { $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" -ErrorAction SilentlyContinue).CommandLine } catch {} }; if ($cmd) { $result += @{ProcessId=$p.Id; CommandLine=$cmd} } }; if ($result.Count -gt 0) { $result | ConvertTo-Json } else { Write-Output '[]' } } else { Write-Output '[]' }`;
+    }
+
     getProcessListCommand(processName: string): string {
         if (this.usePowerShell) {
             const psPath = SafePowerShellPath.getSafePath();
-            // Two-step approach: Get-Process (fast, no WMI) + ManagementObject (direct WMI by PID, bypasses WQL)
-            // Get-CimInstance/Get-WmiObject with WQL filter can hang or fail if CIM/WinRM services are broken
+            // Two-step approach: Get-Process (fast, no WMI) + ManagementObject (direct WMI by PID, with CIM fallback)
             const procNameNoExt = processName.replace(/\.exe$/i, '');
-            const script = `$procs = @(Get-Process -Name '${procNameNoExt}' -ErrorAction SilentlyContinue); if ($procs.Count -gt 0) { $result = @(); foreach ($p in $procs) { try { $wmi = [System.Management.ManagementObject]::new("Win32_Process.Handle='$($p.Id)'"); $result += @{ProcessId=$p.Id; CommandLine=$wmi['CommandLine']} } catch {} }; if ($result.Count -gt 0) { $result | ConvertTo-Json } else { Write-Output '[]' } } else { Write-Output '[]' }`;
+            const script = this.buildPowerShellProcessScript(procNameNoExt);
             const encoded = Buffer.from(script, 'utf16le').toString('base64');
             return `${psPath} -NoProfile -EncodedCommand ${encoded}`;
         } else {
@@ -36,10 +39,9 @@ export class WindowsProcessDetector implements IPlatformStrategy {
     getProcessListCommandParts(processName: string): { file: string; args: string[] } | undefined {
         if (this.usePowerShell) {
             // Direct call via execFile — bypasses cmd.exe entirely, no quoting issues
-            // Two-step: Get-Process (fast, no WMI) + ManagementObject (direct WMI by PID)
             const psPath = SafePowerShellPath.getSafePath().replace(/"/g, '');
             const procNameNoExt = processName.replace(/\.exe$/i, '');
-            const script = `$procs = @(Get-Process -Name '${procNameNoExt}' -ErrorAction SilentlyContinue); if ($procs.Count -gt 0) { $result = @(); foreach ($p in $procs) { try { $wmi = [System.Management.ManagementObject]::new("Win32_Process.Handle='$($p.Id)'"); $result += @{ProcessId=$p.Id; CommandLine=$wmi['CommandLine']} } catch {} }; if ($result.Count -gt 0) { $result | ConvertTo-Json } else { Write-Output '[]' } } else { Write-Output '[]' }`;
+            const script = this.buildPowerShellProcessScript(procNameNoExt);
             return { file: psPath, args: ['-NoProfile', '-Command', script] };
         }
         return undefined;
@@ -47,7 +49,7 @@ export class WindowsProcessDetector implements IPlatformStrategy {
 
     private isAntigravityProcess(commandLine: string): boolean {
         const lowerCmd = commandLine.toLowerCase();
-        if (/--app_data_dir[=\s]+antigravity(?:-ide)?\b/i.test(commandLine)) {
+        if (/--app_data_dir[=\s]+"?[^"\s]*antigravity(?:-ide)?/i.test(commandLine)) {
             return true;
         }
         if (
@@ -59,11 +61,57 @@ export class WindowsProcessDetector implements IPlatformStrategy {
         ) {
             return true;
         }
-        // Antigravity 2.0 / CLI hub process: agy.exe --hub ... --csrf_token=...
-        if (/(?:^|[\\/\s"])agy(?:\.exe)?(?:["\s]|$)/i.test(commandLine) && /--hub\b/i.test(commandLine)) {
+        // Antigravity 2.0 / CLI hub process: agy.exe --hub ...
+        if (/(?:^|[\\/\s"])agy(?:\.exe)?(?:["\s]|$)/i.test(commandLine) && /--hub(?:[-_]port)?\b/i.test(commandLine)) {
             return true;
         }
         return false;
+    }
+
+    private extractCandidate(pid: number, commandLine: string): {
+        pid: number;
+        extensionPort: number;
+        csrfToken: string;
+        isHub: boolean;
+    } | null {
+        if (!pid || !this.isAntigravityProcess(commandLine)) {
+            return null;
+        }
+
+        const portMatch = commandLine.match(/--(?:extension_server_port|hub[-_]port)[=\s]+(\d+)/i);
+        const tokenMatch = commandLine.match(/--csrf[_-]token[=\s]+"?([^\s"]+)"?/i);
+        const isHub = /--hub\b/i.test(commandLine);
+        const extensionPort = portMatch && portMatch[1] ? parseInt(portMatch[1], 10) : 0;
+        const csrfToken = tokenMatch && tokenMatch[1] ? tokenMatch[1] : '';
+
+        // Accept if process has CSRF token, or is an agy --hub / server process with a port
+        if (!csrfToken && !isHub && extensionPort === 0) {
+            return null;
+        }
+
+        return { pid, extensionPort, csrfToken, isHub };
+    }
+
+    private pickBestCandidate(candidates: Array<{
+        pid: number;
+        extensionPort: number;
+        csrfToken: string;
+        isHub: boolean;
+    }>): { pid: number; extensionPort: number; csrfToken: string } | null {
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        const score = (c: { extensionPort: number; csrfToken: string; isHub: boolean }): number => {
+            let s = 0;
+            if (c.csrfToken) s += 4;
+            if (c.isHub) s += 2;
+            if (c.extensionPort > 0) s += 1;
+            return s;
+        };
+
+        const best = [...candidates].sort((a, b) => score(b) - score(a))[0];
+        return { pid: best.pid, extensionPort: best.extensionPort, csrfToken: best.csrfToken };
     }
 
     parseProcessInfo(stdout: string): {
@@ -75,45 +123,24 @@ export class WindowsProcessDetector implements IPlatformStrategy {
             try {
                 const parsed = JSON.parse(stdout.trim());
                 const items = Array.isArray(parsed) ? parsed : [parsed];
-                const antigravityProcesses = items.filter((item: any) =>
-                    item?.CommandLine &&
-                    this.isAntigravityProcess(item.CommandLine) &&
-                    /--csrf_token[=\s]+([a-f0-9-]+)/i.test(item.CommandLine)
-                );
+                const candidates: Array<{ pid: number; extensionPort: number; csrfToken: string; isHub: boolean }> = [];
 
-                if (antigravityProcesses.length === 0) {
-                    return null;
+                for (const item of items) {
+                    if (!item?.CommandLine || !item?.ProcessId) continue;
+                    const candidate = this.extractCandidate(Number(item.ProcessId), String(item.CommandLine));
+                    if (candidate) {
+                        candidates.push(candidate);
+                    }
                 }
 
-                // Prefer --hub process if multiple candidates exist
-                const data = antigravityProcesses.find((item: any) => /--hub\b/i.test(item.CommandLine)) || antigravityProcesses[0];
-
-                const commandLine = data.CommandLine || '';
-                const pid = data.ProcessId;
-
-                if (!pid) {
-                    return null;
-                }
-
-                const portMatch = commandLine.match(/--(?:extension_server_port|hub[-_]port)[=\s]+(\d+)/i);
-                const tokenMatch = commandLine.match(/--csrf_token[=\s]+([a-f0-9-]+)/i);
-
-                if (!tokenMatch || !tokenMatch[1]) {
-                    return null;
-                }
-
-                const extensionPort = portMatch && portMatch[1] ? parseInt(portMatch[1], 10) : 0;
-                const csrfToken = tokenMatch[1];
-
-                return { pid, extensionPort, csrfToken };
+                return this.pickBestCandidate(candidates);
             } catch (e) {
                 console.debug('WindowsDetector', `JSON parse failed, trying WMIC format: ${e}`);
             }
         }
 
         const blocks = stdout.split(/\n\s*\n/).filter(block => block.trim().length > 0);
-
-        const candidates: Array<{ pid: number; extensionPort: number; csrfToken: string }> = [];
+        const candidates: Array<{ pid: number; extensionPort: number; csrfToken: string; isHub: boolean }> = [];
 
         for (const block of blocks) {
             const pidMatch = block.match(/ProcessId=(\d+)/);
@@ -123,31 +150,13 @@ export class WindowsProcessDetector implements IPlatformStrategy {
                 continue;
             }
 
-            const commandLine = commandLineMatch[1].trim();
-
-            if (!this.isAntigravityProcess(commandLine)) {
-                continue;
+            const candidate = this.extractCandidate(parseInt(pidMatch[1], 10), commandLineMatch[1].trim());
+            if (candidate) {
+                candidates.push(candidate);
             }
-
-            const portMatch = commandLine.match(/--(?:extension_server_port|hub[-_]port)[=\s]+(\d+)/i);
-            const tokenMatch = commandLine.match(/--csrf_token[=\s]+([a-f0-9-]+)/i);
-
-            if (!tokenMatch || !tokenMatch[1]) {
-                continue;
-            }
-
-            const pid = parseInt(pidMatch[1], 10);
-            const extensionPort = portMatch && portMatch[1] ? parseInt(portMatch[1], 10) : 0;
-            const csrfToken = tokenMatch[1];
-
-            candidates.push({ pid, extensionPort, csrfToken });
         }
 
-        if (candidates.length === 0) {
-            return null;
-        }
-
-        return candidates[0];
+        return this.pickBestCandidate(candidates);
     }
 
     async ensurePortCommandAvailable(): Promise<void> {

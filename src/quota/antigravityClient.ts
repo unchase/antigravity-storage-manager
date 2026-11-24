@@ -51,17 +51,21 @@ export class AntigravityClient {
 
         return new Promise((resolve, reject) => {
             const requestBody = JSON.stringify(body);
+            const headers: Record<string, string | number> = {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(requestBody),
+                'Connect-Protocol-Version': '1'
+            };
+            if (token) {
+                headers['X-Codeium-Csrf-Token'] = token;
+                headers['x-antigravity-csrf-token'] = token;
+            }
             const options: https.RequestOptions = {
                 hostname: '127.0.0.1',
                 port: port,
                 path: `/exa.language_server_pb.LanguageServerService/${method}`,
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(requestBody),
-                    'Connect-Protocol-Version': '1',
-                    'X-Codeium-Csrf-Token': token
-                },
+                headers,
                 rejectUnauthorized: false
             };
 

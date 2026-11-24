@@ -32,7 +32,48 @@ export class ProcessPortDetector {
         this.processNames = this.platformDetector.getProcessNames();
     }
 
+    private redactSensitive(text: string): string {
+        return text.replace(/(--csrf[_-]token[=\s]+"?)[^\s"]+/gi, '$1<REDACTED>');
+    }
+
+    private async detectFromEnvironment(): Promise<AntigravityProcessInfo | null> {
+        const lsAddr = process.env.ANTIGRAVITY_LS_ADDRESS?.trim();
+        if (!lsAddr) {
+            return null;
+        }
+
+        const portMatch = lsAddr.match(/:(\d+)$/);
+        if (!portMatch || !portMatch[1]) {
+            return null;
+        }
+
+        const port = parseInt(portMatch[1], 10);
+        if (isNaN(port) || port <= 0) {
+            return null;
+        }
+
+        const csrfToken = process.env.ANTIGRAVITY_CSRF_TOKEN?.trim() || '';
+        console.log('PortDetector', `Checking environment ANTIGRAVITY_LS_ADDRESS port=${port} (csrfToken=${csrfToken ? 'present' : 'absent'})`);
+        const protocol = await this.testPortConnectivity(port, csrfToken);
+        if (protocol) {
+            console.log('PortDetector', `Environment detection succeeded: connectPort=${port} (${protocol})`);
+            return {
+                extensionPort: port,
+                connectPort: port,
+                csrfToken,
+                protocol
+            };
+        }
+
+        return null;
+    }
+
     async detectProcessInfo(maxRetries: number = 3, retryDelay: number = 2000): Promise<AntigravityProcessInfo | null> {
+        const envInfo = await this.detectFromEnvironment();
+        if (envInfo) {
+            return envInfo;
+        }
+
         const platformName = this.platformDetector.getPlatformName();
         let fallbackUsed = false; // Track if we already tried fallback to prevent infinite loop
 
@@ -60,11 +101,11 @@ export class ProcessPortDetector {
                     stdout = result.stdout;
                 }
 
-                console.log('PortDetector', `Process list stdout (${stdout.length} chars): ${stdout.substring(0, 500)}`);
+                console.log('PortDetector', `Process list stdout (${stdout.length} chars): ${this.redactSensitive(stdout.substring(0, 500))}`);
 
                 let processInfo = this.platformStrategy.parseProcessInfo(stdout);
 
-                // Fallback: try alternative process names (fixes #12 — ARM64 Windows)
+                // Fallback: try alternative process names (fixes #12 — ARM64 Windows, Antigravity 2.0 agy.exe --hub)
                 if (!processInfo && this.processNames.length > 1) {
                     for (const altName of this.processNames) {
                         if (altName === this.processName) continue;
@@ -80,6 +121,7 @@ export class ProcessPortDetector {
                                 const altResult = await execAsync(altCommand, { timeout: 15000 });
                                 altStdout = altResult.stdout;
                             }
+                            console.log('PortDetector', `Fallback '${altName}' stdout (${altStdout.length} chars): ${this.redactSensitive(altStdout.substring(0, 500))}`);
                             processInfo = this.platformStrategy.parseProcessInfo(altStdout);
                             if (processInfo) {
                                 console.log('PortDetector', `Found process using fallback name '${altName}'`);
@@ -95,19 +137,24 @@ export class ProcessPortDetector {
                     throw new Error('language_server / agy process not found');
                 }
 
-                const { pid, extensionPort, csrfToken } = processInfo;
+                const { pid, extensionPort } = processInfo;
+                const csrfToken = processInfo.csrfToken || process.env.ANTIGRAVITY_CSRF_TOKEN?.trim() || '';
 
                 if (!csrfToken) {
-                    console.warn('PortDetector', `Attempt ${attempt}: CSRF token missing`);
-                    throw new Error('CSRF token not found in process arguments');
+                    console.log('PortDetector', `Attempt ${attempt}: No CSRF token in process arguments; probing local endpoint without CSRF header`);
                 }
 
-                console.log('PortDetector', `Found process: PID=${pid}, extensionPort=${extensionPort || 'N/A'}`);
+                console.log('PortDetector', `Found process: PID=${pid}, extensionPort=${extensionPort || 'N/A'}, csrfToken=${csrfToken ? 'present' : 'absent'}`);
 
                 const listeningPorts = await this.getProcessListeningPorts(pid);
-                const candidatePorts = [...listeningPorts];
-                if (extensionPort > 0 && !candidatePorts.includes(extensionPort)) {
+                const candidatePorts: number[] = [];
+                if (extensionPort > 0) {
                     candidatePorts.push(extensionPort);
+                }
+                for (const p of listeningPorts) {
+                    if (!candidatePorts.includes(p)) {
+                        candidatePorts.push(p);
+                    }
                 }
 
                 if (candidatePorts.length === 0) {
@@ -119,7 +166,11 @@ export class ProcessPortDetector {
                 const workingEndpoint = await this.findWorkingPort(candidatePorts, csrfToken);
 
                 if (!workingEndpoint) {
-                    throw new Error('Unable to find a working API port');
+                    throw new Error(
+                        csrfToken
+                            ? 'Unable to find a working API port'
+                            : 'Unable to find a working API port (no CSRF token in process arguments)'
+                    );
                 }
 
                 console.log('PortDetector', `Detection succeeded: connectPort=${workingEndpoint.port} (${workingEndpoint.protocol}), extensionPort=${extensionPort}`);
@@ -280,17 +331,22 @@ export class ProcessPortDetector {
         return new Promise((resolve) => {
             const requestBody = JSON.stringify(body);
 
+            const headers: Record<string, string | number> = {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(requestBody),
+                'Connect-Protocol-Version': '1'
+            };
+            if (csrfToken) {
+                headers['X-Codeium-Csrf-Token'] = csrfToken;
+                headers['x-antigravity-csrf-token'] = csrfToken;
+            }
+
             const options: https.RequestOptions = {
                 hostname: '127.0.0.1',
                 port: port,
                 path: endpointPath,
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(requestBody),
-                    'Connect-Protocol-Version': '1',
-                    'X-Codeium-Csrf-Token': csrfToken
-                },
+                headers,
                 rejectUnauthorized: false,
                 timeout: 2000
             };
@@ -298,6 +354,9 @@ export class ProcessPortDetector {
             const client = protocol === 'https' ? https : http;
             const req = client.request(options, (res) => {
                 const success = res.statusCode === 200;
+                if (!success) {
+                    console.debug('PortDetector', `Probe ${protocol}://127.0.0.1:${port}${endpointPath} returned HTTP ${res.statusCode}`);
+                }
                 res.resume();
                 resolve(success ? 'ok' : 'http_error');
             });

@@ -39,6 +39,40 @@ describe('Process Detectors (agy & language_server)', () => {
             });
         });
 
+        test('parses agy.exe --hub process without --csrf_token in command line', () => {
+            const stdout = JSON.stringify({
+                ProcessId: 4444,
+                CommandLine: 'C:\\Users\\unchase\\.gemini\\bin\\agy.exe --hub --hub-port=64832 --app_data_dir=antigravity "--add-dir=e:\\work\\GIT\\Github\\VS Code Extensions\\antigravity-storage-manager"'
+            });
+
+            const result = detector.parseProcessInfo(stdout);
+            expect(result).toEqual({
+                pid: 4444,
+                extensionPort: 64832,
+                csrfToken: ''
+            });
+        });
+
+        test('prefers process with csrf_token over hub process without token when both exist', () => {
+            const stdout = JSON.stringify([
+                {
+                    ProcessId: 4444,
+                    CommandLine: 'C:\\Users\\test\\.gemini\\bin\\agy.exe --hub --hub-port=64832 --app_data_dir=antigravity'
+                },
+                {
+                    ProcessId: 5555,
+                    CommandLine: 'C:\\Users\\test\\.gemini\\bin\\agy.exe --hub --hub-port=51877 --app_data_dir=antigravity --csrf-token=tok_ABC_123'
+                }
+            ]);
+
+            const result = detector.parseProcessInfo(stdout);
+            expect(result).toEqual({
+                pid: 5555,
+                extensionPort: 51877,
+                csrfToken: 'tok_ABC_123'
+            });
+        });
+
         test('parses legacy language_server_windows_x64.exe process', () => {
             const stdout = JSON.stringify({
                 ProcessId: 4512,
@@ -64,6 +98,16 @@ describe('Process Detectors (agy & language_server)', () => {
                 pid: 12345,
                 extensionPort: 51877,
                 csrfToken: 'abcdef01-2345-6789-abcd-ef0123456789'
+            });
+        });
+
+        test('parses agy --hub process without --csrf_token on unix', () => {
+            const stdout = '4444 1000 /home/user/.gemini/bin/agy --hub --hub-port=64832 --app_data_dir=antigravity';
+            const result = detector.parseProcessInfo(stdout);
+            expect(result).toMatchObject({
+                pid: 4444,
+                extensionPort: 64832,
+                csrfToken: ''
             });
         });
 

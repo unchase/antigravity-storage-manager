@@ -5,6 +5,12 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.2] - 2026-11-25
+### Bug Fixes & Process Detection Resilience
+- **Support `agy --hub` Without CLI `--csrf_token`**: Fixed `PortDetector: Attempt 3 failed (language_server / agy process not found)` when Antigravity 2.0 launches `agy.exe --hub --hub-port=<port> --app_data_dir=antigravity` without a `--csrf_token` argument in the command line. Both `WindowsProcessDetector` and `UnixProcessDetector` now accept `--hub` / port-bearing processes without CLI tokens (still preferring tokenized processes when present), support `--csrf-token` and non-hex tokens, and include a `Get-CimInstance` fallback in the Windows PowerShell detector.
+- **Environment & Dual CSRF Header Support**: `ProcessPortDetector` now checks `ANTIGRAVITY_LS_ADDRESS` / `ANTIGRAVITY_CSRF_TOKEN` environment variables first, prioritizes `--hub-port` in port probing, omits empty CSRF headers when no token is required, and sends both `X-Codeium-Csrf-Token` and `x-antigravity-csrf-token` headers in `ProcessPortDetector`, `QuotaService`, and `AntigravityClient` when a token is present.
+- **Diagnostics & Unit Tests**: Added redacted fallback process stdout and HTTP probe status logging in `ProcessPortDetector`, and added unit tests in `processDetector.test.ts` covering `agy --hub` without `--csrf_token` on Windows and Unix as well as candidate selection priority.
+
 ## [0.15.1] - 2026-11-24
 ### Account Information & Quota Dashboard Enhancements
 - **Unavailable / Disabled Models & Hover Tooltips**: Parsed `tagTitle`, `tagDescription`, `allowedTiers`, `disabled`/`unavailable` flags, and `disabledReason` in `QuotaService` without dropping models that lack `quotaInfo`. Unavailable models are now displayed as disabled (`🔒` / `🚫`), cannot be pinned, and show Antigravity-style hover tooltips and badges (`New`, `Leaving Soon`, `Notice`, `Unavailable`) across the **Antigravity Quota Usage** QuickPick, **Account Information** Webview, and **Sync Statistics** Dashboard.

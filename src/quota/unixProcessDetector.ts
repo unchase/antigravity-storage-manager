@@ -61,7 +61,7 @@ export class UnixProcessDetector implements IPlatformStrategy {
 
     private isAntigravityProcess(commandLine: string): boolean {
         const lowerCmd = commandLine.toLowerCase();
-        if (/--app_data_dir[=\s]+antigravity(?:-ide)?\b/i.test(commandLine)) {
+        if (/--app_data_dir[=\s]+"?[^"\s]*antigravity(?:-ide)?/i.test(commandLine)) {
             return true;
         }
         if (
@@ -72,7 +72,7 @@ export class UnixProcessDetector implements IPlatformStrategy {
         ) {
             return true;
         }
-        if (/(?:^|[\\/\s"])agy(?:["\s]|$)/i.test(commandLine) && /--hub\b/i.test(commandLine)) {
+        if (/(?:^|[\\/\s"])agy(?:["\s]|$)/i.test(commandLine) && /--hub(?:[-_]port)?\b/i.test(commandLine)) {
             return true;
         }
         return false;
@@ -93,7 +93,7 @@ export class UnixProcessDetector implements IPlatformStrategy {
 
         const lines = stdout.trim().split('\n');
         const currentPid = process.pid;
-        const candidates: Array<{ pid: number; ppid: number; extensionPort: number; csrfToken: string }> = [];
+        const candidates: Array<{ pid: number; ppid: number; extensionPort: number; csrfToken: string; isHub: boolean }> = [];
 
         for (const line of lines) {
             const parts = line.trim().split(/\s+/);
@@ -115,13 +115,18 @@ export class UnixProcessDetector implements IPlatformStrategy {
                 continue;
             }
 
-            const portMatch = cmd.match(/--(?:extension_server_port|hub[-_]port)[=\s]+(\d+)/i);
-            const tokenMatch = cmd.match(/--csrf_token[=\s]+([a-f0-9-]+)/i);
+            if (!this.isAntigravityProcess(cmd)) {
+                continue;
+            }
 
-            if (tokenMatch && tokenMatch[1] && this.isAntigravityProcess(cmd)) {
-                const extensionPort = portMatch && portMatch[1] ? parseInt(portMatch[1], 10) : 0;
-                const csrfToken = tokenMatch[1];
-                candidates.push({ pid, ppid, extensionPort, csrfToken });
+            const portMatch = cmd.match(/--(?:extension_server_port|hub[-_]port)[=\s]+(\d+)/i);
+            const tokenMatch = cmd.match(/--csrf[_-]token[=\s]+"?([^\s"]+)"?/i);
+            const isHub = /--hub\b/i.test(cmd);
+            const extensionPort = portMatch && portMatch[1] ? parseInt(portMatch[1], 10) : 0;
+            const csrfToken = tokenMatch && tokenMatch[1] ? tokenMatch[1] : '';
+
+            if (csrfToken || isHub || extensionPort > 0) {
+                candidates.push({ pid, ppid, extensionPort, csrfToken, isHub });
             }
         }
 
@@ -129,12 +134,17 @@ export class UnixProcessDetector implements IPlatformStrategy {
             return null;
         }
 
-        const child = candidates.find(c => c.ppid === currentPid);
-        if (child) {
-            return child;
-        }
+        const score = (c: { ppid: number; extensionPort: number; csrfToken: string; isHub: boolean }): number => {
+            let s = 0;
+            if (c.ppid === currentPid) s += 8;
+            if (c.csrfToken) s += 4;
+            if (c.isHub) s += 2;
+            if (c.extensionPort > 0) s += 1;
+            return s;
+        };
 
-        return candidates[0];
+        const best = [...candidates].sort((a, b) => score(b) - score(a))[0];
+        return { pid: best.pid, extensionPort: best.extensionPort, csrfToken: best.csrfToken };
     }
 
     getPortListCommand(pid: number): string {

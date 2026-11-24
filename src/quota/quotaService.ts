@@ -27,8 +27,7 @@ async function makeRequest(
 
     if (csrfToken) {
         headers['X-Codeium-Csrf-Token'] = csrfToken;
-    } else {
-        throw new Error('Missing CSRF token');
+        headers['x-antigravity-csrf-token'] = csrfToken;
     }
 
     const doRequest = (useHttps: boolean, targetPort: number) => new Promise((resolve, reject) => {
