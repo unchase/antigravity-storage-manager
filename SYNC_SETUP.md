@@ -102,13 +102,16 @@ Now, set up synchronization on your second computer (e.g., your home laptop).
 
 - **Auto-Sync**: By default, the extension checks for changes every **5 minutes**.
 - **Manual Sync**: You can force a sync anytime by clicking the **AG Sync** button in the Status Bar or running `Antigravity Storage: Sync Now`.
-- **Encryption**: All data (conversations and metadata) is encrypted with **AES-256-GCM** using your Master Password. Files on Google Drive look like `encrypted-blobs.zip.enc` and are unreadable without your password.
+- **Encryption (`AGSYNC03`)**: All data (conversations and metadata) is encrypted locally with **AES-256-GCM** (authenticated `AGSYNC03` header with GCM AAD and 600,000 PBKDF2 iterations) using your Master Password. Stored files are unreadable without your password.
+- **SQLite WAL Atomicity**: `.db` and `.db-wal` files are synchronized as a single atomic unit, and stale `.db-wal` / ephemeral `.db-shm` files are cleaned up on overwrite so SQLite databases stay consistent across machines.
+- **Remote Manifest Safety**: If a network error occurs or an incorrect Master Password is entered, the extension aborts rather than overwriting an existing remote manifest with an empty one.
+- **Local / Network Folder Provider**: When `sync.storageProvider` is set to `local`, synchronization runs completely without Google OAuth and uses atomic exclusive (`wx`) lock files with a 5-minute TTL.
 
 ## Managing Conflicts
 
-If you edit the same conversation on multiple computers while offline, a **Conflict** may occur when you reconnect. You can configure the default policy via `antigravity-storage-manager.sync.conflictResolution`:
+The sync engine runs a **3-way merge** first so clean single-side edits never trigger false conflicts. If you edit the same conversation on multiple computers while offline, a **Conflict** is detected and resolved according to `antigravity-storage-manager.sync.conflictResolution`:
 
-- **`prompt`** *(default)*: Prompts you with single-click batch options (**Keep All Local**, **Keep All Remote**, **Keep All Newer**, **Keep All Larger**) or **Review One-by-One** (including **Keep Both**, which saves a `-conflict` copy).
+- **`prompt`** *(default)*: Prompts you with single-click batch options (**Keep All Local**, **Keep All Remote**, **Keep All Newer**, **Keep All Larger**) or **Review One-by-One** (including **Keep Both**, which saves a `-conflict` copy for both legacy `.zip.enc` and per-file v2 sync).
 - **`keepLocal`**: Always overwrites the remote version with your local version.
 - **`keepRemote`**: Always overwrites your local version with the remote version.
 - **`keepNewer`**: Automatically keeps the most recently modified version (Last-Write-Wins).
@@ -117,9 +120,12 @@ If you edit the same conversation on multiple computers while offline, a **Confl
 ## Troubleshooting
 
 ### "Incorrect Password" Error
-If you see this on a new machine, it means the password you entered doesn't match the one used to encrypt the data.
+If you see this on a new machine, it means the password you entered doesn't match the one used to encrypt the data. Your existing remote backup is **never** overwritten on decryption failure.
 - Run `Antigravity Storage: Disconnect Google Drive Sync`.
 - Run setup again and enter the correct password.
+
+### OAuth2 Callback Blocked or Times Out
+For security, the local OAuth2 callback server binds exclusively to loopback `http://127.0.0.1:47842` and enforces PKCE (`S256`) plus CSRF `state` verification. Make sure local firewall rules allow loopback connections on port `47842` and complete sign-in from the latest browser tab opened by the extension.
 
 ### Error 403: access_denied (App not verified)
 If you see a screen saying **"Access blocked: application has not passed Google verification"**:

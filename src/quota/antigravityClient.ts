@@ -24,21 +24,36 @@ export interface SearchMatch {
 // ... existing code ...
 
 export class AntigravityClient {
+    private static readonly NEGATIVE_CACHE_TTL_MS = 180_000;
+    private static readonly REQUEST_TIMEOUT_MS = 5_000;
+
     private portDetector: ProcessPortDetector;
     private connectionInfo: { port: number; token: string; protocol: 'https' | 'http' } | null = null;
+    private unavailableUntil: number = 0;
 
     constructor() {
         this.portDetector = new ProcessPortDetector();
     }
 
+    public resetConnectionCache(): void {
+        this.connectionInfo = null;
+        this.unavailableUntil = 0;
+    }
+
     private async ensureConnection(): Promise<{ port: number; token: string; protocol: 'https' | 'http' }> {
         if (this.connectionInfo) return this.connectionInfo;
 
-        const info = await this.portDetector.detectProcessInfo();
+        if (Date.now() < this.unavailableUntil) {
+            throw new Error('Antigravity Language Server not found (cached).');
+        }
+
+        const info = await this.portDetector.detectProcessInfo(1, 500, true);
         if (!info) {
+            this.unavailableUntil = Date.now() + AntigravityClient.NEGATIVE_CACHE_TTL_MS;
             throw new Error('Antigravity Language Server not found. Please ensure the extension is running.');
         }
 
+        this.unavailableUntil = 0;
         this.connectionInfo = { port: info.connectPort, token: info.csrfToken, protocol: info.protocol || 'https' };
         return this.connectionInfo;
     }
@@ -66,6 +81,7 @@ export class AntigravityClient {
                 path: `/exa.language_server_pb.LanguageServerService/${method}`,
                 method: 'POST',
                 headers,
+                timeout: AntigravityClient.REQUEST_TIMEOUT_MS,
                 rejectUnauthorized: false
             };
 
@@ -87,7 +103,17 @@ export class AntigravityClient {
                 });
             });
 
-            req.on('error', (e) => reject(e));
+            req.on('timeout', () => {
+                this.connectionInfo = null;
+                req.destroy(new Error(`Request timed out after ${AntigravityClient.REQUEST_TIMEOUT_MS}ms`));
+            });
+
+            req.on('error', (e: NodeJS.ErrnoException) => {
+                if (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT' || e.code === 'ECONNRESET') {
+                    this.connectionInfo = null;
+                }
+                reject(e);
+            });
             req.write(requestBody);
             req.end();
         });
@@ -285,12 +311,17 @@ export class AntigravityClient {
 
     /**
      * Force the server to flush all queued messages and state to disk.
+     * Returns true if the flush request succeeded, false otherwise.
      */
-    async sendAllQueuedMessages(): Promise<void> {
+    async sendAllQueuedMessages(): Promise<boolean> {
         try {
             await this.request('SendAllQueuedMessages', {});
-        } catch (e) {
-            console.error('Failed to flush server messages', e);
+            return true;
+        } catch (e: any) {
+            if (!e?.message?.includes('(cached)')) {
+                console.warn('Failed to flush server messages:', e?.message || e);
+            }
+            return false;
         }
     }
 

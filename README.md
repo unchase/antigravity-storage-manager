@@ -80,9 +80,10 @@ Keep your conversations synchronized across multiple machines using your Google 
 👉 **[Detailed Setup Guide](https://github.com/unchase/antigravity-storage-manager/blob/master/SYNC_SETUP.md)**: Includes step-by-step instructions for configuring Google Cloud Console, adding test users, and troubleshooting.
 
 ### Security
-- **Zero Knowledge**: All data is encrypted locally before being uploaded.
-- **Master Password**: Only you know the password. It is stored securely in your OS keychain.
-- **Limited Access**: The extension only accesses files it created (app-specific folder).
+- **Zero Knowledge (`AGSYNC03`)**: All data is encrypted locally with **AES-256-GCM** (authenticated `AGSYNC03` header with GCM AAD, 600,000 PBKDF2 iterations, and zeroized key material) before being uploaded.
+- **Master Password**: Only you know the password. It is stored securely in your OS keychain, and transient network errors or wrong passwords never overwrite an existing remote manifest.
+- **Hardened OAuth2 & Archives**: Google OAuth2 uses PKCE (`S256`), constant-time CSRF `state` verification, and loopback-only (`127.0.0.1`) callback binding. Sync, backup, and import enforce strict path containment and Gzip/Zip bomb limits.
+- **Limited Access**: The extension only accesses files it created (`AntigravitySync` folder), and the `local` storage provider works completely without Google OAuth.
 
 ### Manual Sync
 - Click the **AG Sync** button in the status bar
@@ -372,7 +373,7 @@ Need to review a long conversation without scrolling through the small chat wind
 
 ### Features
 - **Distraction-Free Reading**: Full-width view optimized for readability.
-- **Rich Markdown Support**: Code blocks, tables, and formatting rendered perfectly.
+- **Rich Markdown Support**: Code blocks, tables, and formatting rendered safely (strict nonce-based CSP, XSS hardening, and UNC path blocking).
 - **Syntax Highlighting**: Complete language support for all code snippets.
 - **Quick Access**: Just click on any conversation in the **Sync Statistics** dashboard or use the `Antigravity Storage: Open Current Conversation` command.
 
@@ -405,24 +406,25 @@ When exporting, you can select **multiple conversations at once** using the Spac
 ### 💾 Local Backup
 Worried about the cloud? Create a full local backup anytime.
 1. Run `Antigravity Storage: Backup All Conversations`
-2. Choose a destination folder.
-3. A single ZIP file containing **all** your conversations will be created.
+2. Choose a destination `.zip` file or folder (saving inside `brain/` or `conversations/` is blocked to prevent recursion).
+3. A single ZIP file containing **all** your conversations is written atomically (skipping ephemeral SQLite `.db-shm` files).
 
 ### ⚔️ Conflict Resolution
-When changes are made concurrently on multiple machines or offline:
+When changes are made concurrently on multiple machines or offline (after a 3-way merge verifies a real conflict):
 - **Automatic Policy**: Set `antigravity-storage-manager.sync.conflictResolution` to:
   - `prompt`: Prompt the user with options when conflicts are detected (default).
   - `keepLocal`: Always overwrite remote with local version.
   - `keepRemote`: Always overwrite local with remote version.
   - `keepNewer`: Keep whichever version was modified more recently (Last-Write-Wins).
   - `keepLarger`: Keep whichever version has the larger file size.
-- **Batch Resolution**: When prompted, you can resolve all conflicting items in one click (**Keep All Local**, **Keep All Remote**, **Keep All Newer**, **Keep All Larger**) or inspect them **One-by-One**.
-- **Conflict Copies**: Run `Antigravity Storage: Resolve Conflict Copies` to inspect or clean up legacy offline conflict copies.
+- **Batch Resolution & Keep Both**: When prompted, resolve all conflicting items in one click (**Keep All Local**, **Keep All Remote**, **Keep All Newer**, **Keep All Larger**) or inspect them **One-by-One** (including **Keep Both** for both legacy `.zip.enc` and per-file v2 sync).
+- **Conflict Copies**: Run `Antigravity Storage: Resolve Conflict Copies` to safely inspect or transactionally replace offline conflict copies across both `brain/` and `conversations/`.
 
-### 🔄 IDE State & Index Rebuilding
+### 🔄 IDE State, Index Rebuilding & Data Migration
 Antigravity IDE stores chat session history and active tab order in its global database (`state.vscdb`).
-- **Rebuild Conversation Index**: Run `Antigravity Storage: Rebuild Conversation Index for IDE` to automatically detect all local `.db` and `.pb` conversations and register them in the IDE chat sidebar.
-- **Export / Import IDE State**: Run `Antigravity Storage: Export IDE State (state.vscdb)` and `Antigravity Storage: Import IDE State (state.vscdb)` to back up or migrate your IDE chat history state between machines with automatic backup safety.
+- **Rebuild Conversation Index**: Run `Antigravity Storage: Rebuild Conversation Index for IDE` to discover all local `.db` and `.pb` conversations, register them in the IDE chat sidebar (`state.vscdb`), and refresh the sync manifest index.
+- **Export / Import IDE State**: Run `Antigravity Storage: Export IDE State (state.vscdb)` and `Antigravity Storage: Import IDE State (state.vscdb)` to back up or migrate your IDE chat history state between machines with SQLite/ZIP validation, automatic backup safety, and WAL/SHM cleanup.
+- **Bidirectional Storage Migration**: Migrate conversations in either direction between `~/.gemini/antigravity` and `~/.gemini/antigravity-ide` while safely skipping ephemeral `.db-shm` files.
 
 ---
 

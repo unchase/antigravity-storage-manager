@@ -2,18 +2,20 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as nodeCrypto from 'crypto';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const markdownit = require('markdown-it');
 
 
 import extract from 'extract-zip';
-import { GoogleAuthProvider } from './googleAuth';
+import { GoogleAuthProvider, escapeHtml } from './googleAuth';
 import { GoogleDriveService, SyncManifest, SyncedConversation, Machine, MachineState, FileHashInfo } from './googleDrive';
 import { StorageService, LocalStorageService } from './localStorage';
 import * as crypto from './crypto';
 import { LocalizationManager } from './l10n/localizationManager';
 import { getConversationsAsync, limitConcurrency, formatDuration, ConversationItem, getStoragePaths } from './utils';
+import { validateExtractedDirectory } from './ideState';
 import { SyncStatsWebview, SyncStatsData } from './quota/syncStatsWebview';
 import { QuotaManager } from './quota/quotaManager';
 import { drawProgressBar } from './quota/utils';
@@ -28,6 +30,41 @@ const getConvDir = () => getStoragePaths().convDir;
 const getDefaultSyncBackupDir = () => path.join(getStorageRoot(), 'sync-backups');
 const SECRET_KEY = `${EXT_NAME}.sync.masterPassword`;
 const LEGACY_SECRET_KEY = 'ag-sync-master-password';
+const DEFAULT_LOCK_TTL_MS = 300000; // 5 minutes
+const MIN_SYNC_INTERVAL_MS = 10000;
+const MAX_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+function compareDeterministic(a: string, b: string): number {
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function isSafeLocalFsPath(p: string): boolean {
+    if (!p || typeof p !== 'string' || p.includes('\0')) return false;
+    // Block UNC / network share paths to prevent SMB/NTLM leakage on Windows
+    if (/^(\\\\|\/\/)/.test(p)) return false;
+    return true;
+}
+
+function isSqliteRelatedPath(relativePath: string): boolean {
+    return relativePath.endsWith('.db') || relativePath.endsWith('.db-wal');
+}
+
+async function atomicWriteFile(filePath: string, data: Buffer): Promise<void> {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${nodeCrypto.randomBytes(4).toString('hex')}.tmp`;
+    try {
+        await fs.promises.writeFile(tmpPath, data);
+        await fs.promises.rename(tmpPath, filePath);
+    } catch (err) {
+        try { await fs.promises.unlink(tmpPath); } catch { /* ignore */ }
+        throw err;
+    }
+}
+
+export type ManifestFetchResult =
+    | { status: 'ok'; manifest: SyncManifest }
+    | { status: 'not_found' }
+    | { status: 'error'; error: Error };
 
 export interface SyncConfig {
     enabled: boolean; // Deprecated, use autoSync? No, enabled is overall switch
@@ -49,6 +86,8 @@ export interface SyncResult {
     pulled: string[];
     conflicts: SyncConflict[];
     errors: string[];
+    missingRemoteIds?: string[];
+    cancelled?: boolean;
 }
 
 export interface SyncConflict {
@@ -70,7 +109,7 @@ export type ConflictResolution = 'keepLocal' | 'keepRemote' | 'keepBoth' | 'keep
 /**
  * Main sync manager for coordinating conversation synchronization
  */
-export class SyncManager {
+export class SyncManager implements vscode.Disposable {
     private lastDashboardUpdate: number = 0;
     private context: vscode.ExtensionContext;
     private authProvider: GoogleAuthProvider;
@@ -81,12 +120,13 @@ export class SyncManager {
     private lastTaskName: string = '';
     private lastTaskSummary: string = '';
     private autoSyncTimer: NodeJS.Timeout | null = null;
+    private okStatusTimer: NodeJS.Timeout | null = null;
     private nextAutoSyncTime: number | null = null;
     private isSyncing: boolean = false;
     private syncCount: number = 0;
     private uploadCount: number = 0;
     private downloadCount: number = 0;
-    private fileHashCache: Map<string, { mtime: number, hash: string }> = new Map();
+    private fileHashCache: Map<string, { mtime: number; size: number; hash: string }> = new Map();
     private cachedManifest: SyncManifest | null = null;
     private lastManifestFetch: number = 0;
     private activeTransfers: Map<string, { title: string; type: 'upload' | 'download'; startTime: number }> = new Map();
@@ -94,6 +134,8 @@ export class SyncManager {
     private manifestUpdateQueue: Promise<void> = Promise.resolve();
     private quotaManager: QuotaManager | null = null;
     private lastActiveConversationId?: string;
+    private configChangeDisposable: vscode.Disposable | null = null;
+    private renderDiffStore: Map<string, string> | null = null;
 
     // Concurrency control and Sync Toggle
     private isRefreshing: boolean = false;
@@ -111,27 +153,31 @@ export class SyncManager {
     ) {
         this.context = context;
         this.authProvider = authProvider;
-        // Select storage provider based on settings
-        const config = vscode.workspace.getConfiguration(EXT_NAME);
-        const storageProvider = config.get<string>('sync.storageProvider', 'google-drive');
+        this.driveService = this.createStorageService();
 
-        if (storageProvider === 'local') {
-            const localPath = config.get<string>('sync.localPath', '');
-            if (localPath) {
-                this.driveService = new LocalStorageService(localPath);
-            } else {
-                // Fallback to Google Drive if no local path configured
-                this.driveService = new GoogleDriveService(authProvider);
-            }
-        } else {
-            this.driveService = new GoogleDriveService(authProvider);
+        if (typeof vscode.workspace?.onDidChangeConfiguration === 'function') {
+            this.configChangeDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
+                if (
+                    e.affectsConfiguration(`${EXT_NAME}.sync.storageProvider`) ||
+                    e.affectsConfiguration(`${EXT_NAME}.sync.localPath`)
+                ) {
+                    this.reloadStorageProvider();
+                }
+                if (
+                    e.affectsConfiguration(`${EXT_NAME}.sync.autoSync`) ||
+                    e.affectsConfiguration(`${EXT_NAME}.sync.syncInterval`) ||
+                    e.affectsConfiguration(`${EXT_NAME}.sync.showStatusBar`)
+                ) {
+                    this.applyWorkspaceSyncSettings();
+                }
+            });
         }
 
         try {
             const MD = (markdownit as any).default || markdownit;
             if (typeof MD === 'function') {
                 this.md = new MD({
-                    html: true,
+                    html: false,
                     linkify: true,
                     breaks: true
                 });
@@ -143,6 +189,75 @@ export class SyncManager {
         }
     }
 
+    private createStorageService(): StorageService {
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
+        const storageProvider = config.get<string>('sync.storageProvider', 'google-drive');
+
+        if (storageProvider === 'local') {
+            const localPath = (config.get<string>('sync.localPath', '') || '').trim();
+            if (localPath) {
+                return new LocalStorageService(localPath);
+            }
+        }
+        return new GoogleDriveService(this.authProvider);
+    }
+
+    private reloadStorageProvider(): void {
+        if (this.isSyncing) {
+            console.warn('[SyncManager] Storage provider changed while syncing; cache invalidated.');
+        }
+        if (this.driveService && typeof (this.driveService as any).dispose === 'function') {
+            (this.driveService as any).dispose();
+        }
+        this.driveService = this.createStorageService();
+        this.cachedManifest = null;
+        this.lastManifestFetch = 0;
+        this.updateStatusBar('idle');
+    }
+
+    private applyWorkspaceSyncSettings(): void {
+        const wsConfig = vscode.workspace.getConfiguration(EXT_NAME);
+        const autoSync = wsConfig.get<boolean>('sync.autoSync');
+        const syncInterval = wsConfig.get<number>('sync.syncInterval');
+        const showStatusBar = wsConfig.get<boolean>('sync.showStatusBar');
+
+        if (this.config) {
+            if (typeof autoSync === 'boolean') this.config.autoSync = autoSync;
+            if (typeof syncInterval === 'number' && syncInterval > 0) this.config.syncInterval = syncInterval;
+            if (typeof showStatusBar === 'boolean') this.config.showStatusBar = showStatusBar;
+        }
+
+        if (this.config?.enabled && this.config?.autoSync && this.isReady() && this.isSyncEnabled) {
+            this.startAutoSync();
+        } else {
+            this.stopAutoSync();
+        }
+        this.updateStatusBar(this.isSyncing ? 'syncing' : 'idle');
+    }
+
+    public dispose(): void {
+        this.stopAutoSync();
+        if (this.okStatusTimer) {
+            clearTimeout(this.okStatusTimer);
+            this.okStatusTimer = null;
+        }
+        if (this.configChangeDisposable) {
+            this.configChangeDisposable.dispose();
+            this.configChangeDisposable = null;
+        }
+        if (this.statusBarItem) {
+            this.statusBarItem.dispose();
+            this.statusBarItem = null;
+        }
+        if (this.driveService && typeof (this.driveService as any).dispose === 'function') {
+            (this.driveService as any).dispose();
+        }
+    }
+
+    private isLocalStorage(): boolean {
+        return this.driveService instanceof LocalStorageService;
+    }
+
     public setQuotaManager(quotaManager: QuotaManager) {
         this.quotaManager = quotaManager;
     }
@@ -152,6 +267,17 @@ export class SyncManager {
      */
     async initialize(): Promise<void> {
         await this.loadConfig();
+
+        // Sync runtime config with workspace settings
+        if (this.config) {
+            const wsConfig = vscode.workspace.getConfiguration(EXT_NAME);
+            const autoSync = wsConfig.get<boolean>('sync.autoSync');
+            const syncInterval = wsConfig.get<number>('sync.syncInterval');
+            const showStatusBar = wsConfig.get<boolean>('sync.showStatusBar');
+            if (typeof autoSync === 'boolean') this.config.autoSync = autoSync;
+            if (typeof syncInterval === 'number' && syncInterval > 0) this.config.syncInterval = syncInterval;
+            if (typeof showStatusBar === 'boolean') this.config.showStatusBar = showStatusBar;
+        }
 
         // Load master password from secrets
         let storedPassword = await this.context.secrets.get(SECRET_KEY);
@@ -181,16 +307,16 @@ export class SyncManager {
         if (this.config?.enabled && this.config?.autoSync && this.isReady()) {
             this.startAutoSync();
         } else if (this.config?.autoSync && this.config?.syncInterval) {
-            // Even if not "enabled" (overall switch), if autoSync is on in config, show countdown estimate
             this.nextAutoSyncTime = Date.now() + this.config.syncInterval;
         }
     }
 
     /**
-     * Check if sync is ready (authenticated and configured)
+     * Check if sync is ready (authenticated or local storage, and configured)
      */
     isReady(): boolean {
-        return this.authProvider.isAuthenticated() &&
+        const authOk = this.isLocalStorage() || this.authProvider.isAuthenticated();
+        return authOk &&
             this.config !== null &&
             this.config.enabled &&
             this.masterPassword !== null;
@@ -279,17 +405,12 @@ export class SyncManager {
      * Sync now - manual or automatic sync trigger
      */
     async syncNow(progress?: vscode.Progress<{ message?: string; increment?: number }>, token?: vscode.CancellationToken, force: boolean = false): Promise<SyncResult> {
-        if (force) {
-            try {
-                this.reportProgress(progress, LocalizationManager.getInstance().t('Flushing server state...'));
-                await this.apiClient.sendAllQueuedMessages();
-                // Wait a bit for server to finish writing
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (e) {
-                console.error('Force sync: flush failed', e);
-            }
-        }
         const lm = LocalizationManager.getInstance();
+
+        if (token?.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         if (this.isSyncing) {
             return {
                 success: false,
@@ -298,10 +419,6 @@ export class SyncManager {
                 conflicts: [],
                 errors: [lm.t('Sync already in progress')]
             };
-        }
-
-        if (token?.isCancellationRequested) {
-            throw new vscode.CancellationError();
         }
 
         if (!this.isReady()) {
@@ -314,6 +431,7 @@ export class SyncManager {
             };
         }
 
+        // Set lock synchronously BEFORE any async work (including force flush)
         this.isSyncing = true;
         this.updateStatusBar('syncing');
 
@@ -322,21 +440,40 @@ export class SyncManager {
             pushed: [],
             pulled: [],
             conflicts: [],
-            errors: []
+            errors: [],
+            missingRemoteIds: []
         };
 
+        let wasCancelled = false;
+
         try {
-            // Try to acquire lock
+            if (force) {
+                try {
+                    this.reportProgress(progress, lm.t('Flushing server state...'));
+                    const flushed = await this.apiClient.sendAllQueuedMessages();
+                    if (flushed) {
+                        // Wait briefly for server to finish flushing WAL to disk
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                } catch (e) {
+                    console.error('Force sync: flush failed', e);
+                }
+            }
+
+            if (token?.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
+            // Try to acquire distributed lock
             this.reportProgress(progress, lm.t('Acquiring sync lock...'));
             const machineId = this.config!.machineId;
-            // Lock for 5 minutes (default)
-            const acquired = await this.driveService.acquireLock(machineId);
+            const acquired = await this.driveService.acquireLock(machineId, DEFAULT_LOCK_TTL_MS);
             if (!acquired) {
                 throw new Error(lm.t('Sync is currently locked by another machine. Please try again later.'));
             }
 
             try {
-                // Get remote manifest
+                // Get remote manifest (never recreates on transient/password errors)
                 this.reportProgress(progress, lm.t('Downloading sync manifest...'));
                 const remoteManifest = await this.ensureRemoteManifest();
                 if (!remoteManifest) {
@@ -354,40 +491,62 @@ export class SyncManager {
                 this.reportProgress(progress, lm.t('Scanning local conversations...'));
                 const localConversations = await this.getLocalConversationsAsync();
 
-                // Determine which conversations to sync
+                // Determine which conversations to sync (always copy array, never mutate config!)
                 const toSync = this.config!.selectedConversations === 'all'
                     ? localConversations.map(c => c.id)
-                    : this.config!.selectedConversations;
+                    : [...this.config!.selectedConversations];
 
-                // Also include any remote conversations that we don't have locally
-                for (const remote of remoteManifest.conversations) {
-                    if (!toSync.includes(remote.id)) {
-                        const local = localConversations.find(c => c.id === remote.id);
-                        if (!local) {
-                            // It's a new remote conversation, we should sync it (pull)
-                            toSync.push(remote.id);
+                // Include new remote conversations only in 'all' mode (respect selective sync)
+                if (this.config!.selectedConversations === 'all') {
+                    for (const remote of remoteManifest.conversations) {
+                        if (!toSync.includes(remote.id)) {
+                            const local = localConversations.find(c => c.id === remote.id);
+                            if (!local) {
+                                toSync.push(remote.id);
+                            }
                         }
                     }
                 }
 
-                // Process conversations in parallel chunks to avoid hitting API limits or excessive resource usage
+                const failedConvIds = new Set<string>();
+
+                // Process conversations in parallel chunks using allSettled so all tasks finish before releaseLock
                 this.reportProgress(progress, lm.t('Starting synchronization...'));
                 const chunkSize = 5;
                 for (let i = 0; i < toSync.length; i += chunkSize) {
                     if (token?.isCancellationRequested) throw new vscode.CancellationError();
                     const chunk = toSync.slice(i, i + chunkSize);
-                    await Promise.all(chunk.map(convId => {
-                        if (token?.isCancellationRequested) return Promise.reject(new vscode.CancellationError());
-                        return this.processSyncItem(convId, localConversations, remoteManifest, lastSyncedConversations, result, progress, token, force);
+                    const settlements = await Promise.allSettled(chunk.map(async (convId) => {
+                        if (token?.isCancellationRequested) throw new vscode.CancellationError();
+                        const errorsBefore = result.errors.length;
+                        await this.processSyncItem(convId, localConversations, remoteManifest, lastSyncedConversations, result, progress, token, force);
+                        if (result.errors.length > errorsBefore) {
+                            failedConvIds.add(convId);
+                        }
                     }));
+
+                    for (const s of settlements) {
+                        if (s.status === 'rejected') {
+                            if (s.reason instanceof vscode.CancellationError) {
+                                throw s.reason;
+                            }
+                            result.errors.push(s.reason?.message || String(s.reason));
+                        }
+                    }
                 }
 
-                // Update last sync time
                 if (token?.isCancellationRequested) throw new vscode.CancellationError();
+
+                // Exclude conflicted and failed conversations from overwriting lastSyncedHash
+                const excludedIds = new Set<string>(failedConvIds);
+                for (const c of result.conflicts) {
+                    excludedIds.add(c.conversationId);
+                }
+
                 this.config!.lastSync = new Date().toISOString();
                 this.syncCount++;
                 await this.saveConfig();
-                await this.updateMachineState();
+                await this.updateMachineState(excludedIds, lastSyncedConversations);
 
                 result.success = result.errors.length === 0;
 
@@ -395,26 +554,35 @@ export class SyncManager {
                 await this.driveService.releaseLock(machineId);
             }
         } catch (error: any) {
+            if (error instanceof vscode.CancellationError) {
+                wasCancelled = true;
+                result.cancelled = true;
+                result.success = false;
+                throw error;
+            }
             result.success = false;
-            result.errors.push(error.message);
+            result.errors.push(error?.message || String(error));
         } finally {
             this.isSyncing = false;
-            this.updateStatusBar(
-                result.success ? 'ok' : 'error',
-                result.success ? undefined : result.errors.join('\n')
-            );
+            if (wasCancelled) {
+                this.updateStatusBar('idle');
+            } else {
+                this.updateStatusBar(
+                    result.success ? 'ok' : 'error',
+                    result.success ? undefined : result.errors.join('\n')
+                );
+            }
 
-            // Auto-update statistics dashboard if ALREADY open (do not open it automatically)
             if (SyncStatsWebview.isVisible()) {
                 this.updateDashboardIfVisible();
             }
 
-            // Error suggestions
-            if (result.errors.length > 0) {
-                const notFoundErrors = result.errors.filter(e => e.includes('not found in Drive'));
+            // Error suggestions using structured missingRemoteIds
+            const missingIds = result.missingRemoteIds || [];
+            if (!wasCancelled && missingIds.length > 0) {
                 const suggestSolutions = vscode.workspace.getConfiguration(EXT_NAME).get('sync.suggestSolutions', true);
 
-                if (notFoundErrors.length > 0 && suggestSolutions) {
+                if (suggestSolutions) {
                     const fixAction = lm.t('Fix Manifest (Remove Missing)');
                     const pushAction = lm.t('Push Local Versions');
                     const settingsAction = lm.t('Disable Suggestions');
@@ -426,14 +594,8 @@ export class SyncManager {
                         settingsAction
                     ).then(async selection => {
                         if (selection === fixAction) {
-                            await this.fixMissingRemoteConversations(result.errors);
+                            await this.fixMissingRemoteConversations(missingIds);
                         } else if (selection === pushAction) {
-                            // Retry sync but force push for missing ones? 
-                            // Actually syncNow tries to push if local exists. 
-                            // If we got "not found in Drive" during pull, it means we thought it existed remotely.
-                            // So "Push Local" might strictly mean "Treat as new local". 
-                            // For now, let's just re-run sync and hopefully logic sorts it out, OR explicitly push.
-                            // But cleaner API is to just fix manifest.
                             vscode.window.showInformationMessage(lm.t('To push local versions, simply modify them locally to trigger a change, or use "Fix Manifest" then sync again.'));
                         } else if (selection === settingsAction) {
                             await vscode.workspace.getConfiguration(EXT_NAME).update('sync.suggestSolutions', false, true);
@@ -441,32 +603,31 @@ export class SyncManager {
                     });
                 }
             }
-
-            // Conflict Notification handled by caller (extension.ts) which presents interactive resolution options
-
         }
 
         return result;
     }
 
     /**
-     * Remove missing conversations from remote manifest
+     * Remove missing conversations from remote manifest.
+     * Accepts either direct conversation IDs or legacy error message strings.
      */
-    async fixMissingRemoteConversations(errors: string[]): Promise<void> {
+    async fixMissingRemoteConversations(idsOrErrors: string[]): Promise<void> {
         const lm = LocalizationManager.getInstance();
-        // Extract IDs from error messages
-        // Msg format: "Failed to pull {id}: Conversation {id} not found in Drive"
-        const ids: string[] = [];
+        const ids = new Set<string>();
         const regex = /Conversation ([a-f0-9-]+) not found/i;
+        const uuidLike = /^[a-zA-Z0-9_-]+$/;
 
-        for (const err of errors) {
-            const match = err.match(regex);
+        for (const item of idsOrErrors) {
+            const match = item.match(regex);
             if (match && match[1]) {
-                ids.push(match[1]);
+                ids.add(match[1]);
+            } else if (uuidLike.test(item)) {
+                ids.add(item);
             }
         }
 
-        if (ids.length === 0) return;
+        if (ids.size === 0) return;
 
         try {
             await vscode.window.withProgress({
@@ -474,19 +635,15 @@ export class SyncManager {
                 title: lm.t('Fixing manifest...'),
                 cancellable: false
             }, async () => {
-                const manifest = await this.getDecryptedManifest();
-                if (!manifest) return;
-
-                const initialCount = manifest.conversations.length;
-                manifest.conversations = manifest.conversations.filter(c => !ids.includes(c.id));
-                const removedCount = initialCount - manifest.conversations.length;
+                let removedCount = 0;
+                await this.enqueueManifestUpdate((manifest) => {
+                    const initialCount = manifest.conversations.length;
+                    manifest.conversations = manifest.conversations.filter(c => !ids.has(c.id));
+                    removedCount = initialCount - manifest.conversations.length;
+                    return removedCount > 0;
+                });
 
                 if (removedCount > 0) {
-                    manifest.lastModified = new Date().toISOString();
-                    const manifestJson = JSON.stringify(manifest, null, 2);
-                    const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
-                    const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!, useCompression);
-                    await this.driveService.updateManifest(encrypted);
                     vscode.window.showInformationMessage(lm.t('Removed {0} missing conversation(s) from manifest.', removedCount));
                 }
             });
@@ -566,6 +723,22 @@ export class SyncManager {
             // Files that exist remotely but not locally (deleted locally)
             const config = vscode.workspace.getConfiguration(EXT_NAME);
             const keepLocalFiles = config.get<boolean>('sync.keepLocalFiles', true);
+            const hasLocalDb = Boolean(localData.fileHashes[`conversations/${conversationId}.db`]);
+            const walRelPath = `conversations/${conversationId}.db-wal`;
+            const staleWalDeleted = hasLocalDb && !localData.fileHashes[walRelPath] && Boolean(remoteHashes[walRelPath]);
+
+            // Ensure SQLite (.db + .db-wal) are pushed together as a consistent unit if either changed
+            const dbRelPath = `conversations/${conversationId}.db`;
+            if (
+                localData.fileHashes[dbRelPath] &&
+                localData.fileHashes[walRelPath] &&
+                (filesToUpload.includes(dbRelPath) || filesToUpload.includes(walRelPath))
+            ) {
+                if (!filesToUpload.includes(dbRelPath)) filesToUpload.push(dbRelPath);
+                if (!filesToUpload.includes(walRelPath)) filesToUpload.push(walRelPath);
+            }
+
+            const preservedRemotePaths = new Set<string>();
             for (const remotePath of Object.keys(remoteHashes)) {
                 if (!localData.fileHashes[remotePath]) {
                     filesToDelete.push(remotePath);
@@ -578,20 +751,41 @@ export class SyncManager {
 
             if (filesToDelete.length > 0) {
                 const isFirstSync = !this.config?.lastSync || !remoteConv;
-                if (isFirstSync) {
-                    console.warn(`[Push] First sync for ${conversationId}, skipping remote deletion for ${filesToDelete.length} files that might exist on other machines.`);
-                    filesToDelete.length = 0; // Don't delete remotely on first sync
-                } else if (keepLocalFiles) {
-                    console.warn(`[Push] keepLocalFiles is enabled, skipping remote deletion for ${filesToDelete.length} files for conversation ${conversationId}.`);
+                if (isFirstSync || keepLocalFiles) {
+                    const reason = isFirstSync
+                        ? `First sync for ${conversationId}`
+                        : `keepLocalFiles is enabled for ${conversationId}`;
+                    // Keep non-WAL remote files in manifest so they do not become orphaned,
+                    // but ALWAYS delete stale .db-wal when local .db has checkpointed!
+                    const actuallyToDelete: string[] = [];
+                    for (const p of filesToDelete) {
+                        if (p === walRelPath && staleWalDeleted) {
+                            actuallyToDelete.push(p);
+                        } else {
+                            preservedRemotePaths.add(p);
+                        }
+                    }
+                    if (preservedRemotePaths.size > 0) {
+                        console.warn(`[Push] ${reason}, preserving ${preservedRemotePaths.size} remote file(s) in manifest.`);
+                    }
                     filesToDelete.length = 0;
+                    filesToDelete.push(...actuallyToDelete);
                 } else {
                     console.warn(`[Push] Found ${filesToDelete.length} files missing locally for conversation ${conversationId}. Will delete from remote:`, filesToDelete);
                 }
             }
 
+            // Build effective fileHashes map from actual uploaded buffers + preserved remote entries
+            const effectiveFileHashes: { [relativePath: string]: FileHashInfo } = { ...localData.fileHashes };
+            for (const preservedPath of preservedRemotePaths) {
+                if (remoteHashes[preservedPath]) {
+                    effectiveFileHashes[preservedPath] = remoteHashes[preservedPath];
+                }
+            }
+
             // Upload changed files
             let uploadedCount = 0;
-            const concurrency = config.get<number>('sync.concurrency', 3);
+            const concurrency = Math.max(1, config.get<number>('sync.concurrency', 3));
 
             await limitConcurrency(filesToUpload, concurrency, async (relativePath) => {
                 if (token?.isCancellationRequested) throw new vscode.CancellationError();
@@ -600,38 +794,46 @@ export class SyncManager {
                 this.uploadCount++;
                 this.reportProgress(progress, lm.t('Uploading "{0}": {1} ({2}/{3})...', convTitle, relativePath, uploadedCount, filesToUpload.length));
 
-                // Read and encrypt file
+                // Read file once and compute hash from the exact buffer being encrypted & uploaded
                 const fullPath = this.getFullPathForRelative(conversationId, relativePath);
                 const content = await fs.promises.readFile(fullPath);
+                const stats = await fs.promises.stat(fullPath);
+                const actualHash = crypto.computeMd5Hash(content);
 
                 const useCompression = config.get<boolean>('sync.enableCompression', true);
                 const encrypted = crypto.encrypt(content, this.masterPassword!, useCompression);
 
-                // Get the local plaintext hash to save as metadata
-                const localHash = localData.fileHashes[relativePath].hash;
+                await this.driveService.uploadConversationFile(conversationId, relativePath, encrypted, actualHash);
 
-                await this.driveService.uploadConversationFile(conversationId, relativePath, encrypted, localHash);
-
-                // Update hash cache to ensure consistency on next comparison
-                const fileHash = crypto.computeMd5Hash(content);
-                const stats = await fs.promises.stat(fullPath);
-                this.fileHashCache.set(fullPath, { mtime: stats.mtimeMs, hash: fileHash });
+                // Update effective hashes and local hash cache to match exact uploaded buffer
+                effectiveFileHashes[relativePath] = {
+                    hash: actualHash,
+                    size: content.length,
+                    lastModified: stats.mtime.toISOString()
+                };
+                this.fileHashCache.set(fullPath, { mtime: stats.mtimeMs, size: stats.size, hash: actualHash });
             }, token);
 
             // Delete removed files from remote
             for (const relativePath of filesToDelete) {
                 if (token?.isCancellationRequested) throw new vscode.CancellationError();
                 await this.driveService.deleteConversationFile(conversationId, relativePath);
+                delete effectiveFileHashes[relativePath];
             }
 
             // Only update manifest if we actually made changes (or found existing files that needed to be recorded)
             if (filesToUpload.length > 0 || filesToDelete.length > 0 || skippedCount > 0) {
-                // Update manifest with new file hashes
+                const effectiveOverallHash = this.computeOverallHashFromFileHashes(effectiveFileHashes);
+                const effectiveMaxMtime = Math.max(
+                    localData.maxMtime,
+                    ...Object.values(effectiveFileHashes).map(f => Date.parse(f.lastModified) || 0)
+                );
+
                 await this.updateManifestEntryWithFileHashes(
                     conversationId,
-                    localData.overallHash,
-                    localData.fileHashes,
-                    localData.maxMtime > 0 ? new Date(localData.maxMtime).toISOString() : undefined
+                    effectiveOverallHash,
+                    effectiveFileHashes,
+                    effectiveMaxMtime > 0 ? new Date(effectiveMaxMtime).toISOString() : undefined
                 );
                 console.log(`[Push] Updated manifest for ${conversationId}: ${filesToUpload.length} uploaded, ${filesToDelete.length} deleted`);
             } else {
@@ -655,18 +857,22 @@ export class SyncManager {
 
             // 2. Check for "orphaned" folders that might be valid conversations but missing metadata
             try {
-                const entries = await fs.promises.readdir(getBrainDir());
                 let recovered = 0;
-
-                for (const id of entries) {
-                    // If not in localConversations, check if it looks like a conversation
-                    if (!localConversations.find(c => c.id === id)) {
-                        const dirPath = path.join(getBrainDir(), id);
-                        const stats = await fs.promises.stat(dirPath);
-                        if (stats.isDirectory()) {
-                            console.log(`[Reindex] Found potential orphan: ${id}`);
-                            const files = await fs.promises.readdir(dirPath);
-                            if (files.length > 0) recovered++;
+                const brainRoot = getBrainDir();
+                if (fs.existsSync(brainRoot)) {
+                    const entries = await fs.promises.readdir(brainRoot);
+                    for (const id of entries) {
+                        // If not in localConversations, check if it looks like a conversation
+                        if (!localConversations.find(c => c.id === id)) {
+                            const dirPath = path.join(brainRoot, id);
+                            try {
+                                const stats = await fs.promises.stat(dirPath);
+                                if (stats.isDirectory()) {
+                                    console.log(`[Reindex] Found potential orphan: ${id}`);
+                                    const files = await fs.promises.readdir(dirPath);
+                                    if (files.length > 0) recovered++;
+                                }
+                            } catch { /* ignore unreadable entries */ }
                         }
                     }
                 }
@@ -788,18 +994,11 @@ export class SyncManager {
                     }
                 }
 
-                if (recovered > 0 || remoteOnlyCount > 0) {
-                    const parts: string[] = [];
-                    if (recovered > 0) {
-                        parts.push(lm.t('Found {0} potential orphaned conversations. Please check specific folders in {1}.', recovered, getBrainDir()));
-                    }
-                    if (remoteOnlyCount > 0 && !this.isReady()) {
-                        parts.push(lm.t('Enable sync to check for remote conversations.'));
-                    }
-                    if (parts.length > 0) {
-                        vscode.window.showInformationMessage(parts.join(' '));
-                    }
-                } else {
+                if (recovered > 0) {
+                    vscode.window.showInformationMessage(
+                        lm.t('Found {0} potential orphaned conversations. Please check specific folders in {1}.', recovered, getBrainDir())
+                    );
+                } else if (remoteOnlyCount === 0) {
                     vscode.window.showInformationMessage(lm.t('Reindex complete. Found {0} conversations.', localConversations.length));
                 }
 
@@ -814,34 +1013,52 @@ export class SyncManager {
     }
 
     /**
-     * Get full local path for a relative path
+     * Get full local path for a relative path with strict containment checks (prevents Path Traversal)
      */
     private getFullPathForRelative(conversationId: string, relativePath: string): string {
-        if (relativePath.startsWith('conversations/')) {
-            return path.join(getConvDir(), relativePath.replace('conversations/', ''));
-        } else if (relativePath.startsWith(`brain/${conversationId}/`)) {
-            // brain/{convId}/subpath -> brainDir/{convId}/subpath
-            return path.join(getBrainDir(), relativePath.replace('brain/', ''));
-        } else if (relativePath.startsWith('brain/')) {
-            // brain/{convId}/subpath (generic case)
-            return path.join(getBrainDir(), relativePath.replace('brain/', ''));
+        if (!relativePath || relativePath.includes('\0')) {
+            throw new Error(`Invalid relative path: ${relativePath}`);
+        }
+        const normalized = relativePath.replace(/\\/g, '/');
+        const segments = normalized.split('/');
+        if (segments.some(s => s === '..')) {
+            throw new Error(`Path traversal detected in relative path: ${relativePath}`);
+        }
+
+        if (normalized.startsWith('conversations/')) {
+            const sub = normalized.slice('conversations/'.length);
+            const baseDir = path.resolve(getConvDir());
+            const resolved = path.resolve(baseDir, sub);
+            if (!resolved.startsWith(baseDir + path.sep)) {
+                throw new Error(`Path escapes conversations directory: ${relativePath}`);
+            }
+            return resolved;
+        } else if (normalized.startsWith('brain/')) {
+            const sub = normalized.slice('brain/'.length);
+            const baseDir = path.resolve(getBrainDir());
+            const resolved = path.resolve(baseDir, sub);
+            if (!resolved.startsWith(baseDir + path.sep)) {
+                throw new Error(`Path escapes brain directory: ${relativePath}`);
+            }
+            return resolved;
         }
         throw new Error(`Unknown path format: ${relativePath}`);
     }
 
     /**
-     * Pull a single conversation from Google Drive (per-file sync with legacy fallback)
+     * Pull a single conversation from storage (per-file sync with legacy fallback)
      */
-    /**
-     * Pull a single conversation from Google Drive (per-file sync with legacy fallback)
-     */
-    async pullConversation(conversationId: string, progress?: vscode.Progress<{ message?: string; increment?: number }>, token?: vscode.CancellationToken): Promise<void> {
+    async pullConversation(
+        conversationId: string,
+        progress?: vscode.Progress<{ message?: string; increment?: number }>,
+        token?: vscode.CancellationToken,
+        forceOverwrite: boolean = false
+    ): Promise<void> {
         const lm = LocalizationManager.getInstance();
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
         if (!this.masterPassword) {
             throw new Error(lm.t('Encryption password not set'));
         }
-
 
         // Get remote manifest to check format and file hashes
         const manifest = await this.getDecryptedManifest(true);
@@ -851,17 +1068,14 @@ export class SyncManager {
             throw new Error(lm.t('Conversation {0} not found in manifest', conversationId));
         }
 
-        // Track active transfer for dashboard - prefer remote title from manifest for remote-only conversations
         const convTitle = remoteConv.title || this.getConversationTitle(conversationId);
         this.activeTransfers.set(conversationId, { title: convTitle, type: 'download', startTime: Date.now() });
         this.updateDashboardIfVisible();
 
         try {
-            // Check if using new per-file format (version 2) or legacy ZIP
             if (remoteConv.version === 2 && remoteConv.fileHashes) {
-                await this.pullConversationPerFile(conversationId, convTitle, remoteConv.fileHashes, progress, token);
+                await this.pullConversationPerFile(conversationId, convTitle, remoteConv.fileHashes, progress, token, forceOverwrite);
             } else {
-                // Legacy format - download entire ZIP
                 await this.pullConversationLegacy(conversationId, convTitle, progress, token);
             }
         } finally {
@@ -871,36 +1085,65 @@ export class SyncManager {
     }
 
     /**
-     * Pull conversation using per-file sync (new format)
-     */
-    /**
-     * Pull conversation using per-file sync (new format)
+     * Pull conversation using per-file sync (new format) with SQLite WAL unit atomicity
      */
     private async pullConversationPerFile(
         conversationId: string,
         convTitle: string,
         remoteHashes: { [relativePath: string]: FileHashInfo },
         progress?: vscode.Progress<{ message?: string; increment?: number }>,
-        token?: vscode.CancellationToken
+        token?: vscode.CancellationToken,
+        forceOverwrite: boolean = false
     ): Promise<void> {
         const lm = LocalizationManager.getInstance();
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
-        // Get local file hashes
+
         this.reportProgress(progress, lm.t('Analyzing "{0}"...', convTitle));
         const localData = await this.computeConversationFileHashesAsync(conversationId);
         const localHashes = localData.fileHashes;
 
-        // Determine which files need to be downloaded
+        const dbRelPath = `conversations/${conversationId}.db`;
+        const walRelPath = `conversations/${conversationId}.db-wal`;
+
+        // Determine if SQLite unit (.db + .db-wal) differs
+        const remoteHasDb = Boolean(remoteHashes[dbRelPath]);
+        const remoteHasWal = Boolean(remoteHashes[walRelPath]);
+        const dbChanged = remoteHasDb && (!localHashes[dbRelPath] || localHashes[dbRelPath].hash !== remoteHashes[dbRelPath].hash);
+        const walChanged = remoteHasWal && (!localHashes[walRelPath] || localHashes[walRelPath].hash !== remoteHashes[walRelPath].hash);
+        const walRemovedRemotely = remoteHasDb && !remoteHasWal && Boolean(localHashes[walRelPath]);
+        let pullSqliteUnit = dbChanged || walChanged || walRemovedRemotely;
+
+        if (pullSqliteUnit && !forceOverwrite && localHashes[dbRelPath]) {
+            const remoteUnitMax = Math.max(
+                Date.parse(remoteHashes[dbRelPath]?.lastModified || '') || 0,
+                Date.parse(remoteHashes[walRelPath]?.lastModified || '') || 0
+            );
+            const localUnitMax = Math.max(
+                Date.parse(localHashes[dbRelPath]?.lastModified || '') || 0,
+                Date.parse(localHashes[walRelPath]?.lastModified || '') || 0
+            );
+            if (remoteUnitMax > 0 && localUnitMax > 0 && remoteUnitMax < localUnitMax) {
+                console.warn(`[Pull] Skipping SQLite unit for ${conversationId}: remote unit is older than local`);
+                pullSqliteUnit = false;
+            }
+        }
+
         const filesToDownload: string[] = [];
+        const sqliteFilesToDownload: string[] = [];
         const filesToDelete: string[] = [];
         let skippedOlderCount = 0;
 
-        // Files that are new or changed remotely
         for (const [relativePath, remoteInfo] of Object.entries(remoteHashes)) {
+            if (isSqliteRelatedPath(relativePath)) {
+                if (pullSqliteUnit) {
+                    sqliteFilesToDownload.push(relativePath);
+                }
+                continue;
+            }
+
             const localInfo = localHashes[relativePath];
             if (!localInfo || localInfo.hash !== remoteInfo.hash) {
-                // Timestamp safety check: skip if remote file is older than local
-                if (localInfo && remoteInfo.lastModified && localInfo.lastModified) {
+                if (!forceOverwrite && localInfo && remoteInfo.lastModified && localInfo.lastModified) {
                     const remoteDate = new Date(remoteInfo.lastModified).getTime();
                     const localDate = new Date(localInfo.lastModified).getTime();
                     if (remoteDate < localDate) {
@@ -917,16 +1160,15 @@ export class SyncManager {
             console.warn(`[Pull] Skipped ${skippedOlderCount} file(s) for ${conversationId}: remote version is older than local`);
         }
 
-        // Files that exist locally but not remotely (deleted remotely)
+        // Files that exist locally but not remotely
         const config = vscode.workspace.getConfiguration(EXT_NAME);
         const keepLocalFiles = config.get<boolean>('sync.keepLocalFiles', true);
         for (const localPath of Object.keys(localHashes)) {
-            if (!remoteHashes[localPath]) {
+            if (!remoteHashes[localPath] && !isSqliteRelatedPath(localPath)) {
                 filesToDelete.push(localPath);
             }
         }
 
-        // If keepLocalFiles is enabled, skip deletion of local files
         if (keepLocalFiles && filesToDelete.length > 0) {
             console.warn(`[Pull] keepLocalFiles is enabled, skipping local deletion for ${filesToDelete.length} file(s) for conversation ${conversationId}.`);
             filesToDelete.length = 0;
@@ -934,43 +1176,97 @@ export class SyncManager {
 
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
+        const totalDownloads = filesToDownload.length + sqliteFilesToDownload.length;
+
         // Create pre-sync backup before overwriting any local files
-        if (filesToDownload.length > 0 || filesToDelete.length > 0) {
+        if (totalDownloads > 0 || filesToDelete.length > 0 || (pullSqliteUnit && walRemovedRemotely)) {
             await this.backupConversationBeforePull(conversationId, convTitle, progress);
         }
 
-        // Download changed files
         let downloadedCount = 0;
-        const concurrency = config.get<number>('sync.concurrency', 3);
+        const concurrency = Math.max(1, config.get<number>('sync.concurrency', 3));
 
+        // 1. Download and atomically stage SQLite unit (.db + .db-wal) together
+        if (pullSqliteUnit) {
+            const stagedSqlite: Array<{ targetPath: string; tmpPath: string; hash: string; size: number }> = [];
+            try {
+                for (const relativePath of sqliteFilesToDownload) {
+                    if (token?.isCancellationRequested) throw new vscode.CancellationError();
+                    downloadedCount++;
+                    this.downloadCount++;
+                    this.reportProgress(progress, lm.t('Downloading "{0}": {1} ({2}/{3})...', convTitle, relativePath, downloadedCount, totalDownloads));
+
+                    const encrypted = await this.driveService.downloadConversationFile(conversationId, relativePath);
+                    if (!encrypted) {
+                        throw new Error(`Conversation ${conversationId} not found in Drive (missing ${relativePath})`);
+                    }
+
+                    const content = crypto.decrypt(encrypted, this.masterPassword!);
+                    const fullPath = this.getFullPathForRelative(conversationId, relativePath);
+                    await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+                    const tmpPath = `${fullPath}.${process.pid}.${Date.now()}.tmp`;
+                    await fs.promises.writeFile(tmpPath, content);
+                    stagedSqlite.push({
+                        targetPath: fullPath,
+                        tmpPath,
+                        hash: crypto.computeMd5Hash(content),
+                        size: content.length
+                    });
+                }
+
+                // Always remove ephemeral .db-shm before swapping SQLite files
+                const shmPath = path.join(getConvDir(), `${conversationId}.db-shm`);
+                try { await fs.promises.unlink(shmPath); } catch { /* ignore */ }
+
+                // If remote has .db without .db-wal, ALWAYS remove stale local .db-wal even when keepLocalFiles is true
+                if (remoteHasDb && !remoteHasWal) {
+                    const localWalPath = path.join(getConvDir(), `${conversationId}.db-wal`);
+                    try { await fs.promises.unlink(localWalPath); } catch { /* ignore */ }
+                    this.fileHashCache.delete(localWalPath);
+                }
+
+                for (const item of stagedSqlite) {
+                    await fs.promises.rename(item.tmpPath, item.targetPath);
+                    const newStats = await fs.promises.stat(item.targetPath);
+                    this.fileHashCache.set(item.targetPath, { mtime: newStats.mtimeMs, size: newStats.size, hash: item.hash });
+                }
+            } catch (err) {
+                for (const item of stagedSqlite) {
+                    try { await fs.promises.unlink(item.tmpPath); } catch { /* ignore */ }
+                }
+                throw err;
+            }
+        }
+
+        // 2. Download non-SQLite files atomically
         await limitConcurrency(filesToDownload, concurrency, async (relativePath) => {
             if (token?.isCancellationRequested) throw new vscode.CancellationError();
             downloadedCount++;
             this.downloadCount++;
-            this.reportProgress(progress, lm.t('Downloading "{0}": {1} ({2}/{3})...', convTitle, relativePath, downloadedCount, filesToDownload.length));
+            this.reportProgress(progress, lm.t('Downloading "{0}": {1} ({2}/{3})...', convTitle, relativePath, downloadedCount, totalDownloads));
 
             const encrypted = await this.driveService.downloadConversationFile(conversationId, relativePath);
-            if (encrypted) {
-                const content = crypto.decrypt(encrypted, this.masterPassword!);
-                const fullPath = this.getFullPathForRelative(conversationId, relativePath);
-
-                // Ensure directory exists
-                await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-                await fs.promises.writeFile(fullPath, content);
-
-                // Update hash cache with new content to prevent stale cache on next sync
-                const newHash = crypto.computeMd5Hash(content);
-                const newStats = await fs.promises.stat(fullPath);
-                this.fileHashCache.set(fullPath, { mtime: newStats.mtimeMs, hash: newHash });
+            if (!encrypted) {
+                throw new Error(`Conversation ${conversationId} not found in Drive (missing ${relativePath})`);
             }
+
+            const content = crypto.decrypt(encrypted, this.masterPassword!);
+            const fullPath = this.getFullPathForRelative(conversationId, relativePath);
+
+            await atomicWriteFile(fullPath, content);
+
+            const newHash = crypto.computeMd5Hash(content);
+            const newStats = await fs.promises.stat(fullPath);
+            this.fileHashCache.set(fullPath, { mtime: newStats.mtimeMs, size: newStats.size, hash: newHash });
         }, token);
 
-        // Delete locally files that were deleted remotely
+        // 3. Delete locally files that were deleted remotely
         for (const relativePath of filesToDelete) {
             if (token?.isCancellationRequested) throw new vscode.CancellationError();
             try {
                 const fullPath = this.getFullPathForRelative(conversationId, relativePath);
                 await fs.promises.unlink(fullPath);
+                this.fileHashCache.delete(fullPath);
             } catch {
                 // Ignore if file doesn't exist
             }
@@ -1014,6 +1310,7 @@ export class SyncManager {
             if (token?.isCancellationRequested) throw new vscode.CancellationError();
             fs.writeFileSync(zipPath, zipData);
             await extract(zipPath, { dir: tempDir });
+            validateExtractedDirectory(tempDir);
 
             // Create pre-sync backup before overwriting local data
             await this.backupConversationBeforePull(conversationId, convTitle, progress);
@@ -1028,10 +1325,22 @@ export class SyncManager {
                 fs.cpSync(sourceBrain, destBrain, { recursive: true });
             }
 
-            // Copy conversation files (.pb, .db, .db-wal)
+            // Copy conversation files (.pb, .db, .db-wal) and clean stale -shm/-wal
             const destConv = getConvDir();
             if (!fs.existsSync(destConv)) {
                 fs.mkdirSync(destConv, { recursive: true });
+            }
+            const shmPath = path.join(destConv, `${conversationId}.db-shm`);
+            if (fs.existsSync(shmPath)) {
+                try { fs.unlinkSync(shmPath); } catch { /* ignore */ }
+            }
+            const sourceDb = path.join(tempDir, 'conversations', `${conversationId}.db`);
+            const sourceWal = path.join(tempDir, 'conversations', `${conversationId}.db-wal`);
+            if (fs.existsSync(sourceDb) && !fs.existsSync(sourceWal)) {
+                const destWal = path.join(destConv, `${conversationId}.db-wal`);
+                if (fs.existsSync(destWal)) {
+                    try { fs.unlinkSync(destWal); } catch { /* ignore */ }
+                }
             }
             const convExts = ['.pb', '.db', '.db-wal'];
             for (const ext of convExts) {
@@ -1049,8 +1358,8 @@ export class SyncManager {
      * Resolve a sync conflict
      */
     async resolveConflict(conflict: SyncConflict, resolution: ConflictResolution): Promise<void> {
+        const lm = LocalizationManager.getInstance();
         if (!this.masterPassword) {
-            const lm = LocalizationManager.getInstance();
             throw new Error(lm.t('Encryption password not set'));
         }
 
@@ -1070,15 +1379,55 @@ export class SyncManager {
                 await this.pushConversation(conflict.conversationId);
                 break;
             case 'keepRemote':
-                await this.pullConversation(conflict.conversationId);
+                await this.pullConversation(conflict.conversationId, undefined, undefined, true);
                 break;
             case 'keepBoth': {
-                // Create a copy with -conflict suffix
                 const newId = `${conflict.conversationId}-conflict-${Date.now()}`;
+                const manifest = await this.getDecryptedManifest(true);
+                const remoteConv = manifest?.conversations.find(c => c.id === conflict.conversationId);
 
-                // First pull remote as the conflict copy
-                const encrypted = await this.driveService.downloadConversation(conflict.conversationId);
-                if (encrypted) {
+                if (remoteConv?.version === 2 && remoteConv.fileHashes) {
+                    // Per-file v2 conflict copy: download all remote files into the conflict copy ID first
+                    const downloadedFiles: Array<{ targetPath: string; content: Buffer }> = [];
+                    const entries = Object.keys(remoteConv.fileHashes);
+                    if (entries.length === 0) {
+                        throw new Error(`Remote conversation ${conflict.conversationId} has no files to save as conflict copy.`);
+                    }
+
+                    for (const relativePath of entries) {
+                        const encrypted = await this.driveService.downloadConversationFile(conflict.conversationId, relativePath);
+                        if (!encrypted) {
+                            throw new Error(`Failed to download remote file "${relativePath}" for Keep Both; aborting to preserve remote data.`);
+                        }
+                        const content = crypto.decrypt(encrypted, this.masterPassword!);
+                        let targetPath: string;
+                        if (relativePath.startsWith('conversations/')) {
+                            const fileName = relativePath.slice('conversations/'.length);
+                            const renamed = fileName.startsWith(conflict.conversationId)
+                                ? `${newId}${fileName.slice(conflict.conversationId.length)}`
+                                : `${newId}-${fileName}`;
+                            targetPath = this.getFullPathForRelative(newId, `conversations/${renamed}`);
+                        } else if (relativePath.startsWith(`brain/${conflict.conversationId}/`)) {
+                            const sub = relativePath.slice(`brain/${conflict.conversationId}/`.length);
+                            targetPath = this.getFullPathForRelative(newId, `brain/${newId}/${sub}`);
+                        } else if (relativePath.startsWith('brain/')) {
+                            const sub = relativePath.slice('brain/'.length);
+                            targetPath = this.getFullPathForRelative(newId, `brain/${newId}/${sub}`);
+                        } else {
+                            throw new Error(`Unknown path format: ${relativePath}`);
+                        }
+                        downloadedFiles.push({ targetPath, content });
+                    }
+
+                    for (const item of downloadedFiles) {
+                        await atomicWriteFile(item.targetPath, item.content);
+                    }
+                } else {
+                    // Legacy v1 ZIP conflict copy
+                    const encrypted = await this.driveService.downloadConversation(conflict.conversationId);
+                    if (!encrypted) {
+                        throw new Error(`Failed to download remote conversation ${conflict.conversationId} for Keep Both; aborting to preserve remote data.`);
+                    }
                     const zipData = crypto.decrypt(encrypted, this.masterPassword!);
                     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-sync-'));
                     const zipPath = path.join(tempDir, 'conflict.zip');
@@ -1086,8 +1435,8 @@ export class SyncManager {
                     try {
                         fs.writeFileSync(zipPath, zipData);
                         await extract(zipPath, { dir: tempDir });
+                        validateExtractedDirectory(tempDir);
 
-                        // Copy with new ID
                         const sourceBrain = path.join(tempDir, 'brain', conflict.conversationId);
                         if (fs.existsSync(sourceBrain)) {
                             fs.cpSync(sourceBrain, path.join(getBrainDir(), newId), { recursive: true });
@@ -1109,7 +1458,7 @@ export class SyncManager {
                     }
                 }
 
-                // Then push local
+                // Only push local AFTER the remote copy was completely preserved locally
                 await this.pushConversation(conflict.conversationId);
                 break;
             }
@@ -1150,7 +1499,7 @@ export class SyncManager {
 
     /**
      * Create a backup of a conversation before it is overwritten during sync pull.
-     * This is a targeted backup of a single conversation, not a full backup.
+     * Skips creating an empty backup if no local files exist yet.
      */
     private async backupConversationBeforePull(
         conversationId: string,
@@ -1160,6 +1509,18 @@ export class SyncManager {
         const config = vscode.workspace.getConfiguration(EXT_NAME);
         const enabled = config.get<boolean>('sync.preSyncBackup', true);
         if (!enabled) return null;
+
+        const brainDir = path.join(getBrainDir(), conversationId);
+        const convExts = ['.pb', '.db', '.db-wal'];
+        const hasLocalBrain = fs.existsSync(brainDir);
+        const existingConvFiles = convExts
+            .map(ext => ({ ext, filePath: path.join(getConvDir(), `${conversationId}${ext}`) }))
+            .filter(item => fs.existsSync(item.filePath));
+
+        if (!hasLocalBrain && existingConvFiles.length === 0) {
+            // Fresh pull of a remote-only conversation — nothing local to back up
+            return null;
+        }
 
         const lm = LocalizationManager.getInstance();
         this.reportProgress(progress, lm.t('Creating backup before sync for "{0}"...', convTitle));
@@ -1173,27 +1534,21 @@ export class SyncManager {
 
             let backedUpFiles = 0;
 
-            // Backup brain directory
-            const brainDir = path.join(getBrainDir(), conversationId);
-            if (fs.existsSync(brainDir)) {
+            if (hasLocalBrain) {
                 const destBrain = path.join(backupDir, 'brain', conversationId);
-                fs.cpSync(brainDir, destBrain, { recursive: true });
+                await fs.promises.cp(brainDir, destBrain, { recursive: true });
                 backedUpFiles++;
             }
 
-            // Backup conversation files (.pb, .db, .db-wal)
-            const destConv = path.join(backupDir, 'conversations');
-            const convExts = ['.pb', '.db', '.db-wal'];
-            for (const ext of convExts) {
-                const filePath = path.join(getConvDir(), `${conversationId}${ext}`);
-                if (fs.existsSync(filePath)) {
-                    await fs.promises.mkdir(destConv, { recursive: true });
-                    fs.copyFileSync(filePath, path.join(destConv, `${conversationId}${ext}`));
+            if (existingConvFiles.length > 0) {
+                const destConv = path.join(backupDir, 'conversations');
+                await fs.promises.mkdir(destConv, { recursive: true });
+                for (const item of existingConvFiles) {
+                    await fs.promises.copyFile(item.filePath, path.join(destConv, `${conversationId}${item.ext}`));
                     backedUpFiles++;
                 }
             }
 
-            // Write metadata
             const metadata = {
                 conversationId,
                 title: convTitle,
@@ -1209,7 +1564,6 @@ export class SyncManager {
             this.preSyncBackupCount++;
             console.log(`[Backup] Pre-sync backup created for ${conversationId} at ${backupDir}`);
 
-            // Clean old backups for this conversation
             const retention = config.get<number>('sync.preSyncBackupRetention', 20);
             await this.cleanOldSyncBackups(conversationId, retention, backupBaseDir);
 
@@ -1225,18 +1579,18 @@ export class SyncManager {
      * Clean old pre-sync backups for a specific conversation, keeping only the most recent ones.
      */
     private async cleanOldSyncBackups(conversationId: string, retention: number, backupBaseDir: string): Promise<void> {
-        if (retention <= 0) return;
+        const keepCount = Math.floor(retention);
+        if (!Number.isFinite(keepCount) || keepCount <= 0) return;
 
         try {
             const convBackupDir = path.join(backupBaseDir, conversationId);
             if (!fs.existsSync(convBackupDir)) return;
 
             const entries = await fs.promises.readdir(convBackupDir);
-            if (entries.length <= retention) return;
+            if (entries.length <= keepCount) return;
 
-            // Sort by name (which is ISO timestamp) descending (newest first)
-            const sorted = entries.sort((a, b) => b.localeCompare(a));
-            const toDelete = sorted.slice(retention);
+            const sorted = entries.sort((a, b) => compareDeterministic(b, a));
+            const toDelete = sorted.slice(keepCount);
 
             for (const entry of toDelete) {
                 const fullPath = path.join(convBackupDir, entry);
@@ -1257,54 +1611,57 @@ export class SyncManager {
     }
 
     /**
-     * Get decrypted manifest from Drive with caching support
+     * Fetch and decrypt remote manifest, explicitly distinguishing `not_found` from `error`.
      */
-    public async getDecryptedManifest(forceRefresh: boolean = false): Promise<SyncManifest | null> {
-        const config = vscode.workspace.getConfiguration('antigravity-storage-manager');
+    public async getDecryptedManifestResult(forceRefresh: boolean = false): Promise<ManifestFetchResult> {
+        const config = vscode.workspace.getConfiguration(EXT_NAME);
         const useCache = config.get<boolean>('sync.useMetadataCache', true);
         const cacheTTL = 60000; // 1 minute
 
         if (!forceRefresh && useCache && this.cachedManifest && (Date.now() - this.lastManifestFetch < cacheTTL)) {
-            return this.cachedManifest;
+            return { status: 'ok', manifest: this.cachedManifest };
         }
 
         const lm = LocalizationManager.getInstance();
         try {
-            if (!this.authProvider.isAuthenticated() || !this.driveService) return null;
-            const encrypted = await this.driveService.getManifest();
+            if (!this.driveService) {
+                return { status: 'error', error: new Error('Storage service not initialized') };
+            }
+            if (!this.isLocalStorage() && !this.authProvider.isAuthenticated()) {
+                return { status: 'error', error: new Error('Not authenticated') };
+            }
 
+            const encrypted = await this.driveService.getManifest();
             if (!encrypted) {
-                return null;
+                return { status: 'not_found' };
             }
 
             if (!this.masterPassword) {
-                // Cannot decrypt without password
-                return null;
+                return { status: 'error', error: new Error(lm.t('Encryption password not set')) };
             }
 
-            const decrypted = crypto.decrypt(encrypted, this.masterPassword!);
+            const decrypted = crypto.decrypt(encrypted, this.masterPassword);
 
+            let manifest: SyncManifest;
             try {
-                const manifest = JSON.parse(decrypted.toString('utf8'));
-                this.cachedManifest = manifest;
-                this.lastManifestFetch = Date.now();
-                return manifest;
+                manifest = JSON.parse(decrypted.toString('utf8'));
             } catch (e: any) {
                 vscode.window.showErrorMessage(lm.t('Failed to parse manifest JSON: {0}', e.message));
-                return null;
+                return { status: 'error', error: e instanceof Error ? e : new Error(String(e)) };
             }
-        } catch (error: any) {
-            const msg = error.message || '';
-            const isInvalidGrant = msg.includes('invalid_grant') ||
-                (error.response && error.response.data && error.response.data.error === 'invalid_grant');
 
-            // "Permission denied. Please remove and re-add this account, ensuring you grant the file access permission."
-            // Checking for key phrases
+            this.cachedManifest = manifest;
+            this.lastManifestFetch = Date.now();
+            return { status: 'ok', manifest };
+        } catch (error: any) {
+            const msg = error?.message || '';
+            const isInvalidGrant = msg.includes('invalid_grant') ||
+                (error?.response?.data?.error === 'invalid_grant');
             const isPermissionDenied = msg.includes('Permission denied') && (msg.includes('file access permission') || msg.includes('insufficient permission') || msg.includes('Insufficient Permission'));
 
-            if (isInvalidGrant) {
+            if (!this.isLocalStorage() && isInvalidGrant) {
                 console.warn(lm.t('SyncManager: Invalid grant detected. Signing out.'));
-                this.authProvider.signOut();
+                await this.authProvider.signOut();
 
                 const signIn = lm.t('Sign In');
                 vscode.window.showWarningMessage(
@@ -1312,15 +1669,15 @@ export class SyncManager {
                     signIn
                 ).then(selection => {
                     if (selection === signIn) {
-                        this.authProvider.signIn();
+                        this.authProvider.signIn().catch(console.error);
                     }
                 });
-                return null;
+                return { status: 'error', error: error instanceof Error ? error : new Error(msg) };
             }
 
-            if (isPermissionDenied) {
+            if (!this.isLocalStorage() && isPermissionDenied) {
                 console.warn(lm.t('SyncManager: Permission denied detected. Signing out.'));
-                this.authProvider.signOut();
+                await this.authProvider.signOut();
 
                 const signIn = lm.t('Sign In');
                 vscode.window.showWarningMessage(
@@ -1328,15 +1685,23 @@ export class SyncManager {
                     signIn
                 ).then(selection => {
                     if (selection === signIn) {
-                        this.authProvider.signIn();
+                        this.authProvider.signIn().catch(console.error);
                     }
                 });
-                return null;
+                return { status: 'error', error: error instanceof Error ? error : new Error(msg) };
             }
 
-            vscode.window.showErrorMessage(lm.t('Failed to get/decrypt manifest: {0}', error.message));
-            return null;
+            vscode.window.showErrorMessage(lm.t('Failed to get/decrypt manifest: {0}', msg));
+            return { status: 'error', error: error instanceof Error ? error : new Error(msg) };
         }
+    }
+
+    /**
+     * Get decrypted manifest from storage with caching support
+     */
+    public async getDecryptedManifest(forceRefresh: boolean = false): Promise<SyncManifest | null> {
+        const res = await this.getDecryptedManifestResult(forceRefresh);
+        return res.status === 'ok' ? res.manifest : null;
     }
 
     /**
@@ -1448,28 +1813,81 @@ export class SyncManager {
     }
 
     /**
+     * Queue a serialized manifest mutation without poisoning the queue on rejection.
+     * Clones the fetched manifest before mutating and updates cachedManifest only after successful persistence.
+     */
+    private enqueueManifestUpdate(
+        mutator: (manifest: SyncManifest) => boolean | Promise<boolean>
+    ): Promise<void> {
+        const task = this.manifestUpdateQueue.then(async () => {
+            if (!this.masterPassword) {
+                throw new Error(LocalizationManager.getInstance().t('Encryption password not set'));
+            }
+
+            const fetchResult = await this.getDecryptedManifestResult(true);
+            if (fetchResult.status === 'error') {
+                throw fetchResult.error;
+            }
+            if (fetchResult.status === 'not_found') {
+                return;
+            }
+
+            // Deep clone before mutating so a failed write never corrupts cachedManifest
+            const cloned: SyncManifest = JSON.parse(JSON.stringify(fetchResult.manifest));
+            const shouldSave = await mutator(cloned);
+            if (!shouldSave) {
+                return;
+            }
+
+            cloned.lastModified = new Date().toISOString();
+            const manifestJson = JSON.stringify(cloned, null, 2);
+            const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
+            const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword, useCompression);
+            await this.driveService.updateManifest(encrypted);
+
+            // Commit to cache only after remote write succeeds
+            this.cachedManifest = cloned;
+            this.lastManifestFetch = Date.now();
+        });
+
+        // Prevent a single rejection from poisoning subsequent queued updates
+        this.manifestUpdateQueue = task.catch(() => { });
+        return task;
+    }
+
+    /**
+     * Update only the title of a conversation in the manifest without altering modifiedBy or lastModified.
+     */
+    private async updateManifestTitleOnly(conversationId: string, newTitle: string): Promise<void> {
+        if (!newTitle || newTitle === conversationId) return;
+        await this.enqueueManifestUpdate((manifest) => {
+            const existing = manifest.conversations.find(c => c.id === conversationId);
+            if (!existing || existing.title === newTitle) {
+                return false;
+            }
+            existing.title = newTitle;
+            return true;
+        });
+    }
+
+    /**
      * Update a single entry in the manifest
      */
-    private async updateManifestEntry(conversationId: string, hash: string, size?: number, lastModified?: string): Promise<void> {
+    private async updateManifestEntry(conversationId: string, hash: string, size?: number, lastModified?: string, titleOverride?: string): Promise<void> {
         const lm = LocalizationManager.getInstance();
-        // Use a queue to ensure manifest updates are sequential and don't overwrite each other
-        this.manifestUpdateQueue = this.manifestUpdateQueue.then(async () => {
-            try {
+        try {
+            await this.enqueueManifestUpdate((manifest) => {
                 const now = new Date().toISOString();
-                const title = this.getConversationTitle(conversationId);
-
-                // Always get fresh manifest when updating
-                const manifest = await this.getDecryptedManifest(true);
-                if (!manifest) {
-                    return;
-                }
-
                 const existingIdx = manifest.conversations.findIndex(c => c.id === conversationId);
                 const existing = existingIdx >= 0 ? manifest.conversations[existingIdx] : null;
+                const localTitle = titleOverride || this.getConversationTitle(conversationId);
+                const effectiveTitle = (localTitle && localTitle !== conversationId)
+                    ? localTitle
+                    : (existing?.title || conversationId);
 
                 const entry: SyncedConversation = {
                     id: conversationId,
-                    title: title,
+                    title: effectiveTitle,
                     lastModified: lastModified || now,
                     hash: hash,
                     modifiedBy: this.config!.machineId,
@@ -1485,7 +1903,11 @@ export class SyncManager {
                     manifest.conversations.push(entry);
                 }
 
-                // Update machine info in manifest
+                // Remove any tombstone if conversation was re-pushed
+                if (manifest.deletedConversations?.[conversationId]) {
+                    delete manifest.deletedConversations[conversationId];
+                }
+
                 if (!manifest.machines) manifest.machines = [];
                 const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
                 const existingMachine = machineIdx >= 0 ? manifest.machines[machineIdx] : null;
@@ -1502,19 +1924,12 @@ export class SyncManager {
                     manifest.machines.push(machineInfo);
                 }
 
-                manifest.lastModified = now;
-
-                const manifestJson = JSON.stringify(manifest, null, 2);
-                const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
-                const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!, useCompression);
-                await this.driveService.updateManifest(encrypted);
-            } catch (error: any) {
-                vscode.window.showErrorMessage(lm.t('Failed to update manifest for {0}: {1}', conversationId, error.message));
-                throw error;
-            }
-        });
-
-        return this.manifestUpdateQueue;
+                return true;
+            });
+        } catch (error: any) {
+            vscode.window.showErrorMessage(lm.t('Failed to update manifest for {0}: {1}', conversationId, error.message));
+            throw error;
+        }
     }
 
     /**
@@ -1524,36 +1939,31 @@ export class SyncManager {
         conversationId: string,
         hash: string,
         fileHashes: { [relativePath: string]: FileHashInfo },
-        lastModified?: string
+        lastModified?: string,
+        titleOverride?: string
     ): Promise<void> {
         const lm = LocalizationManager.getInstance();
-        // Use a queue to ensure manifest updates are sequential and don't overwrite each other
-        this.manifestUpdateQueue = this.manifestUpdateQueue.then(async () => {
-            try {
+        try {
+            await this.enqueueManifestUpdate((manifest) => {
                 const now = new Date().toISOString();
-                const title = this.getConversationTitle(conversationId);
-
-                // Always get fresh manifest when updating
-                const manifest = await this.getDecryptedManifest(true);
-                if (!manifest) {
-                    return;
-                }
-
                 const existingIdx = manifest.conversations.findIndex(c => c.id === conversationId);
                 const existing = existingIdx >= 0 ? manifest.conversations[existingIdx] : null;
+                const localTitle = titleOverride || this.getConversationTitle(conversationId);
+                const effectiveTitle = (localTitle && localTitle !== conversationId)
+                    ? localTitle
+                    : (existing?.title || conversationId);
 
-                // Calculate total size from file hashes
                 const totalSize = Object.values(fileHashes).reduce((sum, info) => sum + info.size, 0);
 
                 const entry: SyncedConversation = {
                     id: conversationId,
-                    title: title,
+                    title: effectiveTitle,
                     lastModified: lastModified || now,
                     hash: hash,
                     modifiedBy: this.config!.machineId,
                     fileHashes: fileHashes,
                     size: totalSize,
-                    version: 2, // Mark as new per-file format
+                    version: 2,
                     createdAt: existing?.createdAt || now,
                     createdBy: existing?.createdBy || this.config!.machineId,
                     createdByName: existing?.createdByName || this.config!.machineName
@@ -1565,7 +1975,11 @@ export class SyncManager {
                     manifest.conversations.push(entry);
                 }
 
-                // Update machine info in manifest
+                // Clear tombstone if conversation was re-created/pushed
+                if (manifest.deletedConversations?.[conversationId]) {
+                    delete manifest.deletedConversations[conversationId];
+                }
+
                 if (!manifest.machines) manifest.machines = [];
                 const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
                 const existingMachine = machineIdx >= 0 ? manifest.machines[machineIdx] : null;
@@ -1582,58 +1996,70 @@ export class SyncManager {
                     manifest.machines.push(machineInfo);
                 }
 
-                manifest.lastModified = now;
-
                 console.log(`[Manifest] Updating for ${conversationId}: ${Object.keys(fileHashes).length} files, ${manifest.conversations.length} conversations total`);
-                const manifestJson = JSON.stringify(manifest, null, 2);
-                const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
-                const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!, useCompression);
-                await this.driveService.updateManifest(encrypted);
-                console.log(`[Manifest] Saved (${manifestJson.length} bytes)`);
-
-            } catch (error: any) {
-                vscode.window.showErrorMessage(lm.t('Failed to update manifest (per-file) for {0}: {1}', conversationId, error.message));
-                throw error;
-            }
-        });
-
-        return this.manifestUpdateQueue;
+                return true;
+            });
+        } catch (error: any) {
+            vscode.window.showErrorMessage(lm.t('Failed to update manifest (per-file) for {0}: {1}', conversationId, error.message));
+            throw error;
+        }
     }
 
     /**
-     * Update machine state in Drive
+     * Update machine state in remote storage.
+     * Excludes conflicted or failed conversations from overwriting their previous lastSyncedHash
+     * so 3-way merge base stays accurate.
      */
-    private async updateMachineState(): Promise<void> {
-        if (!this.config) return;
+    private async updateMachineState(
+        excludedIds?: Set<string>,
+        previousSyncedHashes?: Map<string, string>
+    ): Promise<void> {
+        if (!this.config || !this.masterPassword) return;
 
         const configName = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.machineName');
         const machineName = (configName || this.config.machineName || os.hostname()).trim();
 
-        // Fetch Quota
         const quota = await this.driveService.getStorageInfo();
         const accountQuota = this.quotaManager?.getLatestSnapshot();
         const conversations = await this.getLocalConversationsAsync();
+        const now = new Date().toISOString();
+
+        const conversationStates: MachineState['conversationStates'] = [];
+        for (const c of conversations) {
+            if (excludedIds?.has(c.id)) {
+                const prevHash = previousSyncedHashes?.get(c.id);
+                if (prevHash) {
+                    conversationStates.push({
+                        id: c.id,
+                        localHash: prevHash,
+                        lastSynced: now
+                    });
+                }
+                continue;
+            }
+            conversationStates.push({
+                id: c.id,
+                localHash: c.hash,
+                lastSynced: now
+            });
+        }
 
         const state: MachineState = {
             machineId: this.config.machineId,
             machineName: machineName,
-            lastSync: new Date().toISOString(),
+            lastSync: now,
             syncCount: this.syncCount,
             uploadCount: this.uploadCount,
             downloadCount: this.downloadCount,
             quota: quota || undefined,
             accountQuota: accountQuota,
-            conversationStates: conversations.map(c => ({
-                id: c.id,
-                localHash: c.hash,
-                lastSynced: new Date().toISOString()
-            }))
+            conversationStates
         };
 
         const useCompression = vscode.workspace.getConfiguration(EXT_NAME).get<boolean>('sync.enableCompression', true);
         const encrypted = crypto.encrypt(
             Buffer.from(JSON.stringify(state)),
-            this.masterPassword!,
+            this.masterPassword,
             useCompression
         );
 
@@ -1657,6 +2083,44 @@ export class SyncManager {
         }
     }
 
+    private buildIdleStatusTooltip(lm: LocalizationManager): vscode.MarkdownString {
+        const sessionCount = this.syncCount || 0;
+        const md = new vscode.MarkdownString('', true);
+        md.isTrusted = true;
+        md.supportThemeIcons = true;
+
+        md.appendMarkdown(`**${lm.t('Antigravity Sync')}**\n\n`);
+        md.appendMarkdown(`$(cloud) ${lm.t('Status')}: **${lm.t('Idle')}**\n\n`);
+        if (this.config?.lastSync) {
+            const date = new Date(this.config.lastSync);
+            const locale = lm.getLocale();
+            const dateStr = new Intl.DateTimeFormat(locale, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            }).format(date);
+            md.appendMarkdown(`$(history) ${lm.t('Last Sync')}: ${dateStr}\n\n`);
+        }
+
+        if (this.autoSyncTimer && this.config?.syncInterval && this.nextAutoSyncTime) {
+            const now = Date.now();
+            const interval = this.config.syncInterval;
+            const msUntilSync = Math.max(0, this.nextAutoSyncTime - now);
+            if (msUntilSync > 0) {
+                const elapsed = interval - msUntilSync;
+                const progress = Math.min(1, Math.max(0, elapsed / interval));
+                const progressBar = drawProgressBar(progress * 100, 15);
+                const seconds = Math.ceil(msUntilSync / 1000);
+                const timeText = seconds > 60 ? `${Math.ceil(seconds / 60)}${lm.t('m')}` : `${seconds}s`;
+                md.appendMarkdown(`$(watch) ${lm.t('Next Sync')}: \`${progressBar}\` (${timeText})\n\n`);
+            }
+        }
+
+        md.appendMarkdown(`$(sync) ${lm.t('Session Syncs')}: ${sessionCount}`);
+        return md;
+    }
+
     /**
      * Update status bar item
      */
@@ -1668,29 +2132,31 @@ export class SyncManager {
             return;
         }
 
+        if (this.okStatusTimer) {
+            clearTimeout(this.okStatusTimer);
+            this.okStatusTimer = null;
+        }
+
         const lm = LocalizationManager.getInstance();
 
         switch (status) {
-
             case 'syncing':
-                this.statusBarItem.text = `$(sync~spin) ${lm.t('AG Sync')}`;
                 this.statusBarItem.text = `$(sync~spin) ${lm.t('AG Sync')}`;
                 this.statusBarItem.tooltip = text || lm.t('Syncing with Google Drive...');
                 this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.prominentForeground');
                 break;
             case 'error':
                 this.statusBarItem.text = `$(error) ${lm.t('AG Sync')}`;
-                this.statusBarItem.tooltip = lm.t('Sync Error');
+                this.statusBarItem.tooltip = text || lm.t('Sync Error');
                 this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.errorForeground');
                 break;
             case 'ok':
                 this.statusBarItem.text = `$(check) ${lm.t('AG Sync')}`;
                 this.statusBarItem.backgroundColor = undefined;
                 this.statusBarItem.color = undefined;
-                // Use rich tooltip even in 'ok' state
-                this.updateStatusBar('idle');
-                // Revert to idle after 5 seconds
-                setTimeout(() => {
+                this.statusBarItem.tooltip = text || this.buildIdleStatusTooltip(lm);
+                this.okStatusTimer = setTimeout(() => {
+                    this.okStatusTimer = null;
                     if (!this.isSyncing) this.updateStatusBar('idle');
                 }, 5000);
                 break;
@@ -1702,81 +2168,16 @@ export class SyncManager {
                     this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.warningForeground');
                     this.statusBarItem.backgroundColor = undefined;
                 } else {
-                    const sessionCount = this.syncCount || 0;
-                    // If we have synced at least once this session successfully, show check.
-                    // Or if user wants "Everything OK" -> Check. 
-                    // Let's use Check if we have a valid lastSync time, otherwise Cloud.
                     const icon = (this.config?.lastSync && this.config.lastSync !== 'Never') ? '$(check)' : '$(cloud)';
                     this.statusBarItem.text = `${icon} ${lm.t('AG Sync')}`;
-
-                    const md = new vscode.MarkdownString('', true);
-                    md.isTrusted = true;
-                    md.supportThemeIcons = true;
-
-                    md.appendMarkdown(`**${lm.t('Antigravity Sync')}**\n\n`);
-                    md.appendMarkdown(`$(cloud) ${lm.t('Status')}: **${lm.t('Idle')}**\n\n`);
-                    if (this.config?.lastSync) {
-                        const date = new Date(this.config.lastSync);
-                        const locale = lm.getLocale();
-                        const dateStr = new Intl.DateTimeFormat(locale, {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        }).format(date);
-                        md.appendMarkdown(`$(history) ${lm.t('Last Sync')}: ${dateStr}\n\n`);
-                    }
-
-                    // Add visual progress bar for next sync if auto-sync is enabled
-                    if (this.autoSyncTimer && this.config?.syncInterval && this.nextAutoSyncTime) {
-                        const now = Date.now();
-                        const interval = this.config.syncInterval;
-                        // Calculate time until next sync
-                        const msUntilSync = Math.max(0, this.nextAutoSyncTime - now);
-
-                        // Only show if there's still time until next sync
-                        if (msUntilSync > 0) {
-                            // Inverted progress: 0% at start (full time left), 100% at end (0 time left)
-                            // But for a "filling up" bar until triggers:
-                            // We want it to fill up as we approach the sync time? Or deplete?
-                            // "Next Sync in..." implies depletion (hourglass).
-                            // Let's do a depletion bar: Full at start, empty at end.
-                            // Start time = next - interval.
-                            const totalTime = interval;
-                            const elapsed = totalTime - msUntilSync;
-                            const progress = Math.min(1, Math.max(0, elapsed / totalTime));
-
-                            // Visual scale [■■■■□□]
-                            const progressBar = drawProgressBar(progress * 100, 15);
-
-                            // Format remaining time
-                            let timeText = '';
-                            const seconds = Math.ceil(msUntilSync / 1000);
-                            if (seconds > 60) {
-                                timeText = `${Math.ceil(seconds / 60)}${lm.t('m')}`;
-                            } else {
-                                timeText = `${seconds}s`;
-                            }
-
-                            md.appendMarkdown(`$(watch) ${lm.t('Next Sync')}: \`${progressBar}\` (${timeText})\n\n`);
-                        }
-                    }
-
-                    md.appendMarkdown(`$(sync) ${lm.t('Session Syncs')}: ${sessionCount}`);
-
-                    this.statusBarItem.tooltip = md;
-                    this.statusBarItem.color = undefined; // Default color
+                    this.statusBarItem.tooltip = this.buildIdleStatusTooltip(lm);
+                    this.statusBarItem.color = undefined;
                     this.statusBarItem.backgroundColor = undefined;
                 }
                 break;
             }
         }
 
-        if (status === 'idle') {
-            // idle logic moved to switch
-        } else if (text) {
-            this.statusBarItem.tooltip = text;
-        }
         this.statusBarItem.show();
     }
 
@@ -1790,24 +2191,39 @@ export class SyncManager {
     }
 
     /**
-     * Helper to get hash with caching based on mtime
+     * Helper to get hash with caching based on (mtime, size).
+     * Returns '' ONLY on ENOENT; propagates EBUSY/EACCES/EIO so locked files are never treated as deleted.
      */
     private async getFileHashWithCacheAsync(filePath: string): Promise<string> {
         try {
             const stats = await fs.promises.stat(filePath);
             const cached = this.fileHashCache.get(filePath);
 
-            if (cached && cached.mtime === stats.mtimeMs) {
+            if (cached && cached.mtime === stats.mtimeMs && cached.size === stats.size) {
                 return cached.hash;
             }
 
             const content = await fs.promises.readFile(filePath);
             const hash = crypto.computeMd5Hash(content);
-            this.fileHashCache.set(filePath, { mtime: stats.mtimeMs, hash });
+            this.fileHashCache.set(filePath, { mtime: stats.mtimeMs, size: stats.size, hash });
             return hash;
-        } catch {
-            return '';
+        } catch (err: any) {
+            if (err && err.code === 'ENOENT') {
+                this.fileHashCache.delete(filePath);
+                return '';
+            }
+            throw err;
         }
+    }
+
+    /**
+     * Compute a deterministic, locale-independent overall hash from a fileHashes map.
+     */
+    private computeOverallHashFromFileHashes(fileHashes: { [relativePath: string]: FileHashInfo }): string {
+        const sortedPaths = Object.keys(fileHashes).sort(compareDeterministic);
+        if (sortedPaths.length === 0) return '';
+        const parts = sortedPaths.map(p => `${p}:${fileHashes[p].hash}`);
+        return crypto.computeMd5Hash(Buffer.from(parts.join('|')));
     }
 
     /**
@@ -1830,7 +2246,7 @@ export class SyncManager {
                     if (dirent.isDirectory()) {
                         const subFiles = await this.getAllFilesAsync(fullPath);
                         files = files.concat(subFiles);
-                    } else {
+                    } else if (dirent.isFile()) {
                         files.push(fullPath);
                     }
                 } catch {
@@ -1853,15 +2269,13 @@ export class SyncManager {
     }
 
     /**
-     * Compute per-file hashes for a conversation
-     * Returns overall hash and a map of relative paths to file info
+     * Compute per-file hashes for a conversation using locale-independent deterministic ordering
      */
     private async computeConversationFileHashesAsync(conversationId: string, options?: { skipHashes?: boolean }): Promise<{
         overallHash: string;
         fileHashes: { [relativePath: string]: FileHashInfo };
         maxMtime: number;
     }> {
-        const parts: string[] = [];
         const fileHashes: { [relativePath: string]: FileHashInfo } = {};
         let maxMtime = 0;
 
@@ -1874,7 +2288,6 @@ export class SyncManager {
                 const hash = options?.skipHashes ? '' : await this.getFileHashWithCacheAsync(filePath);
                 if (options?.skipHashes || hash) {
                     const relativePath = `conversations/${conversationId}${ext}`;
-                    if (!options?.skipHashes) parts.push(`${relativePath}:${hash}`);
                     const stats = await fs.promises.stat(filePath);
                     maxMtime = Math.max(maxMtime, stats.mtimeMs);
                     fileHashes[relativePath] = {
@@ -1891,18 +2304,16 @@ export class SyncManager {
         if (fs.existsSync(brainDir)) {
             const files = await this.getAllFilesAsync(brainDir);
 
-            // Sort
-            const relativeFiles: { path: string, fullPath: string }[] = files.map(f => ({
+            const relativeFiles: { path: string; fullPath: string }[] = files.map(f => ({
                 path: `brain/${conversationId}/` + path.relative(brainDir, f).replace(/\\/g, '/'),
                 fullPath: f
             }));
 
-            relativeFiles.sort((a, b) => a.path.localeCompare(b.path));
+            relativeFiles.sort((a, b) => compareDeterministic(a.path, b.path));
 
             for (const file of relativeFiles) {
                 const hash = options?.skipHashes ? '' : await this.getFileHashWithCacheAsync(file.fullPath);
                 if (options?.skipHashes || hash) {
-                    if (!options?.skipHashes) parts.push(`${file.path}:${hash}`);
                     const stats = await fs.promises.stat(file.fullPath);
                     maxMtime = Math.max(maxMtime, stats.mtimeMs);
                     fileHashes[file.path] = {
@@ -1914,7 +2325,7 @@ export class SyncManager {
             }
         }
 
-        const overallHash = parts.length === 0 ? '' : crypto.computeMd5Hash(Buffer.from(parts.join('|')));
+        const overallHash = options?.skipHashes ? '' : this.computeOverallHashFromFileHashes(fileHashes);
 
         return { overallHash, fileHashes, maxMtime };
     }
@@ -1977,8 +2388,25 @@ export class SyncManager {
     startAutoSync(): void {
         this.stopAutoSync();
 
-        if (this.config?.syncInterval) {
-            this.autoSyncTimer = setInterval(async () => {
+        const wsConfig = vscode.workspace.getConfiguration(EXT_NAME);
+        const wsAutoSync = wsConfig.get<boolean>('sync.autoSync');
+        const wsInterval = wsConfig.get<number>('sync.syncInterval');
+        const autoSyncEnabled = typeof wsAutoSync === 'boolean' ? wsAutoSync : (this.config?.autoSync ?? false);
+        if (!autoSyncEnabled || !this.isSyncEnabled) {
+            this.nextAutoSyncTime = null;
+            return;
+        }
+
+        const rawInterval = (typeof wsInterval === 'number' && wsInterval > 0)
+            ? wsInterval
+            : (this.config?.syncInterval || 300000);
+        const interval = Math.max(MIN_SYNC_INTERVAL_MS, Math.min(MAX_SYNC_INTERVAL_MS, rawInterval));
+        if (this.config) {
+            this.config.syncInterval = interval;
+        }
+
+        this.autoSyncTimer = setInterval(async () => {
+            try {
                 if (this.isReady() && !this.isSyncing && this.isSyncEnabled) {
                     const result = await this.syncNow();
                     if (result.pushed.length || result.pulled.length || result.conflicts.length) {
@@ -2003,15 +2431,18 @@ export class SyncManager {
                         }
                     }
                 }
-                // Reset next sync time
-                this.nextAutoSyncTime = Date.now() + this.config!.syncInterval;
-                // Update tooltip to show full bar? Or wait for next hover/update?
-                // Ideally updates when status changes back to idle.
-            }, this.config.syncInterval);
+            } catch (err) {
+                if (!(err instanceof vscode.CancellationError)) {
+                    console.error('[AutoSync] Background sync error:', err);
+                }
+            } finally {
+                if (this.autoSyncTimer) {
+                    this.nextAutoSyncTime = Date.now() + interval;
+                }
+            }
+        }, interval);
 
-            // Set initial next sync time
-            this.nextAutoSyncTime = Date.now() + this.config.syncInterval;
-        }
+        this.nextAutoSyncTime = Date.now() + interval;
     }
 
     /**
@@ -2022,6 +2453,7 @@ export class SyncManager {
             clearInterval(this.autoSyncTimer);
             this.autoSyncTimer = null;
         }
+        this.nextAutoSyncTime = null;
     }
 
     /**
@@ -2029,26 +2461,29 @@ export class SyncManager {
      */
     async setup(): Promise<void> {
         const lm = LocalizationManager.getInstance();
-        // 1. Check if we need to authenticate
-        try {
-            const token = await this.authProvider.getAccessToken();
-            if (!token) {
-                throw new Error('Not signed in');
-            }
-        } catch {
-            const answer = await vscode.window.showInformationMessage(
-                lm.t("To sync conversations, you need to sign in with Google."),
-                lm.t("Sign In"),
-                lm.t("Cancel")
-            );
 
-            if (answer !== lm.t("Sign In")) return;
-
+        // 1. Check if we need to authenticate (skip Google OAuth when using Local Storage provider)
+        if (!this.isLocalStorage()) {
             try {
-                await this.authProvider.signIn();
-            } catch (err: any) {
-                vscode.window.showErrorMessage(lm.t("Login failed: {0}", err.message));
-                return;
+                const token = await this.authProvider.getAccessToken();
+                if (!token) {
+                    throw new Error('Not signed in');
+                }
+            } catch {
+                const answer = await vscode.window.showInformationMessage(
+                    lm.t("To sync conversations, you need to sign in with Google."),
+                    lm.t("Sign In"),
+                    lm.t("Cancel")
+                );
+
+                if (answer !== lm.t("Sign In")) return;
+
+                try {
+                    await this.authProvider.signIn();
+                } catch (err: any) {
+                    vscode.window.showErrorMessage(lm.t("Login failed: {0}", err.message));
+                    return;
+                }
             }
         }
 
@@ -2074,16 +2509,12 @@ export class SyncManager {
 
         if (!confirm) return;
 
-        // Save password securely
-        await this.context.secrets.store(SECRET_KEY, password);
-        this.masterPassword = password; // Set local instance for immediate use to avoid race condition/null error
-
-        // NOTE: Machine name and config initialization moved inside withProgress
-        // to allow session selection logic to run first
-
+        const previousPassword = this.masterPassword;
+        this.masterPassword = password;
 
         // 4. Create or Get Master Manifest
         try {
+            let setupCompleted = false;
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: lm.t("Setting up sync storage..."),
@@ -2091,13 +2522,18 @@ export class SyncManager {
             }, async (progress, token) => {
                 if (token.isCancellationRequested) throw new vscode.CancellationError();
 
-                // Match existing logic but inject session selection
                 this.reportProgress(progress, lm.t('Checking Google Drive folders...'));
                 await this.driveService.ensureSyncFolders();
 
-                // Get encrypted manifest EARLY to check for existing sessions
+                // Check existing manifest — distinguish not_found vs decryption/network error!
                 this.reportProgress(progress, lm.t('Checking for existing backup...'));
-                const manifest = await this.getDecryptedManifest();
+                const manifestResult = await this.getDecryptedManifestResult(true);
+                if (manifestResult.status === 'error') {
+                    throw new Error(
+                        `Existing sync manifest could not be read or decrypted (wrong Master Password or network error): ${manifestResult.error.message}`
+                    );
+                }
+                const manifest = manifestResult.status === 'ok' ? manifestResult.manifest : null;
 
                 let machineId = crypto.generateMachineId();
                 let machineName = os.hostname();
@@ -2108,7 +2544,6 @@ export class SyncManager {
                     let selection: any;
 
                     while (true) {
-                        // Sort machines based on selected method
                         const sortedMachines = [...manifest.machines].sort((a, b) => {
                             if (sortMethod === 'name') {
                                 const nameA = a.name || a.id || '';
@@ -2180,9 +2615,7 @@ export class SyncManager {
                                         label: `$(device-desktop) ${lm.t('Resume: {0}', m.name)}`,
                                         id: m.id,
                                         description: m.lastSync ? lm.t('Last active: {0}', lm.formatDateTime(m.lastSync)) : m.id,
-                                        detail: detail,
-                                        // Store availability in a custom property or check name in logic
-                                        // We can't disable items in VS Code API properly, so we rely on logic check
+                                        detail: detail
                                     });
                                 }
                             }
@@ -2197,22 +2630,19 @@ export class SyncManager {
                             else if (sortMethod === 'duration') sortMethod = 'name';
                             else sortMethod = 'date';
 
-                            // Re-sort sortedMachines
                             sortedMachines.sort((a, b) => {
                                 if (sortMethod === 'name') {
                                     const nameA = a.name || a.id || '';
                                     const nameB = b.name || b.id || '';
                                     const nameComp = nameA.localeCompare(nameB);
                                     if (nameComp !== 0) return nameComp;
-                                    // Tie-breaker: ID
                                     return (a.id || '').localeCompare(b.id || '');
                                 } else if (sortMethod === 'date') {
                                     return new Date(b.lastSync || 0).getTime() - new Date(a.lastSync || 0).getTime();
                                 } else {
                                     const durA = (a.lastSync && a.createdAt) ? new Date(a.lastSync).getTime() - new Date(a.createdAt).getTime() : 0;
                                     const durB = (b.lastSync && b.createdAt) ? new Date(b.lastSync).getTime() - new Date(b.createdAt).getTime() : 0;
-                                    if (durB !== durA) return durB - durA; // Longest duration first
-                                    // Tie-breaker: Date
+                                    if (durB !== durA) return durB - durA;
                                     return new Date(b.lastSync || 0).getTime() - new Date(a.lastSync || 0).getTime();
                                 }
                             });
@@ -2220,78 +2650,78 @@ export class SyncManager {
                         });
 
                         selection = await new Promise<any>((resolve) => {
+                            let accepted = false;
                             quickPick.onDidAccept(() => {
+                                accepted = true;
                                 const selected = quickPick.selectedItems[0];
-                                if (selected) {
-                                    if (selected.id === 'new' || selected.id === '') {
-                                        // Allowed
-                                        resolve(selected);
-                                        quickPick.hide();
-                                    } else {
-                                        resolve(selected);
-                                        quickPick.hide();
-                                    }
-                                } else {
-                                    resolve(undefined);
-                                    quickPick.hide();
-                                }
+                                resolve(selected || undefined);
+                                quickPick.hide();
                             });
-                            quickPick.onDidHide(() => resolve(undefined));
+                            quickPick.onDidHide(() => {
+                                if (!accepted) resolve(undefined);
+                                quickPick.dispose();
+                            });
                             quickPick.show();
                         });
 
-                        if (!selection) break;
-                        break; // Normal selection (new or resume)
+                        break;
                     }
 
                     if (!selection) return; // User cancelled
 
-                    if (selection && selection.id !== 'new') {
-                        machineId = selection.id; // Reuse ID
-                        // Find original name
+                    if (selection.id !== 'new') {
+                        machineId = selection.id;
                         const original = manifest.machines.find(m => m.id === machineId);
                         if (original) {
                             machineName = original.name;
                         }
 
-                        // Optional: Allow renaming even when resuming
                         const newName = await vscode.window.showInputBox({
                             prompt: lm.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
                             value: machineName,
                             validateInput: (value) => value ? null : lm.t("Machine name cannot be empty")
                         });
+                        if (newName === undefined) return;
                         if (newName) machineName = newName;
-
                     } else {
-                        // NEW SESSION logic
                         const inputName = await vscode.window.showInputBox({
                             prompt: lm.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
                             value: machineName,
                             validateInput: (value) => value ? null : lm.t("Machine name cannot be empty")
                         });
+                        if (inputName === undefined) return;
                         if (inputName) machineName = inputName;
                     }
                 } else {
-                    // No manifest or no machines -> Default New Session flow
                     const inputName = await vscode.window.showInputBox({
                         prompt: lm.t("Enter a name for this machine (e.g. 'Home PC', 'Work Laptop')"),
                         value: machineName,
                         validateInput: (value) => value ? null : lm.t("Machine name cannot be empty")
                     });
+                    if (inputName === undefined) return;
                     if (inputName) machineName = inputName;
                 }
 
-                // Initialize config with determined ID and Name
+                // Persist master password only after user confirmed all setup prompts and manifest verified
+                await this.context.secrets.store(SECRET_KEY, password);
+
+                const wsConfig = vscode.workspace.getConfiguration(EXT_NAME);
+                const wsAutoSync = wsConfig.get<boolean>('sync.autoSync', true);
+                const wsInterval = wsConfig.get<number>('sync.syncInterval', 300000);
+                const wsShowStatusBar = wsConfig.get<boolean>('sync.showStatusBar', true);
+                const wsSilent = wsConfig.get<boolean>('sync.silent', false);
+
+                // Initialize config with lastSync: null (until first sync actually succeeds)
                 this.config = {
                     enabled: true,
                     machineId: machineId,
                     machineName: machineName,
-                    lastSync: new Date().toISOString(),
-                    autoSync: true,
-                    syncInterval: 300000,
-                    showStatusBar: true,
+                    lastSync: null,
+                    autoSync: wsAutoSync,
+                    syncInterval: wsInterval,
+                    showStatusBar: wsShowStatusBar,
                     selectedConversations: 'all',
-                    silent: false
+                    silent: wsSilent
                 };
 
                 await this.saveConfig();
@@ -2299,29 +2729,26 @@ export class SyncManager {
                 if (manifest) {
                     vscode.window.showInformationMessage(lm.t("Found existing sync data! Joined as '{0}'.", this.config!.machineName));
 
-                    // Ask user which conversations to sync
                     if (manifest.conversations.length > 0) {
-                        // Get titles from server to enrich manifest data
                         const serverTitles = await this.getServerTitleMap();
 
-                        // Sort by creation date descending (newest first)
                         const quickPick = vscode.window.createQuickPick<vscode.QuickPickItem & { id: string }>();
                         quickPick.title = lm.t('Select conversations to sync from Google Drive');
                         quickPick.placeholder = lm.t('Use Space to select/deselect, Enter to confirm');
                         quickPick.canSelectMany = true;
 
                         let sortMethod: 'modified' | 'created' | 'name' = 'modified';
+                        const patreonBtn: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') };
+                        const coffeeBtn: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') };
+                        let sortBtn: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: '' };
 
                         const updateSortButton = () => {
                             let sortTooltip = lm.t('Sort by Modified Date and Time');
                             if (sortMethod === 'created') sortTooltip = lm.t('Sort by Created Date and Time');
                             if (sortMethod === 'name') sortTooltip = lm.t('Sort by Name');
 
-                            quickPick.buttons = [
-                                { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') },
-                                { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') },
-                                { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` }
-                            ];
+                            sortBtn = { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` };
+                            quickPick.buttons = [patreonBtn, coffeeBtn, sortBtn];
                         };
 
                         const updateItems = (preserveSelection = false) => {
@@ -2344,15 +2771,13 @@ export class SyncManager {
                             const items = sortedConversations.map(c => {
                                 const createdDate = c.createdAt ? lm.formatDateTime(c.createdAt) : undefined;
                                 const modifiedDate = lm.formatDateTime(c.lastModified);
-                                const dateInfo = createdDate
-                                    ? `${lm.t('Created')}: ${createdDate}`
-                                    : undefined;
+                                const dateInfo = createdDate ? `${lm.t('Created')}: ${createdDate}` : undefined;
 
                                 return {
                                     label: serverTitles.get(c.id) || c.title || c.id,
                                     description: c.id,
                                     detail: `${lm.t('Modified')}: ${modifiedDate}${dateInfo ? ` | ${dateInfo}` : ''}`,
-                                    picked: true, // Default to all
+                                    picked: true,
                                     id: c.id
                                 };
                             });
@@ -2363,7 +2788,6 @@ export class SyncManager {
                             if (preserveSelection) {
                                 quickPick.selectedItems = items.filter(i => previousSelectionIds.includes(i.id));
                             } else {
-                                // Default select all
                                 quickPick.selectedItems = items;
                             }
 
@@ -2373,13 +2797,11 @@ export class SyncManager {
                         updateItems();
 
                         quickPick.onDidTriggerButton(button => {
-                            const tooltip = button.tooltip?.toString() || '';
-                            if (tooltip.includes('Patreon')) {
+                            if (button === patreonBtn) {
                                 vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
-                            } else if (tooltip.includes('Coffee')) {
+                            } else if (button === coffeeBtn) {
                                 vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
-                            } else {
-                                // Sort button
+                            } else if (button === sortBtn) {
                                 if (sortMethod === 'modified') sortMethod = 'created';
                                 else if (sortMethod === 'created') sortMethod = 'name';
                                 else sortMethod = 'modified';
@@ -2387,17 +2809,22 @@ export class SyncManager {
                             }
                         });
 
-                        const selected = await new Promise<(vscode.QuickPickItem & { id: string })[]>((resolve) => {
+                        const selected = await new Promise<(vscode.QuickPickItem & { id: string })[] | undefined>((resolve) => {
+                            let accepted = false;
                             quickPick.onDidAccept(() => {
+                                accepted = true;
                                 resolve([...quickPick.selectedItems] as (vscode.QuickPickItem & { id: string })[]);
                                 quickPick.hide();
                             });
-                            quickPick.onDidHide(() => resolve([]));
+                            quickPick.onDidHide(() => {
+                                if (!accepted) resolve(undefined);
+                                quickPick.dispose();
+                            });
                             quickPick.show();
                         });
 
-                        if (selected) {
-                            if (selected.length === quickPick.items.length) {
+                        if (selected !== undefined) {
+                            if (selected.length === manifest.conversations.length) {
                                 this.config!.selectedConversations = 'all';
                             } else {
                                 this.config!.selectedConversations = selected.map(s => s.id);
@@ -2406,20 +2833,31 @@ export class SyncManager {
                         }
                     }
                 } else {
-                    // Create new
+                    // Manifest genuinely does not exist yet -> create initial manifest
                     this.reportProgress(progress, lm.t('Creating initial backup...'));
                     await this.createInitialManifest();
                     vscode.window.showInformationMessage(lm.t("Sync set up successfully!"));
                 }
 
+                setupCompleted = true;
+
                 // Trigger first sync
                 await this.syncNow(progress, token);
             });
+
+            if (!setupCompleted) {
+                this.masterPassword = previousPassword;
+                return;
+            }
 
             this.updateStatusBar('idle');
             this.startAutoSync();
 
         } catch (error: any) {
+            this.masterPassword = previousPassword;
+            if (error instanceof vscode.CancellationError) {
+                return;
+            }
             console.error('Setup failed details:', error);
             if (error.stack) console.error(error.stack);
             vscode.window.showErrorMessage(lm.t("Setup failed: {0}", error.message));
@@ -2432,10 +2870,15 @@ export class SyncManager {
     async disconnect(): Promise<void> {
         this.stopAutoSync();
         this.config = null;
+        this.masterPassword = null;
+        this.cachedManifest = null;
+        this.lastManifestFetch = 0;
+        this.nextAutoSyncTime = null;
+        this.fileHashCache.clear();
+        await this.context.globalState.update(`${EXT_NAME}.sync.config`, undefined);
         await this.context.globalState.update('ag-sync-config', undefined);
         await this.context.secrets.delete(SECRET_KEY);
-        await this.context.secrets.delete(LEGACY_SECRET_KEY); // cleanup legacy key
-        // Keep status bar visible with disconnected state (updateStatusBar shows warning icon)
+        await this.context.secrets.delete(LEGACY_SECRET_KEY);
         this.updateStatusBar('idle');
 
         const lm = LocalizationManager.getInstance();
@@ -2461,42 +2904,40 @@ export class SyncManager {
         }
     }
 
-
     /**
-     * Manage which conversations are synced
-     */
-    /**
-     * Ensure remote manifest exists and is loaded
+     * Ensure remote manifest exists and is loaded.
+     * NEVER overwrites an existing remote manifest on transient network or decryption errors!
      */
     private async ensureRemoteManifest(): Promise<SyncManifest | null> {
         const lm = LocalizationManager.getInstance();
         try {
-            // Always force a fresh manifest fetch at the start of sync to avoid stale data/race conditions
-            let remoteManifest = await this.getDecryptedManifest(true);
-            if (!remoteManifest) {
-                try {
-                    console.log('Remote manifest not found, attempting to recreate...');
-                    await this.createInitialManifest();
-                } catch (e: any) {
-                    throw new Error(lm.t("Failed to get or create remote manifest: {0}", e.message));
-                }
-
-                const retryManifest = await this.getDecryptedManifest(true);
-                if (!retryManifest) {
-                    throw new Error(lm.t("Failed to get remote manifest after recreation attempt"));
-                }
-                remoteManifest = retryManifest;
+            const fetchResult = await this.getDecryptedManifestResult(true);
+            if (fetchResult.status === 'ok') {
+                return fetchResult.manifest;
             }
-            return remoteManifest;
+            if (fetchResult.status === 'error') {
+                throw fetchResult.error;
+            }
+
+            // status === 'not_found' -> genuinely absent, safe to initialize
+            try {
+                console.log('Remote manifest not found, creating initial manifest...');
+                await this.createInitialManifest();
+            } catch (e: any) {
+                throw new Error(lm.t("Failed to get or create remote manifest: {0}", e.message));
+            }
+
+            const retryResult = await this.getDecryptedManifestResult(true);
+            if (retryResult.status !== 'ok') {
+                throw new Error(lm.t("Failed to get remote manifest after recreation attempt"));
+            }
+            return retryResult.manifest;
         } catch (error: any) {
             vscode.window.showErrorMessage(lm.t('ensureRemoteManifest failed: {0}', error.message));
             throw error;
         }
     }
 
-    /**
-     * Process a single conversation synchronization
-     */
     /**
      * Process a single conversation synchronization
      */
@@ -2518,31 +2959,19 @@ export class SyncManager {
         const title = local?.title || remote?.title || convId;
         const lastSyncedHash = lastSyncedDatabase.get(convId);
 
-        // Auto-correct remote title if local exists and differs
-        if (local && remote && local.title !== remote.title && local.title !== local.id) {
-            // Force update manifest to sync title even if content hash matched.
-            // Preserve the remote.lastModified to avoid triggering sync loops on other machines.
-            if (remote.fileHashes) {
-                await this.updateManifestEntryWithFileHashes(convId, remote.hash, remote.fileHashes, remote.lastModified);
-            } else {
-                await this.updateManifestEntry(convId, remote.hash, remote.size, remote.lastModified);
+        const recordPullError = (error: any) => {
+            if (error instanceof vscode.CancellationError) throw error;
+            const msg = error?.message || String(error);
+            result.errors.push(`Failed to pull ${convId}: ${msg}`);
+            if (msg.includes('not found in Drive') || msg.includes('not found in manifest')) {
+                if (!result.missingRemoteIds) result.missingRemoteIds = [];
+                if (!result.missingRemoteIds.includes(convId)) {
+                    result.missingRemoteIds.push(convId);
+                }
             }
-        }
+        };
 
-        this.reportProgress(progress, lm.t('Syncing "{0}"...', title));
-
-        if (local && !remote) {
-            // Local only - push to remote
-            // (Unless it was deleted remotely? If lastSyncedHash exists but remote doesn't, it implies remote deletion)
-            if (lastSyncedHash) {
-                // It was synced before, but now gone from remote. 
-                // This means another machine deleted it.
-                // Action: Delete locally? Or restore remote?
-                // Safest: Restore remote (Push) or ask user?
-                // Git logic: Upstream deleted. Local modified?
-                // Let's assume re-push for now, or maybe "Conflict: Remote Deleted".
-                // Simple logic: Push as new.
-            }
+        const doPush = async () => {
             try {
                 await this.pushConversation(convId, progress, token);
                 result.pushed.push(convId);
@@ -2550,174 +2979,138 @@ export class SyncManager {
                 if (error instanceof vscode.CancellationError) throw error;
                 result.errors.push(`Failed to push ${convId}: ${error.message}`);
             }
-        } else if (!local && remote) {
-            // Remote only - pull to local
-            // (Unless checked against lastSyncedHash? If we tracked deletions locally via a tombstone list, we'd know. But we don't.)
+        };
+
+        const doPull = async (forceOverwrite: boolean) => {
             try {
-                await this.pullConversation(convId, progress, token);
+                await this.pullConversation(convId, progress, token, forceOverwrite);
                 result.pulled.push(convId);
             } catch (error: any) {
-                if (error instanceof vscode.CancellationError) throw error;
-                result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+                recordPullError(error);
             }
+        };
+
+        // Auto-correct remote title if local exists with a human-readable title and differs,
+        // WITHOUT overwriting modifiedBy or lastModified.
+        if (local && remote && local.title !== remote.title && local.title !== local.id) {
+            await this.updateManifestTitleOnly(convId, local.title);
+        }
+
+        this.reportProgress(progress, lm.t('Syncing "{0}"...', title));
+
+        if (local && !remote) {
+            // Check remote deletion tombstone before re-pushing
+            const tombstone = remoteManifest.deletedConversations?.[convId];
+            if (tombstone && lastSyncedHash) {
+                const wsConfig = vscode.workspace.getConfiguration(EXT_NAME);
+                const authorizedIds = wsConfig.get<string[]>('sync.authorizedRemoteDeleteMachineIds') || [];
+                const isAuthorizedDeleter =
+                    tombstone.deletedBy === this.config?.machineId ||
+                    authorizedIds.includes(tombstone.deletedBy);
+
+                if (isAuthorizedDeleter && local.hash === lastSyncedHash) {
+                    // Authorized remote deletion and no local changes -> honor deletion safely with pre-sync backup
+                    await this.backupConversationBeforePull(convId, title, progress);
+                    const brainPath = path.join(getBrainDir(), convId);
+                    if (fs.existsSync(brainPath)) {
+                        await fs.promises.rm(brainPath, { recursive: true, force: true });
+                    }
+                    const convDir = getConvDir();
+                    for (const ext of ['.pb', '.db', '.db-wal', '.db-shm']) {
+                        const fp = path.join(convDir, `${convId}${ext}`);
+                        try { await fs.promises.unlink(fp); } catch { /* ignore */ }
+                    }
+                    console.log(`[Sync] Honored remote deletion of ${convId} by authorized machine ${tombstone.deletedBy}`);
+                    return;
+                }
+            }
+
+            await doPush();
+        } else if (!local && remote) {
+            await doPull(true);
         } else if (local && remote) {
-            // Both exist - check for changes
-            if (local.hash === remote.hash && !force) {
-                // Synced
+            // Both exist
+            if (local.hash === remote.hash) {
+                if (!force) {
+                    return; // Already in sync
+                }
+                // Force sync with identical hashes -> push without creating a false conflict
+                await doPush();
                 return;
             }
 
-            // 3-Way Merge Logic
-            const removeChanged = remote.hash !== lastSyncedHash;
+            const remoteChanged = remote.hash !== lastSyncedHash;
             const localChanged = local.hash !== lastSyncedHash;
 
             const remoteMachine = remoteManifest.machines?.find(m => m.id === remote.modifiedBy);
             const myMachineId = this.config?.machineId;
-            const myMachineName = this.config?.machineName?.toLowerCase();
-            const remoteMachineName = (remoteMachine?.name || remote.createdByName || '').toLowerCase();
-            const isSameDevice = (remote.modifiedBy && myMachineId && remote.modifiedBy === myMachineId) ||
-                (myMachineName && remoteMachineName && myMachineName === remoteMachineName);
+            // Strict same-device identity check by machineId ONLY
+            const isSameDevice = Boolean(remote.modifiedBy && myMachineId && remote.modifiedBy === myMachineId);
 
-            const conflictPolicy = vscode.workspace.getConfiguration('antigravity-storage-manager').get<string>('sync.conflictResolution', 'prompt');
-
-            // 1. Automatic conflict resolution policy if configured
-            if (conflictPolicy === 'keepLocal') {
-                try {
-                    await this.pushConversation(convId, progress, token);
-                    result.pushed.push(convId);
-                } catch (error: any) {
-                    if (error instanceof vscode.CancellationError) throw error;
-                    result.errors.push(`Failed to push ${convId}: ${error.message}`);
+            // 1. Same-device sequential edits
+            if (isSameDevice) {
+                const localTime = new Date(local.lastModified).getTime();
+                const remoteTime = new Date(remote.lastModified).getTime();
+                if (localTime >= remoteTime) {
+                    await doPush();
+                } else {
+                    await doPull(true);
                 }
                 return;
-            } else if (conflictPolicy === 'keepRemote') {
-                try {
-                    await this.pullConversation(convId, progress, token);
-                    result.pulled.push(convId);
-                } catch (error: any) {
-                    if (error instanceof vscode.CancellationError) throw error;
-                    result.errors.push(`Failed to pull ${convId}: ${error.message}`);
+            }
+
+            // 2. Clean 3-way merge BEFORE conflictPolicy (only one side changed)
+            if (lastSyncedHash) {
+                if (localChanged && !remoteChanged) {
+                    await doPush();
+                    return;
                 }
+                if (remoteChanged && !localChanged) {
+                    await doPull(true);
+                    return;
+                }
+            }
+
+            // 3. True conflict (both sides diverged OR first sync across distinct machines with differing hashes)
+            const conflictPolicy = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.conflictResolution', 'prompt');
+
+            if (conflictPolicy === 'keepLocal') {
+                await doPush();
+                return;
+            } else if (conflictPolicy === 'keepRemote') {
+                await doPull(true);
                 return;
             } else if (conflictPolicy === 'keepNewer') {
                 const localTime = new Date(local.lastModified).getTime();
                 const remoteTime = new Date(remote.lastModified).getTime();
                 if (localTime >= remoteTime) {
-                    try {
-                        await this.pushConversation(convId, progress, token);
-                        result.pushed.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
-                    }
+                    await doPush();
                 } else {
-                    try {
-                        await this.pullConversation(convId, progress, token);
-                        result.pulled.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
-                    }
+                    await doPull(true);
                 }
                 return;
             } else if (conflictPolicy === 'keepLarger') {
                 if ((local.size ?? 0) >= (remote.size ?? 0)) {
-                    try {
-                        await this.pushConversation(convId, progress, token);
-                        result.pushed.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
-                    }
+                    await doPush();
                 } else {
-                    try {
-                        await this.pullConversation(convId, progress, token);
-                        result.pulled.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
-                    }
+                    await doPull(true);
                 }
                 return;
             }
 
-            // 2. Same-Device Auto-Resolution:
-            // If the remote version was authored/modified by this SAME device,
-            // local modifications are sequential edits made on this machine.
-            if (isSameDevice) {
-                const localTime = new Date(local.lastModified).getTime();
-                const remoteTime = new Date(remote.lastModified).getTime();
-                if (localTime >= remoteTime) {
-                    try {
-                        await this.pushConversation(convId, progress, token);
-                        result.pushed.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to push ${convId}: ${error.message}`);
-                    }
-                    return;
-                } else {
-                    try {
-                        await this.pullConversation(convId, progress, token);
-                        result.pulled.push(convId);
-                    } catch (error: any) {
-                        if (error instanceof vscode.CancellationError) throw error;
-                        result.errors.push(`Failed to pull ${convId}: ${error.message}`);
-                    }
-                    return;
-                }
-            }
-
-            // 3. Distinct devices logic
-            if (!lastSyncedHash) {
-                // First sync across distinct machines, both exist and hashes differ -> Conflict
-                result.conflicts.push({
-                    conversationId: convId,
-                    conversationTitle: title,
-                    localModified: local.lastModified,
-                    remoteModified: remote.lastModified,
-                    localHash: local.hash,
-                    remoteHash: remote.hash,
-                    localSize: local.size,
-                    remoteSize: remote.size,
-                    remoteModifiedBy: remote.modifiedBy,
-                    remoteModifiedByName: remoteMachine?.name || remote.createdByName
-                });
-            } else if (localChanged && !removeChanged) {
-                // Only local changed -> Push
-                try {
-                    await this.pushConversation(convId, progress, token);
-                    result.pushed.push(convId);
-                } catch (error: any) {
-                    if (error instanceof vscode.CancellationError) throw error;
-                    result.errors.push(`Failed to push ${convId}: ${error.message}`);
-                }
-            } else if (removeChanged && !localChanged) {
-                // Only remote changed -> Pull (safe since local content never changed)
-                try {
-                    await this.pullConversation(convId, progress, token);
-                    result.pulled.push(convId);
-                } catch (error: any) {
-                    if (error instanceof vscode.CancellationError) throw error;
-                    result.errors.push(`Failed to pull ${convId}: ${error.message}`);
-                }
-            } else {
-                // Both changed (and hashes differ) -> Conflict
-                const remoteDate = remote.lastModified;
-
-                result.conflicts.push({
-                    conversationId: convId,
-                    conversationTitle: title,
-                    localModified: local.lastModified,
-                    remoteModified: remoteDate,
-                    localHash: local.hash,
-                    remoteHash: remote.hash,
-                    localSize: local.size,
-                    remoteSize: remote.size,
-                    remoteModifiedBy: remote.modifiedBy,
-                    remoteModifiedByName: remoteMachine?.name || remote.createdByName
-                });
-            }
+            // 'prompt' policy -> report conflict for interactive resolution
+            result.conflicts.push({
+                conversationId: convId,
+                conversationTitle: title,
+                localModified: local.lastModified,
+                remoteModified: remote.lastModified,
+                localHash: local.hash,
+                remoteHash: remote.hash,
+                localSize: local.size,
+                remoteSize: remote.size,
+                remoteModifiedBy: remote.modifiedBy,
+                remoteModifiedByName: remoteMachine?.name || remote.createdByName
+            });
         }
     }
 
@@ -2937,23 +3330,23 @@ export class SyncManager {
         quickPick.canSelectMany = true;
         quickPick.placeholder = lm.t('Select conversations to sync');
 
+        const patreonBtn: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') };
+        const coffeeBtn: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') };
+        const githubBtn: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('star'), tooltip: lm.t('Star on GitHub') };
+        let sortBtn: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: '' };
+
         const updateSortButton = () => {
             let sortTooltip = lm.t('Sort by Modified Date and Time');
             if (currentSort === 'created') sortTooltip = lm.t('Sort by Created Date and Time');
             if (currentSort === 'name') sortTooltip = lm.t('Sort by Name');
 
-            quickPick.buttons = [
-                { iconPath: new vscode.ThemeIcon('heart'), tooltip: lm.t('Support on Patreon') },
-                { iconPath: new vscode.ThemeIcon('coffee'), tooltip: lm.t('Buy Me a Coffee') },
-                { iconPath: new vscode.ThemeIcon('star'), tooltip: lm.t('Star on GitHub') },
-                { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` }
-            ];
+            sortBtn = { iconPath: new vscode.ThemeIcon('list-ordered'), tooltip: `${lm.t('Sort')}: ${sortTooltip}` };
+            quickPick.buttons = [patreonBtn, coffeeBtn, githubBtn, sortBtn];
         };
 
         const updateItems = () => {
             quickPick.items = prepareItems(conversations, currentSort);
 
-            // Set selected items based on config
             if (currentSelection === 'all') {
                 quickPick.selectedItems = quickPick.items;
             } else if (Array.isArray(currentSelection)) {
@@ -2965,17 +3358,15 @@ export class SyncManager {
 
         updateItems();
 
-        // Handle Button Click (Sort and Donation)
+        // Handle Button Click by button object reference (locale-safe)
         quickPick.onDidTriggerButton(button => {
-            const tooltip = button.tooltip?.toString() || '';
-            if (tooltip.includes('Patreon')) {
+            if (button === patreonBtn) {
                 vscode.env.openExternal(vscode.Uri.parse('https://www.patreon.com/unchase'));
-            } else if (tooltip.includes('Coffee')) {
+            } else if (button === coffeeBtn) {
                 vscode.env.openExternal(vscode.Uri.parse('https://www.buymeacoffee.com/nikolaychebotov'));
-            } else if (tooltip.includes('GitHub')) {
+            } else if (button === githubBtn) {
                 vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager'));
-            } else {
-                // Sort button
+            } else if (button === sortBtn) {
                 if (currentSort === 'modified') currentSort = 'created';
                 else if (currentSort === 'created') currentSort = 'name';
                 else currentSort = 'modified';
@@ -2987,25 +3378,27 @@ export class SyncManager {
                 updateSortButton();
             }
         });
-        quickPick.onDidChangeSelection((_selection) => {
-            // Keep selection updated for result
-        });
 
         const result = await new Promise<(vscode.QuickPickItem & { id: string })[] | undefined>((resolve) => {
+            let accepted = false;
             quickPick.onDidAccept(() => {
+                accepted = true;
                 const selected = quickPick.selectedItems.filter(i => !i.id?.startsWith('sort_')) as (vscode.QuickPickItem & { id: string })[];
                 resolve(selected);
                 quickPick.hide();
             });
-            quickPick.onDidHide(() => resolve(undefined));
+            quickPick.onDidHide(() => {
+                if (!accepted) resolve(undefined);
+                quickPick.dispose();
+            });
             quickPick.show();
         });
 
-        if (result) {
-            if (result.some(s => s.id === 'all')) {
-                this.config!.selectedConversations = 'all';
+        if (result && this.config) {
+            if (conversations.length > 0 && result.length === conversations.length) {
+                this.config.selectedConversations = 'all';
             } else {
-                this.config!.selectedConversations = result.map(s => s.id);
+                this.config.selectedConversations = result.map(s => s.id);
             }
             await this.saveConfig();
             vscode.window.showInformationMessage(lm.t('Sync selection updated'));
@@ -3041,39 +3434,34 @@ export class SyncManager {
 
     private async deleteConversation(id: string): Promise<void> {
         const lm = LocalizationManager.getInstance();
-        // Delete local
         const brainPath = path.join(getBrainDir(), id);
         const convDir = getConvDir();
 
         try {
             if (fs.existsSync(brainPath)) {
-                fs.rmSync(brainPath, { recursive: true, force: true });
+                await fs.promises.rm(brainPath, { recursive: true, force: true });
             }
             for (const ext of ['.pb', '.db', '.db-wal', '.db-shm']) {
                 const filePath = path.join(convDir, `${id}${ext}`);
                 if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
+                    await fs.promises.unlink(filePath);
+                    this.fileHashCache.delete(filePath);
                 }
             }
 
-            // Delete remote? Sync will handle "deleted locally" if we push? 
-            // Sync logic: "Files that exist remotely but not locally (deleted locally)" -> Delete remote.
-            // But we need to trigger a sync for that to happen. 
-            // OR we updates manifest directly. 
-            // The user probably expects "Delete" to mean "Delete Everywhere".
-            // Let's rely on Sync to propagate the deletion if possible, OR force delete from manifest now.
-
-            // For immediate feedback, let's remove from manifest too.
-            const manifest = await this.getDecryptedManifest();
-            if (manifest) {
+            // Delete remote files/folders AND update manifest via serialized queue with tombstone
+            await this.driveService.deleteConversation(id);
+            await this.enqueueManifestUpdate((manifest) => {
                 manifest.conversations = manifest.conversations.filter(c => c.id !== id);
-                manifest.lastModified = new Date().toISOString();
-                const encrypted = crypto.encrypt(Buffer.from(JSON.stringify(manifest)), this.masterPassword!);
-                await this.driveService.updateManifest(encrypted);
-                // Also delete files remotely? That's heavy. 
-                // Let sync handle file cleanup later, or do it now.
-                // Ideally: call this.driveService.deleteConversation(id) if needed.
-            }
+                if (!manifest.deletedConversations) {
+                    manifest.deletedConversations = {};
+                }
+                manifest.deletedConversations[id] = {
+                    deletedAt: new Date().toISOString(),
+                    deletedBy: this.config?.machineId || 'unknown'
+                };
+                return true;
+            });
 
             vscode.window.showInformationMessage(lm.t('Conversation deleted.'));
         } catch (e: any) {
@@ -3089,34 +3477,22 @@ export class SyncManager {
         const fullPath = this.getFullPathForRelative(conversationId, relativePath);
         if (fs.existsSync(fullPath)) {
             await fs.promises.unlink(fullPath);
+            this.fileHashCache.delete(fullPath);
         }
 
-        // 2. Delete remotely if exists (update manifest)
-        const manifest = await this.getDecryptedManifest();
-        if (!manifest) return;
-
-        const remoteConv = manifest.conversations.find(c => c.id === conversationId);
-        if (remoteConv && remoteConv.fileHashes && remoteConv.fileHashes[relativePath]) {
-            // Delete file from Drive
-            await this.driveService.deleteConversationFile(conversationId, relativePath);
-
-            // Update manifest
-            delete remoteConv.fileHashes[relativePath];
-
-            // Recompute overall hash
-            const remainingFiles = Object.keys(remoteConv.fileHashes).sort();
-            const parts: string[] = [];
-            for (const path of remainingFiles) {
-                parts.push(`${path}:${remoteConv.fileHashes[path].hash}`);
+        // 2. Delete remotely and update manifest through serialized queue
+        await this.driveService.deleteConversationFile(conversationId, relativePath);
+        await this.enqueueManifestUpdate((manifest) => {
+            const remoteConv = manifest.conversations.find(c => c.id === conversationId);
+            if (!remoteConv || !remoteConv.fileHashes || !remoteConv.fileHashes[relativePath]) {
+                return false;
             }
-            remoteConv.hash = parts.length === 0 ? '' : crypto.computeMd5Hash(Buffer.from(parts.join('|')));
 
-            // Save manifest
-            manifest.lastModified = new Date().toISOString();
-            const manifestJson = JSON.stringify(manifest, null, 2);
-            const encrypted = crypto.encrypt(Buffer.from(manifestJson), this.masterPassword!);
-            await this.driveService.updateManifest(encrypted);
-        }
+            delete remoteConv.fileHashes[relativePath];
+            remoteConv.hash = this.computeOverallHashFromFileHashes(remoteConv.fileHashes);
+            remoteConv.size = Object.values(remoteConv.fileHashes).reduce((sum, info) => sum + info.size, 0);
+            return true;
+        });
     }
 
     private async renameConversationId(id: string, newTitle: string): Promise<void> {
@@ -3124,32 +3500,24 @@ export class SyncManager {
         const taskPath = path.join(getBrainDir(), id, 'task.md');
         if (fs.existsSync(taskPath)) {
             try {
-                let content = fs.readFileSync(taskPath, 'utf8');
+                let content = await fs.promises.readFile(taskPath, 'utf8');
                 if (content.match(/^#\s*Task:?\s*.*$/im)) {
                     content = content.replace(/^#\s*Task:?\s*.*$/im, `# Task: ${newTitle}`);
                 } else {
                     content = `# Task: ${newTitle}\n\n${content}`;
                 }
-                fs.writeFileSync(taskPath, content);
+                await fs.promises.writeFile(taskPath, content, 'utf8');
             } catch { /* ignore */ }
         }
 
-        // Update manifest title
-        const manifest = await this.getDecryptedManifest();
-        if (manifest) {
+        // Update manifest title through serialized queue
+        await this.enqueueManifestUpdate((manifest) => {
             const conv = manifest.conversations.find(c => c.id === id);
-            if (conv) {
-                conv.title = newTitle;
-                conv.lastModified = new Date().toISOString(); // content didn't change, but metadata did
-
-                const encrypted = crypto.encrypt(Buffer.from(JSON.stringify(manifest)), this.masterPassword!);
-                await this.driveService.updateManifest(encrypted);
-
-                // Update cached manifest to reflect the change immediately
-                this.cachedManifest = manifest;
-                this.lastManifestFetch = Date.now();
-            }
-        }
+            if (!conv) return false;
+            conv.title = newTitle;
+            conv.lastModified = new Date().toISOString();
+            return true;
+        });
     }
 
     /**
@@ -3537,11 +3905,9 @@ export class SyncManager {
                     }
                 }
 
-                // Track and collect history for virtual profiles
+                // Track and collect history for virtual profiles (reuse profileQuotas fetched above)
                 if (tracker) {
-                    const profileQuotas = await this.quotaManager?.getProfileQuotas() || [];
                     for (const pq of profileQuotas) {
-                        // Track this profile's quota
                         tracker.track(pq.snapshot, pq.profileName);
                     }
                 }
@@ -3899,38 +4265,84 @@ export class SyncManager {
                 break;
             }
             case 'pushConversation':
+                if (this.isSyncing) {
+                    vscode.window.showWarningMessage(lm.t('Sync already in progress'));
+                    break;
+                }
                 vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: lm.t('Uploading conversation...'),
                     cancellable: true
                 }, async (progress, token) => {
+                    this.isSyncing = true;
+                    const machineId = this.config?.machineId;
+                    let lockAcquired = false;
                     try {
+                        if (machineId) {
+                            lockAcquired = await this.driveService.acquireLock(machineId, DEFAULT_LOCK_TTL_MS);
+                            if (!lockAcquired) {
+                                throw new Error(lm.t('Sync is currently locked by another machine. Please try again later.'));
+                            }
+                        }
                         await this.pushConversation(message.id, progress, token);
+                        await this.updateMachineState();
                         vscode.window.showInformationMessage(lm.t('Conversation uploaded.'));
                         this.refreshStatistics();
                     } catch (e: any) {
                         if (e instanceof vscode.CancellationError) return;
                         vscode.window.showErrorMessage(lm.t('Upload failed: {0}', e.message));
+                    } finally {
+                        if (lockAcquired && machineId) {
+                            await this.driveService.releaseLock(machineId);
+                        }
+                        this.isSyncing = false;
                     }
                 });
                 break;
             case 'pullConversation':
+                if (this.isSyncing) {
+                    vscode.window.showWarningMessage(lm.t('Sync already in progress'));
+                    break;
+                }
                 vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: lm.t('Downloading conversation...'),
                     cancellable: true
                 }, async (progress, token) => {
+                    this.isSyncing = true;
+                    const machineId = this.config?.machineId;
+                    let lockAcquired = false;
                     try {
-                        await this.pullConversation(message.id, progress, token);
+                        if (machineId) {
+                            lockAcquired = await this.driveService.acquireLock(machineId, DEFAULT_LOCK_TTL_MS);
+                            if (!lockAcquired) {
+                                throw new Error(lm.t('Sync is currently locked by another machine. Please try again later.'));
+                            }
+                        }
+                        await this.pullConversation(message.id, progress, token, true);
+                        await this.updateMachineState();
                         vscode.window.showInformationMessage(lm.t('Conversation downloaded.'));
                         this.refreshStatistics();
                     } catch (e: any) {
                         if (e instanceof vscode.CancellationError) return;
                         vscode.window.showErrorMessage(lm.t('Download failed: {0}', e.message));
+                    } finally {
+                        if (lockAcquired && machineId) {
+                            await this.driveService.releaseLock(machineId);
+                        }
+                        this.isSyncing = false;
                     }
                 });
                 break;
             case 'deleteMachine': {
+                if (
+                    message.id === 'current' ||
+                    message.id === 'virtual_profile' ||
+                    (message.machineId && message.machineId === this.config?.machineId)
+                ) {
+                    vscode.window.showWarningMessage(lm.t('Cannot remove the current active machine.'));
+                    break;
+                }
                 const confirm = await vscode.window.showWarningMessage(
                     lm.t('Are you sure you want to remove machine "{0}" from sync stats?', message.name),
                     { modal: true },
@@ -3939,23 +4351,23 @@ export class SyncManager {
                 );
                 if (confirm === lm.t('Remove')) {
                     try {
-                        // 1. Remove from Drive file if exists
+                        // 1. Remove Drive state file if a real fileId was provided
                         if (message.id && message.id.trim() !== '') {
                             await this.driveService.deleteFile(message.id);
                         }
 
-                        // 2. Remove from Manifest if present
-                        const manifest = await this.getDecryptedManifest();
-                        if (manifest && manifest.machines) {
+                        // 2. Remove from Manifest through serialized queue (match by machineId strictly when provided)
+                        await this.enqueueManifestUpdate((manifest) => {
+                            if (!manifest.machines) return false;
                             const initialCount = manifest.machines.length;
-                            manifest.machines = manifest.machines.filter(m => m.name !== message.name && m.id !== message.machineId);
-
-                            if (manifest.machines.length < initialCount) {
-                                const encrypted = crypto.encrypt(Buffer.from(JSON.stringify(manifest)), this.masterPassword!);
-                                await this.driveService.updateManifest(encrypted);
-                                this.cachedManifest = manifest;
-                            }
-                        }
+                            manifest.machines = manifest.machines.filter(m => {
+                                if (message.machineId) {
+                                    return m.id !== message.machineId;
+                                }
+                                return m.name !== message.name;
+                            });
+                            return manifest.machines.length < initialCount;
+                        });
 
                         vscode.window.showInformationMessage(lm.t('Machine removed.'));
                         this.refreshStatistics();
@@ -4055,11 +4467,11 @@ export class SyncManager {
             try {
                 if (!this.driveService) throw new Error('Drive service not initialized');
 
-                const encryptedManifest = await this.driveService.getManifest();
-                if (!encryptedManifest) throw new Error('Failed to load manifest');
-
-                if (!this.masterPassword) throw new Error('Master password not loaded');
-                const manifest = JSON.parse(crypto.decrypt(encryptedManifest, this.masterPassword).toString()) as SyncManifest;
+                const fetchRes = await this.getDecryptedManifestResult(true);
+                if (fetchRes.status !== 'ok') {
+                    throw new Error(fetchRes.status === 'error' ? fetchRes.error.message : 'Failed to load manifest');
+                }
+                const manifest = fetchRes.manifest;
 
                 const toDelete = manifest.conversations.filter(c => c.createdBy === machineId);
 
@@ -4068,10 +4480,7 @@ export class SyncManager {
                     return;
                 }
 
-                // Delete files
                 const fileIds = toDelete.map(c => (c as any).fileId).filter((id: string) => !!id);
-
-                // Delete via fileId
                 for (const fid of fileIds) {
                     try {
                         await this.driveService.deleteFile(fid);
@@ -4080,9 +4489,8 @@ export class SyncManager {
                     }
                 }
 
-                // Fallback delete via conversation ID (zip)
-                const missingFileId = toDelete.filter(c => !c.fileId);
-                for (const c of missingFileId) {
+                // Delete conversation archives and v2 folders
+                for (const c of toDelete) {
                     try {
                         await this.driveService.deleteConversation(c.id);
                     } catch (e: any) {
@@ -4090,23 +4498,28 @@ export class SyncManager {
                     }
                 }
 
-                // Update Manifest by removing these conversations
-                manifest.conversations = manifest.conversations.filter(c => c.createdBy !== machineId);
-                manifest.lastModified = new Date().toISOString();
-
-                // Encrypt and save
-                const encryptedNew = crypto.encrypt(Buffer.from(JSON.stringify(manifest), 'utf8'), this.masterPassword);
-                await this.driveService.updateManifest(encryptedNew);
+                const deletedIds = new Set(toDelete.map(c => c.id));
+                await this.enqueueManifestUpdate((freshManifest) => {
+                    freshManifest.conversations = freshManifest.conversations.filter(c => !deletedIds.has(c.id));
+                    if (!freshManifest.deletedConversations) {
+                        freshManifest.deletedConversations = {};
+                    }
+                    const now = new Date().toISOString();
+                    for (const id of deletedIds) {
+                        freshManifest.deletedConversations[id] = {
+                            deletedAt: now,
+                            deletedBy: this.config?.machineId || machineId
+                        };
+                    }
+                    return true;
+                });
 
                 vscode.window.showInformationMessage(lm.t('Conversations deleted.'));
-
-                // Refresh stats
-                this.showStatistics();
+                await this.refreshStatistics(false, false);
 
             } catch (error: any) {
                 vscode.window.showErrorMessage(`${lm.t('Error')}: ${error.message}`);
-                // Also refresh stats in case of partial failure or to reset UI
-                this.showStatistics();
+                await this.refreshStatistics(false, false);
             }
         });
     }
@@ -4322,6 +4735,106 @@ export class SyncManager {
 
         panel.webview.html = this.getChatLoadingHtml();
 
+        // Register message handler BEFORE try block so fallback local chat also responds to openFile/viewImage
+        panel.webview.onDidReceiveMessage(async (msg) => {
+            switch (msg.command) {
+                case 'openFile': {
+                    if (typeof msg.path !== 'string' || !msg.path) break;
+                    let filePath = msg.path;
+                    let lineRange: string | undefined;
+
+                    if (filePath.includes('#')) {
+                        [filePath, lineRange] = filePath.split('#');
+                    } else {
+                        const matches = filePath.match(/:(\d+(?:-\d+)?)$/);
+                        if (matches) {
+                            lineRange = matches[1];
+                            filePath = filePath.substring(0, filePath.length - matches[0].length);
+                        }
+                    }
+
+                    try {
+                        filePath = decodeURIComponent(filePath);
+                    } catch {
+                        // Keep original string if URI contains malformed percent encoding
+                    }
+                    if (filePath.match(/^\/[a-zA-Z]:/)) {
+                        filePath = filePath.substring(1);
+                    }
+
+                    if (!isSafeLocalFsPath(filePath)) {
+                        vscode.window.showErrorMessage(lm.t('File or directory not found: {0}', filePath));
+                        break;
+                    }
+
+                    let fullPath = '';
+                    if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
+                        fullPath = filePath;
+                    } else {
+                        try {
+                            fullPath = this.getFullPathForRelative(id, filePath);
+                        } catch {
+                            const workspaceFolders = vscode.workspace.workspaceFolders;
+                            if (workspaceFolders) {
+                                for (const folder of workspaceFolders) {
+                                    let p = path.join(folder.uri.fsPath, filePath);
+                                    if (isSafeLocalFsPath(p) && fs.existsSync(p)) {
+                                        fullPath = p;
+                                        break;
+                                    }
+                                    p = path.join(getBrainDir(), id, filePath);
+                                    if (isSafeLocalFsPath(p) && fs.existsSync(p)) {
+                                        fullPath = p;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!fullPath || !fs.existsSync(fullPath)) {
+                                const fileName = path.basename(filePath);
+                                const results = await vscode.workspace.findFiles(`**/${fileName}`, '**/node_modules/**', 1);
+                                if (results && results.length > 0) {
+                                    fullPath = results[0].fsPath;
+                                }
+                            }
+                        }
+                    }
+
+                    if (fullPath && isSafeLocalFsPath(fullPath) && fs.existsSync(fullPath)) {
+                        const isDirectory = fs.statSync(fullPath).isDirectory();
+                        if (isDirectory) {
+                            vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(fullPath));
+                        } else {
+                            try {
+                                const doc = await vscode.workspace.openTextDocument(fullPath);
+                                const options: vscode.TextDocumentShowOptions = {};
+
+                                if (lineRange) {
+                                    const cleanRange = lineRange.replace(/^[:L]/, '');
+                                    const parts = cleanRange.split('-');
+                                    const startLine = parseInt(parts[0], 10) - 1;
+                                    const endLine = parts.length > 1 ? parseInt(parts[1], 10) - 1 : startLine;
+
+                                    if (!isNaN(startLine) && startLine >= 0) {
+                                        options.selection = new vscode.Range(startLine, 0, Math.max(startLine, isNaN(endLine) ? startLine : endLine), 1000);
+                                    }
+                                }
+                                await vscode.window.showTextDocument(doc, options);
+                            } catch {
+                                vscode.commands.executeCommand('vscode.open', vscode.Uri.file(fullPath));
+                            }
+                        }
+                    } else {
+                        vscode.window.showErrorMessage(lm.t('File or directory not found: {0}', filePath));
+                    }
+                    break;
+                }
+                case 'viewImage': {
+                    break;
+                }
+            }
+        });
+
         try {
             const [steps, metadata] = await Promise.all([
                 this.apiClient.getConversationMessages(id),
@@ -4337,14 +4850,12 @@ export class SyncManager {
 
                 await Promise.all(uniqueTrajIds.map(async (tid: string) => {
                     try {
-                        // 1. Try GetUserTrajectory
                         let detail = await this.apiClient.getUserTrajectory(tid);
 
-                        // 2. Try GetCascadeTrajectory (via getConversationMessages) if needed
                         if (!detail || !detail.trajectory?.steps || detail.trajectory.steps.length === 0) {
-                            const steps = await this.apiClient.getConversationMessages(tid);
-                            if (steps && steps.length > 0) {
-                                detail = { trajectory: { steps: steps } };
+                            const fetchedSteps = await this.apiClient.getConversationMessages(tid);
+                            if (fetchedSteps && fetchedSteps.length > 0) {
+                                detail = { trajectory: { steps: fetchedSteps } };
                             }
                         }
 
@@ -4360,7 +4871,7 @@ export class SyncManager {
                     const info = s.metadata.sourceTrajectoryStepInfo;
                     const detail = trajCache.get(info.trajectoryId);
                     if (detail && detail.trajectory?.steps && Array.isArray(detail.trajectory.steps)) {
-                        const fetchedStep = detail.trajectory.steps.find((fs: any) => fs.stepIndex === info.stepIndex)
+                        const fetchedStep = detail.trajectory.steps.find((fsItem: any) => fsItem.stepIndex === info.stepIndex)
                             || detail.trajectory.steps[info.stepIndex];
                         if (fetchedStep) {
                             Object.assign(s, fetchedStep);
@@ -4370,103 +4881,6 @@ export class SyncManager {
             }
 
             panel.webview.html = this.getChatHtml(filename, steps, metadata);
-
-            panel.webview.onDidReceiveMessage(async (msg) => {
-                switch (msg.command) {
-                    case 'openFile': {
-                        let filePath = msg.path;
-                        let lineRange: string | undefined;
-
-                        // Parse line range if present (e.g., path/to/file#L10-L20 or path/to/file:10-20)
-                        if (filePath.includes('#')) {
-                            [filePath, lineRange] = filePath.split('#');
-                        } else {
-                            const matches = filePath.match(/:(\d+(?:-\d+)?)$/);
-                            if (matches) {
-                                lineRange = matches[1];
-                                filePath = filePath.substring(0, filePath.length - matches[0].length);
-                            }
-                        }
-
-                        filePath = decodeURIComponent(filePath);
-                        // Handle /c:/ style paths occasionally seen in some envs
-                        if (filePath.match(/^\/[a-zA-Z]:/)) {
-                            filePath = filePath.substring(1);
-                        }
-
-                        let fullPath = '';
-                        if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
-                            fullPath = filePath;
-                        } else {
-                            try {
-                                fullPath = this.getFullPathForRelative(id, filePath);
-                            } catch {
-                                // Fallback: check if it is workspace relative
-                                const workspaceFolders = vscode.workspace.workspaceFolders;
-                                if (workspaceFolders) {
-                                    for (const folder of workspaceFolders) {
-                                        let p = path.join(folder.uri.fsPath, filePath);
-                                        if (fs.existsSync(p)) {
-                                            fullPath = p;
-                                            break;
-                                        }
-                                        // Also check for BRAIN_DIR/{id}/{filePath}
-                                        p = path.join(getBrainDir(), id, filePath);
-                                        if (fs.existsSync(p)) {
-                                            fullPath = p;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                // Last Resort: Search across entire workspace if we still don't have it
-                                if (!fullPath || !fs.existsSync(fullPath)) {
-                                    const fileName = path.basename(filePath);
-                                    const results = await vscode.workspace.findFiles(`**/${fileName}`, '**/node_modules/**', 1);
-                                    if (results && results.length > 0) {
-                                        fullPath = results[0].fsPath;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (fullPath && fs.existsSync(fullPath)) {
-                            const isDirectory = fs.statSync(fullPath).isDirectory();
-                            if (isDirectory) {
-                                vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(fullPath));
-                            } else {
-                                try {
-                                    const doc = await vscode.workspace.openTextDocument(fullPath);
-                                    const options: vscode.TextDocumentShowOptions = {};
-
-                                    if (lineRange) {
-                                        // Format: 10 or 10-20 or L10-L20 or :10-20
-                                        const cleanRange = lineRange.replace(/^[:L]/, '');
-                                        const parts = cleanRange.split('-');
-                                        const startLine = parseInt(parts[0]) - 1;
-                                        const endLine = parts.length > 1 ? parseInt(parts[1]) - 1 : startLine;
-
-                                        if (!isNaN(startLine)) {
-                                            options.selection = new vscode.Range(startLine, 0, endLine, 1000);
-                                        }
-                                    }
-                                    await vscode.window.showTextDocument(doc, options);
-                                } catch {
-                                    // Fallback for binary files (images, etc.)
-                                    vscode.commands.executeCommand('vscode.open', vscode.Uri.file(fullPath));
-                                }
-                            }
-                        } else {
-                            vscode.window.showErrorMessage(lm.t('File or directory not found: {0}', filePath));
-                        }
-                        break;
-                    }
-                    case 'viewImage': {
-                        // Handled by lightbox in webview, but we can also log or open in VS Code if needed
-                        break;
-                    }
-                }
-            });
         } catch (e: any) {
             // Attempt fallback to local transcript.jsonl or task.md if trajectory was not found on server
             try {
@@ -4594,20 +5008,44 @@ export class SyncManager {
         `;
     }
 
+    private storeDiffHtml(html: string): string {
+        if (!this.renderDiffStore) {
+            return '';
+        }
+        const token = nodeCrypto.randomBytes(12).toString('hex');
+        this.renderDiffStore.set(token, html);
+        return `@@AG_DIFF_${token}@@`;
+    }
+
     private getChatErrorHtml(error: string): string {
+        const safeError = escapeHtml(error || '');
         return `
             <!DOCTYPE html>
             <html>
+            <head>
+                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
+            </head>
             <body style="background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); padding: 20px; font-family: var(--vscode-font-family);">
                 <h3 style="color: var(--vscode-errorForeground);">Error Loading Chat</h3>
-                <pre>${error}</pre>
+                <pre>${safeError}</pre>
             </body>
             </html>
         `;
     }
 
     private getChatHtml(filename: string, steps: any[], metadata: any[] = []): string {
+        const prevDiffStore = this.renderDiffStore;
+        this.renderDiffStore = new Map<string, string>();
+        try {
+            return this.buildChatHtml(filename, steps, metadata);
+        } finally {
+            this.renderDiffStore = prevDiffStore;
+        }
+    }
+
+    private buildChatHtml(filename: string, steps: any[], metadata: any[] = []): string {
         const lm = LocalizationManager.getInstance();
+        const cspNonce = nodeCrypto.randomBytes(16).toString('base64');
 
         let currentThinkingBlock: string[] = [];
         let currentThinkingUsage: any = { inputTokens: 0, outputTokens: 0, thinkingOutputTokens: 0, cacheReadTokens: 0, totalLatencyMs: 0 };
@@ -4971,7 +5409,8 @@ export class SyncManager {
                     // Post-process: File badges
                     stepRendered = stepRendered.replace(/`([^`\s]+\.[a-z]{1,5})`/g, (match, pathStr) => {
                         const iconSvg = getFileIconSvg(pathStr);
-                        return `<span class="file-badge"><span class="icon">${iconSvg}</span><span class="path">${pathStr}</span><span class="open-btn" onclick="openFile('${pathStr.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">${lm.t('Open')}</span></span>`;
+                        const safePath = escapeHtml(pathStr);
+                        return `<span class="file-badge"><span class="icon">${iconSvg}</span><span class="path">${safePath}</span><span class="open-btn" data-action="open-file" data-path="${safePath}">${escapeHtml(lm.t('Open'))}</span></span>`;
                     });
 
                     // Post-process: Tool Calls
@@ -4993,10 +5432,10 @@ export class SyncManager {
                         <div class="avatar">${isUser ? '👤' : isError ? '⚠️' : isModel ? '🤖' : '⚙️'}</div>
                         <div class="content">
                             <div class="sender">
-                                <span class="sender-name">${sender}</span>
+                                <span class="sender-name">${escapeHtml(sender || '')}</span>
                                 ${responseTimeHtml}
                                 <div class="timestamp-wrapper">
-                                    <span class="timestamp">${timestampDisplay}</span>
+                                    <span class="timestamp">${escapeHtml(timestampDisplay)}</span>
                                 </div>
                             </div>
                             <div class="text-box">
@@ -5005,16 +5444,16 @@ export class SyncManager {
                                 </div>
                                 <div class="box-footer">
                                     <div class="usage-footer">${this.renderTokenUsage(totalUsage, totalLatencyMs)}</div>
-                                    <button class="toggle-mode-btn" onclick="toggleMode(this)" style="font-size: 10px; opacity: 0.5;">${lm.t('JSON')}</button>
+                                    <button class="toggle-mode-btn" data-action="toggle-mode" style="font-size: 10px; opacity: 0.5;">${escapeHtml(lm.t('JSON'))}</button>
                                 </div>
                                 <div class="json-box" style="display:none;">
                                     <div class="json-search-bar">
-                                        <input type="text" class="json-search-input" placeholder="${lm.t('Search in JSON...')}" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 2px 6px; font-size: 11px;" onkeyup="if(event.key==='Enter') navigateJsonSearch(this, event.shiftKey); else filterJson(this)">
+                                        <input type="text" class="json-search-input" placeholder="${escapeHtml(lm.t('Search in JSON...'))}" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 2px 6px; font-size: 11px;">
                                         <span class="json-search-count" style="font-size: 10px; opacity: 0.6; min-width: 30px; text-align: center;"></span>
-                                        <button class="search-btn" title="${lm.t('Previous (Shift+Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling, true)">⬆️</button>
-                                        <button class="search-btn" title="${lm.t('Next (Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling.previousElementSibling, false)">⬇️</button>
+                                        <button class="search-btn" data-action="json-prev" title="${escapeHtml(lm.t('Previous (Shift+Enter)'))}" style="padding: 2px; font-size: 10px;">⬆️</button>
+                                        <button class="search-btn" data-action="json-next" title="${escapeHtml(lm.t('Next (Enter)'))}" style="padding: 2px; font-size: 10px;">⬇️</button>
                                     </div>
-                                    <pre style="display:none;">${JSON.stringify(groupSteps).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                                    <pre style="display:none;">${escapeHtml(JSON.stringify(groupSteps))}</pre>
                                     <div class="json-container"></div>
                                 </div>
                             </div>
@@ -5039,10 +5478,14 @@ export class SyncManager {
                 if (startTime && endTime) {
                     const d1 = new Date(startTime);
                     const d2 = new Date(endTime);
-                    if (d1.toLocaleDateString() === d2.toLocaleDateString()) {
-                        timeRange = `${lm.formatDate(d1)} ${lm.formatDateTime(d1).split(', ')[1]} - ${lm.formatDateTime(d2).split(', ')[1]}`;
-                    } else {
-                        timeRange = `${lm.formatDateTime(d1)} - ${lm.formatDateTime(d2)}`;
+                    if (!isNaN(d1.getTime()) && !isNaN(d2.getTime())) {
+                        if (d1.toLocaleDateString() === d2.toLocaleDateString()) {
+                            const t1 = d1.toLocaleTimeString(lm.getLocale(), { hour: '2-digit', minute: '2-digit' });
+                            const t2 = d2.toLocaleTimeString(lm.getLocale(), { hour: '2-digit', minute: '2-digit' });
+                            timeRange = `${lm.formatDate(d1)} ${t1} - ${t2}`;
+                        } else {
+                            timeRange = `${lm.formatDateTime(d1)} - ${lm.formatDateTime(d2)}`;
+                        }
                     }
                 } else if (startTime) {
                     timeRange = lm.formatDateTime(new Date(startTime));
@@ -5066,7 +5509,6 @@ export class SyncManager {
                     const { isUser, isModel, isError, sender } = s;
                     if (!isUser && !isModel && !isError) return '';
 
-                    // Get timestamp
                     let timestampDisplay = '';
                     const ts = s.metadata?.createdAt || s.createdAt || s.timestamp;
                     if (ts) {
@@ -5080,26 +5522,22 @@ export class SyncManager {
                         }
                     }
 
-                    // Render content using the same methods as regular messages
                     let contentHtml = '';
                     const cleanText = (s.text || '').trim();
 
-                    // Check if this is a "cleared" placeholder message
                     const isClearedPlaceholder = cleanText.includes('cleared-message') ||
                         cleanText.includes('Содержимое сообщения было удалено') ||
                         cleanText.includes('message content has been cleared') ||
                         cleanText.includes('Message content cleared');
 
                     if (isClearedPlaceholder) {
-                        // Render as styled cleared message
-                        contentHtml = `<span class="cleared-message">${lm.t('Message content has been cleared or archived.')}</span>`;
+                        contentHtml = `<span class="cleared-message">${escapeHtml(lm.t('Message content has been cleared or archived.'))}</span>`;
                     } else if (cleanText) {
                         try {
-                            contentHtml = this.md ? this.md.render(cleanText) : cleanText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                            contentHtml = this.md ? this.md.render(cleanText) : escapeHtml(cleanText).replace(/\n/g, '<br>');
                         } catch {
-                            contentHtml = cleanText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                            contentHtml = escapeHtml(cleanText).replace(/\n/g, '<br>');
                         }
-                        // Apply same post-processing as regular messages
                         contentHtml = this.formatModelError(contentHtml, s);
                         contentHtml = this.renderToolCalls(contentHtml, seenExecIds);
                     }
@@ -5115,8 +5553,8 @@ export class SyncManager {
                             <div class="avatar" style="font-size: 12px;">${avatar}</div>
                             <div class="content">
                                 <div class="sender" style="font-size: 11px;">
-                                    <span class="sender-name">${senderName}</span>
-                                    <span class="timestamp" style="margin-left: 8px;">${timestampDisplay}</span>
+                                    <span class="sender-name">${escapeHtml(senderName)}</span>
+                                    <span class="timestamp" style="margin-left: 8px;">${escapeHtml(timestampDisplay)}</span>
                                 </div>
                                 <div class="text-box" style="padding: 4px 8px;">
                                     <div class="text markdown-body" style="font-size: 12px;">
@@ -5124,16 +5562,16 @@ export class SyncManager {
                                     </div>
                                     <div class="box-footer">
                                         ${this.renderTokenUsage(s.usage)}
-                                        <button class="toggle-mode-btn" onclick="toggleMode(this)" style="font-size: 10px; opacity: 0.5;">${lm.t('JSON')}</button>
+                                        <button class="toggle-mode-btn" data-action="toggle-mode" style="font-size: 10px; opacity: 0.5;">${escapeHtml(lm.t('JSON'))}</button>
                                     </div>
                                     <div class="json-box" style="display:none;">
                                         <div class="json-search-bar">
-                                            <input type="text" class="json-search-input" placeholder="${lm.t('Search in JSON...')}" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 2px 6px; font-size: 11px;" onkeyup="if(event.key==='Enter') navigateJsonSearch(this, event.shiftKey); else filterJson(this)">
+                                            <input type="text" class="json-search-input" placeholder="${escapeHtml(lm.t('Search in JSON...'))}" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 2px 6px; font-size: 11px;">
                                             <span class="json-search-count" style="font-size: 10px; opacity: 0.6; min-width: 30px; text-align: center;"></span>
-                                            <button class="search-btn" title="${lm.t('Previous (Shift+Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling, true)">⬆️</button>
-                                            <button class="search-btn" title="${lm.t('Next (Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling.previousElementSibling, false)">⬇️</button>
+                                            <button class="search-btn" data-action="json-prev" title="${escapeHtml(lm.t('Previous (Shift+Enter)'))}" style="padding: 2px; font-size: 10px;">⬆️</button>
+                                            <button class="search-btn" data-action="json-next" title="${escapeHtml(lm.t('Next (Enter)'))}" style="padding: 2px; font-size: 10px;">⬇️</button>
                                         </div>
-                                        <pre style="display:none;">${JSON.stringify(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                                        <pre style="display:none;">${escapeHtml(JSON.stringify(s))}</pre>
                                         <div class="json-container"></div>
                                     </div>
                                 </div>
@@ -5147,37 +5585,37 @@ export class SyncManager {
                         <div class="avatar">📦</div>
                         <div class="content">
                             <div class="sender">
-                                <span class="sender-name">${lm.t('Cleared History')}</span>
+                                <span class="sender-name">${escapeHtml(lm.t('Cleared History'))}</span>
                                 ${responseTimeHtml}
                                 <div class="timestamp-wrapper">
-                                    <span class="timestamp">${timeRange}</span>
+                                    <span class="timestamp">${escapeHtml(timeRange)}</span>
                                 </div>
                             </div>
                             <div class="text-box">
                                 <div class="text compact-summary">
                                     <div class="summary-line">
-                                        ${aiCount > 0 ? `<span>🤖 <b>${aiCount}</b> ${lm.t('AI Messages')}</span>` : ''}
-                                        ${userCount > 0 ? `<span>👤 <b>${userCount}</b> ${lm.t('User Messages')}</span>` : ''}
-                                        ${errorCount > 0 ? `<span>⚠️ <b>${errorCount}</b> ${lm.t('Errors')}</span>` : ''}
+                                        ${aiCount > 0 ? `<span>🤖 <b>${aiCount}</b> ${escapeHtml(lm.t('AI Messages'))}</span>` : ''}
+                                        ${userCount > 0 ? `<span>👤 <b>${userCount}</b> ${escapeHtml(lm.t('User Messages'))}</span>` : ''}
+                                        ${errorCount > 0 ? `<span>⚠️ <b>${errorCount}</b> ${escapeHtml(lm.t('Errors'))}</span>` : ''}
                                     </div>
-                                    <div class="cleared-message group-sub">${lm.t('Detailed content of these messages has been cleared or archived.')} <button class="expand-content-btn" onclick="expandClearedContent(this)" style="font-size: 10px; margin-left: 8px; background: rgba(100,150,255,0.1); border: 1px solid rgba(100,150,255,0.3); color: var(--vscode-textLink-foreground); padding: 3px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s;">📖 ${lm.t('Show content')}</button></div>
+                                    <div class="cleared-message group-sub">${escapeHtml(lm.t('Detailed content of these messages has been cleared or archived.'))} <button class="expand-content-btn" data-action="expand-cleared" style="font-size: 10px; margin-left: 8px; background: rgba(100,150,255,0.1); border: 1px solid rgba(100,150,255,0.3); color: var(--vscode-textLink-foreground); padding: 3px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s;">📖 ${escapeHtml(lm.t('Show content'))}</button></div>
                                 </div>
                                 <div class="box-footer">
                                     ${this.renderTokenUsage(totalUsage)}
-                                    <button class="toggle-mode-btn" onclick="toggleMode(this)" style="font-size: 10px; opacity: 0.5;">${lm.t('JSON')}</button>
+                                    <button class="toggle-mode-btn" data-action="toggle-mode" style="font-size: 10px; opacity: 0.5;">${escapeHtml(lm.t('JSON'))}</button>
                                 </div>
                                 <div class="pre-rendered-content" style="display: none; max-height: 60vh; overflow-y: auto; position: relative; padding-top: 8px; margin-top: 8px; border-top: 1px dashed rgba(127,127,127,0.3);">
                                     ${preRenderedMessages}
-                                    <button class="collapse-content-btn" onclick="collapseClearedContent(this)" style="font-size: 10px; position: sticky; bottom: 0; margin-top: 8px; background: rgba(150,100,100,0.95); border: 1px solid rgba(150,100,100,0.5); color: var(--vscode-button-foreground, #fff); padding: 5px 12px; border-radius: 4px; cursor: pointer; display: block; backdrop-filter: blur(4px); box-shadow: 0 -2px 6px rgba(0,0,0,0.2);">📕 ${lm.t('Collapse')}</button>
+                                    <button class="collapse-content-btn" data-action="collapse-cleared" style="font-size: 10px; position: sticky; bottom: 0; margin-top: 8px; background: rgba(150,100,100,0.95); border: 1px solid rgba(150,100,100,0.5); color: var(--vscode-button-foreground, #fff); padding: 5px 12px; border-radius: 4px; cursor: pointer; display: block; backdrop-filter: blur(4px); box-shadow: 0 -2px 6px rgba(0,0,0,0.2);">📕 ${escapeHtml(lm.t('Collapse'))}</button>
                                 </div>
                                 <div class="json-box" style="display:none;">
                                     <div class="json-search-bar">
-                                        <input type="text" class="json-search-input" placeholder="${lm.t('Search in JSON...')}" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 2px 6px; font-size: 11px;" onkeyup="if(event.key==='Enter') navigateJsonSearch(this, event.shiftKey); else filterJson(this)">
+                                        <input type="text" class="json-search-input" placeholder="${escapeHtml(lm.t('Search in JSON...'))}" style="flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; padding: 2px 6px; font-size: 11px;">
                                         <span class="json-search-count" style="font-size: 10px; opacity: 0.6; min-width: 30px; text-align: center;"></span>
-                                        <button class="search-btn" title="${lm.t('Previous (Shift+Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling, true)">⬆️</button>
-                                        <button class="search-btn" title="${lm.t('Next (Enter)')}" style="padding: 2px; font-size: 10px;" onclick="navigateJsonSearch(this.previousElementSibling.previousElementSibling.previousElementSibling, false)">⬇️</button>
+                                        <button class="search-btn" data-action="json-prev" title="${escapeHtml(lm.t('Previous (Shift+Enter)'))}" style="padding: 2px; font-size: 10px;">⬆️</button>
+                                        <button class="search-btn" data-action="json-next" title="${escapeHtml(lm.t('Next (Enter)'))}" style="padding: 2px; font-size: 10px;">⬇️</button>
                                     </div>
-                                    <pre style="display:none;">${JSON.stringify(groupSteps).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                                    <pre style="display:none;">${escapeHtml(JSON.stringify(groupSteps))}</pre>
                                     <div class="json-container"></div>
                                 </div>
                             </div>
@@ -5380,32 +5818,34 @@ export class SyncManager {
             <!DOCTYPE html>
             <html>
             <head>
+                <meta charset="UTF-8">
+                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: vscode-resource: https:; style-src 'unsafe-inline'; script-src 'nonce-${cspNonce}';">
                 <style>${styleVars}</style>
             </head>
             <body>
                 <div id="search-container">
                     <span style="font-size: 14px; margin-right: 8px; opacity: 0.6;">🔍</span>
-                    <input type="text" id="search-input" placeholder="${lm.t('Search in chat...')}" onkeydown="if(event.key==='Enter') findNext(event.shiftKey)">
-                    <button class="search-btn" title="${lm.t('Previous (Shift+Enter)')}" onclick="findNext(true)">⬆️</button>
-                    <button class="search-btn" title="${lm.t('Next (Enter)')}" onclick="findNext(false)">⬇️</button>
+                    <input type="text" id="search-input" placeholder="${escapeHtml(lm.t('Search in chat...'))}">
+                    <button class="search-btn" data-action="find-prev" title="${escapeHtml(lm.t('Previous (Shift+Enter)'))}">⬆️</button>
+                    <button class="search-btn" data-action="find-next" title="${escapeHtml(lm.t('Next (Enter)'))}">⬇️</button>
                     <span id="search-count" style="margin-left:8px; font-size:0.8em; opacity:0.6; min-width: 50px;"></span>
 
                     <div class="search-filters">
                         <label class="filter-item">
-                            <input type="checkbox" checked onchange="applyFilters()" data-type="ai">
-                            <span class="filter-label">🤖 ${lm.t('AI')}</span>
+                            <input type="checkbox" class="filter-checkbox" checked data-type="ai">
+                            <span class="filter-label">🤖 ${escapeHtml(lm.t('AI'))}</span>
                         </label>
                         <label class="filter-item">
-                            <input type="checkbox" checked onchange="applyFilters()" data-type="user">
-                            <span class="filter-label">👤 ${lm.t('User')}</span>
+                            <input type="checkbox" class="filter-checkbox" checked data-type="user">
+                            <span class="filter-label">👤 ${escapeHtml(lm.t('User'))}</span>
                         </label>
                         <label class="filter-item">
-                            <input type="checkbox" checked onchange="applyFilters()" data-type="error-msg">
-                            <span class="filter-label">⚠️ ${lm.t('Error')}</span>
+                            <input type="checkbox" class="filter-checkbox" checked data-type="error-msg">
+                            <span class="filter-label">⚠️ ${escapeHtml(lm.t('Error'))}</span>
                         </label>
                         <label class="filter-item">
-                            <input type="checkbox" checked onchange="applyFilters()" data-type="other">
-                            <span class="filter-label">⚙️ ${lm.t('Other')}</span>
+                            <input type="checkbox" class="filter-checkbox" checked data-type="other">
+                            <span class="filter-label">⚙️ ${escapeHtml(lm.t('Other'))}</span>
                         </label>
                     </div>
                 </div>
@@ -5414,12 +5854,17 @@ export class SyncManager {
                     ${messagesHtml}
                 </div>
 
-                <div id="lightbox" onclick="this.style.display='none'">
+                <div id="lightbox">
                     <img id="lightbox-img" src="">
                 </div>
 
-                <script>
+                <script nonce="${cspNonce}">
                     const vscode = acquireVsCodeApi();
+                    const L10N = {
+                        noResults: ${JSON.stringify(lm.t('No results'))},
+                        json: ${JSON.stringify(lm.t('JSON'))},
+                        text: ${JSON.stringify(lm.t('TEXT'))}
+                    };
                     let currentMatchIndex = -1;
                     let matches = [];
 
@@ -5471,7 +5916,7 @@ export class SyncManager {
                             currentMatchIndex = 0;
                             updateHighlight();
                         } else {
-                            document.getElementById('search-count').textContent = '${lm.t('No results')}';
+                            document.getElementById('search-count').textContent = L10N.noResults;
                         }
                     }
 
@@ -5534,10 +5979,9 @@ export class SyncManager {
                                         const btn = textBox.querySelector('.toggle-mode-btn');
                                         jsonBox.style.display = 'block';
                                         if (text) text.style.display = 'none';
-                                        if (btn) btn.textContent = '${lm.t('TEXT')}';
+                                        if (btn) btn.textContent = L10N.text;
                                     }
                                 }
-                                // Ensure it's rendered if we have a match inside (even if it was already visible)
                                 if (!jsonBox.classList.contains('rendered')) {
                                     const raw = jsonBox.querySelector('pre');
                                     if (raw) {
@@ -5593,7 +6037,6 @@ export class SyncManager {
                             msg.style.display = visible ? 'flex' : 'none';
                         });
                         
-                        // Re-run search if active to update results count and positions
                         const query = document.getElementById('search-input').value;
                         if (query) {
                             performSearch(query);
@@ -5632,18 +6075,18 @@ export class SyncManager {
                         }
                     }
 
-                    function openFile(path) {
+                    function openFile(filePath) {
                         vscode.postMessage({
                             command: 'openFile',
-                            path: path
+                            path: filePath
                         });
                     }
 
                     function copyToClipboard(text, btn) {
                         navigator.clipboard.writeText(text).then(() => {
-                            const original = btn.innerHTML;
-                            btn.innerHTML = '✅';
-                            setTimeout(() => { btn.innerHTML = original; }, 2000);
+                            const original = btn.textContent;
+                            btn.textContent = '✅';
+                            setTimeout(() => { btn.textContent = original; }, 2000);
                         });
                     }
 
@@ -5665,13 +6108,12 @@ export class SyncManager {
                         const json = textBox.querySelector('.json-box');
                         const isJson = json.style.display !== 'none';
 
-                        // Reset height when switching views
                         textBox.style.height = '';
 
                         if (isJson) {
                             json.style.display = 'none';
                             text.style.display = 'block';
-                            btn.textContent = '${lm.t('JSON')}';
+                            btn.textContent = L10N.json;
                         } else {
                             if (!json.classList.contains('rendered')) {
                                 const raw = json.querySelector('pre');
@@ -5682,13 +6124,13 @@ export class SyncManager {
                                         json.classList.add('rendered');
                                     } catch (e) {
                                         console.error('Failed to render JSON:', e);
-                                        raw.style.display = 'block'; // Fallback to raw pre
+                                        raw.style.display = 'block';
                                     }
                                 }
                             }
                             json.style.display = 'block';
                             text.style.display = 'none';
-                            btn.textContent = '${lm.t('TEXT')}';
+                            btn.textContent = L10N.text;
                         }
                     }
 
@@ -5698,23 +6140,19 @@ export class SyncManager {
                         const preRendered = textBox.querySelector('.pre-rendered-content');
                         
                         if (preRendered) {
-                            // Store original dimensions
                             textBox.dataset.originalHeight = textBox.style.height || '';
                             textBox.dataset.originalMinHeight = textBox.style.minHeight || '';
                             
-                            // Show pre-rendered content with flex
                             preRendered.style.display = 'flex';
                             preRendered.style.flexDirection = 'column';
                             preRendered.style.flex = '1';
                             preRendered.style.maxHeight = 'none';
                             summaryDiv.style.display = 'none';
 
-                            // If box is too small, give it some decent initial height for content
                             if (!textBox.style.height || parseInt(textBox.style.height) < 400) {
                                 textBox.style.height = '400px';
                             }
                             
-                            // Scroll pre-rendered content to top
                             preRendered.scrollTop = 0;
                         }
                     }
@@ -5728,24 +6166,11 @@ export class SyncManager {
                         if (preRendered && summaryDiv) {
                             preRendered.style.display = 'none';
                             summaryDiv.style.display = 'block';
-                            
-                            // Reset scroll position
                             preRendered.scrollTop = 0;
                             
-                            // Restore original text-box dimensions
-                            if (textBox.dataset.originalHeight !== undefined) {
-                                textBox.style.height = textBox.dataset.originalHeight;
-                            } else {
-                                textBox.style.height = '';
-                            }
+                            textBox.style.height = textBox.dataset.originalHeight !== undefined ? textBox.dataset.originalHeight : '';
+                            textBox.style.minHeight = textBox.dataset.originalMinHeight !== undefined ? textBox.dataset.originalMinHeight : '';
                             
-                            if (textBox.dataset.originalMinHeight !== undefined) {
-                                textBox.style.minHeight = textBox.dataset.originalMinHeight;
-                            } else {
-                                textBox.style.minHeight = '';
-                            }
-                            
-                            // Also reset message height if it was resized
                             if (message) {
                                 message.style.height = '';
                                 message.style.minHeight = '';
@@ -5754,7 +6179,7 @@ export class SyncManager {
                     }
 
                     function renderJson(container, data) {
-                        container.innerHTML = '';
+                        container.textContent = '';
                         const tree = document.createElement('div');
                         tree.className = 'json-tree';
                         tree.appendChild(createJsonNode(null, data, true));
@@ -5768,11 +6193,18 @@ export class SyncManager {
                         const isObject = val !== null && typeof val === 'object';
                         const isArray = Array.isArray(val);
                         
-                        let header = document.createElement('span');
+                        const header = document.createElement('span');
                         header.className = 'json-header';
                         
                         if (key !== null) {
-                            header.innerHTML = '<span class="json-key">"' + key + '"</span><span class="json-sep">: </span>';
+                            const keySpan = document.createElement('span');
+                            keySpan.className = 'json-key';
+                            keySpan.textContent = '"' + String(key) + '"';
+                            const sepSpan = document.createElement('span');
+                            sepSpan.className = 'json-sep';
+                            sepSpan.textContent = ': ';
+                            header.appendChild(keySpan);
+                            header.appendChild(sepSpan);
                         }
                         
                         if (isObject) {
@@ -5801,53 +6233,84 @@ export class SyncManager {
                             
                             const footer = document.createElement('div');
                             footer.className = 'json-footer';
-                            footer.innerHTML = '<span class="json-brace">' + closeBadge + '</span>' + (isLast ? '' : '<span class="json-comma">,</span>');
-        node.appendChild(footer);
+                            const closeSpan = document.createElement('span');
+                            closeSpan.className = 'json-brace';
+                            closeSpan.textContent = closeBadge;
+                            footer.appendChild(closeSpan);
+                            if (!isLast) {
+                                const commaSpan = document.createElement('span');
+                                commaSpan.className = 'json-comma';
+                                commaSpan.textContent = ',';
+                                footer.appendChild(commaSpan);
+                            }
+                            node.appendChild(footer);
 
-        toggle.onclick = (e) => {
-            e.stopPropagation();
-            toggle.classList.toggle('collapsed');
-            content.classList.toggle('collapsed');
-            toggle.textContent = toggle.classList.contains('collapsed') ? '▶' : '▼';
-        };
-    } else {
-    node.appendChild(header);
-    let valStr = '';
-    let type = 'null';
-    if (typeof val === 'string') {
-        type = 'string';
-        valStr = '"' + val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') + '"';
-    } else if (typeof val === 'number') {
-        type = 'number';
-        valStr = val.toString();
-    } else if (typeof val === 'boolean') {
-        type = 'boolean';
-        valStr = val.toString();
-    } else if (val === null) {
-        valStr = 'null';
-    }
+                            toggle.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                toggle.classList.toggle('collapsed');
+                                content.classList.toggle('collapsed');
+                                toggle.textContent = toggle.classList.contains('collapsed') ? '▶' : '▼';
+                            });
+                        } else {
+                            node.appendChild(header);
+                            let valStr = 'null';
+                            let type = 'null';
+                            if (typeof val === 'string') {
+                                type = 'string';
+                                valStr = '"' + val + '"';
+                            } else if (typeof val === 'number') {
+                                type = 'number';
+                                valStr = val.toString();
+                            } else if (typeof val === 'boolean') {
+                                type = 'boolean';
+                                valStr = val.toString();
+                            }
 
-    const valueSpan = document.createElement('span');
-    valueSpan.className = 'json-value json-' + type;
-    valueSpan.innerHTML = valStr;
-    node.appendChild(valueSpan);
+                            const valueSpan = document.createElement('span');
+                            valueSpan.className = 'json-value json-' + type;
+                            valueSpan.textContent = valStr;
+                            node.appendChild(valueSpan);
 
-    if (!isLast) {
-        const comma = document.createElement('span');
-        comma.className = 'json-comma';
-        comma.textContent = ',';
-        node.appendChild(comma);
-    }
-}
+                            if (!isLast) {
+                                const comma = document.createElement('span');
+                                comma.className = 'json-comma';
+                                comma.textContent = ',';
+                                node.appendChild(comma);
+                            }
+                        }
 
                         return node;
+                    }
+
+                    function highlightSpanSafely(span, query) {
+                        const rawText = span.getAttribute('data-raw-text') !== null
+                            ? span.getAttribute('data-raw-text')
+                            : span.textContent;
+                        if (span.getAttribute('data-raw-text') === null) {
+                            span.setAttribute('data-raw-text', rawText);
+                        }
+                        if (!query || !rawText.toLowerCase().includes(query)) {
+                            span.textContent = rawText;
+                            return;
+                        }
+                        const parts = rawText.split(new RegExp('(' + escapeRegExp(query) + ')', 'gi'));
+                        span.textContent = '';
+                        for (const part of parts) {
+                            if (part.toLowerCase() === query) {
+                                const hl = document.createElement('span');
+                                hl.className = 'json-highlight';
+                                hl.textContent = part;
+                                span.appendChild(hl);
+                            } else if (part !== '') {
+                                span.appendChild(document.createTextNode(part));
+                            }
+                        }
                     }
 
                     function filterJson(input) {
                         const query = input.value.toLowerCase();
                         const jsonBox = input.closest('.json-box');
                         
-                        // Ensure it's rendered before searching
                         if (!jsonBox.classList.contains('rendered')) {
                             const raw = jsonBox.querySelector('pre');
                             if (raw) {
@@ -5862,21 +6325,18 @@ export class SyncManager {
                         const nodes = jsonBox.querySelectorAll('.json-node');
                         const statusSpan = jsonBox.querySelector('.json-search-count');
                         
-                        // Reset local search state
                         jsonBox._matches = [];
                         jsonBox._matchIndex = -1;
 
                         nodes.forEach(node => {
-                            // Extract key and value spans belonging ONLY to this specific node
                             const keySpan = node.querySelector(':scope > .json-header > .json-key');
                             const valSpan = node.querySelector(':scope > .json-value');
                             
-                            // Restore originals if they were highlighted
-                            if (keySpan && keySpan.getAttribute('data-original')) {
-                                keySpan.innerHTML = keySpan.getAttribute('data-original');
+                            if (keySpan && keySpan.getAttribute('data-raw-text') !== null) {
+                                keySpan.textContent = keySpan.getAttribute('data-raw-text');
                             }
-                            if (valSpan && valSpan.getAttribute('data-original')) {
-                                valSpan.innerHTML = valSpan.getAttribute('data-original');
+                            if (valSpan && valSpan.getAttribute('data-raw-text') !== null) {
+                                valSpan.textContent = valSpan.getAttribute('data-raw-text');
                             }
 
                             if (!query) {
@@ -5889,20 +6349,10 @@ export class SyncManager {
                             node.style.display = isMatch ? '' : 'none';
                             
                             if (isMatch) {
-                                // Highlighting
                                 [keySpan, valSpan].forEach(span => {
-                                    if (!span) return;
-                                    const content = span.textContent;
-                                    if (content.toLowerCase().includes(query)) {
-                                        if (!span.getAttribute('data-original')) {
-                                            span.setAttribute('data-original', span.innerHTML);
-                                        }
-                                        const regex = new RegExp('(' + escapeRegExp(query) + ')', 'gi');
-                                        span.innerHTML = content.replace(regex, '<span class="json-highlight">$1</span>');
-                                    }
+                                    if (span) highlightSpanSafely(span, query);
                                 });
 
-                                // Expand parents
                                 let parentNode = node.parentElement.closest('.json-node');
                                 while (parentNode) {
                                     parentNode.style.display = '';
@@ -5918,7 +6368,6 @@ export class SyncManager {
                             }
                         });
 
-                        // Collect all unique matches from the entire box once
                         if (query) {
                             jsonBox._matches = Array.from(jsonBox.querySelectorAll('.json-highlight'));
                         }
@@ -5956,23 +6405,95 @@ export class SyncManager {
                         }
                     }
 
-                    // Double-click to reset resized text-box
+                    // Delegated event handling (strict CSP, zero inline event handlers)
+                    document.getElementById('search-input')?.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') findNext(e.shiftKey);
+                    });
+
+                    document.getElementById('lightbox')?.addEventListener('click', (e) => {
+                        e.currentTarget.style.display = 'none';
+                    });
+
+                    document.addEventListener('change', (e) => {
+                        if (e.target && e.target.classList && e.target.classList.contains('filter-checkbox')) {
+                            applyFilters();
+                        }
+                    });
+
+                    document.addEventListener('keyup', (e) => {
+                        if (e.target && e.target.classList && e.target.classList.contains('json-search-input')) {
+                            if (e.key === 'Enter') navigateJsonSearch(e.target, e.shiftKey);
+                            else filterJson(e.target);
+                        }
+                    });
+
+                    document.addEventListener('click', (e) => {
+                        const actionEl = e.target.closest('[data-action]');
+                        if (!actionEl) return;
+                        const action = actionEl.getAttribute('data-action');
+
+                        switch (action) {
+                            case 'find-prev':
+                                findNext(true);
+                                break;
+                            case 'find-next':
+                                findNext(false);
+                                break;
+                            case 'open-file':
+                                e.stopPropagation();
+                                if (actionEl.dataset.path) openFile(actionEl.dataset.path);
+                                break;
+                            case 'copy-text':
+                                e.stopPropagation();
+                                if (actionEl.dataset.copy !== undefined) copyToClipboard(actionEl.dataset.copy, actionEl);
+                                break;
+                            case 'toggle-args':
+                                if (actionEl.dataset.target) toggleArgs(actionEl.dataset.target);
+                                break;
+                            case 'toggle-diff':
+                                if (e.target.closest('.font-controls')) return;
+                                toggleDiff(actionEl);
+                                break;
+                            case 'font-size':
+                                e.stopPropagation();
+                                changeFontSize(actionEl, parseInt(actionEl.dataset.delta || '0', 10));
+                                break;
+                            case 'toggle-mode':
+                                toggleMode(actionEl);
+                                break;
+                            case 'expand-cleared':
+                                expandClearedContent(actionEl);
+                                break;
+                            case 'collapse-cleared':
+                                collapseClearedContent(actionEl);
+                                break;
+                            case 'show-image':
+                                showImage(actionEl.getAttribute('src') || '');
+                                break;
+                            case 'json-prev':
+                            case 'json-next': {
+                                const bar = actionEl.closest('.json-search-bar');
+                                const input = bar ? bar.querySelector('.json-search-input') : null;
+                                if (input) navigateJsonSearch(input, action === 'json-prev');
+                                break;
+                            }
+                        }
+                    });
+
                     document.addEventListener('dblclick', function(e) {
                         const target = e.target.closest('.text-box');
                         if (target) {
                             const rect = target.getBoundingClientRect();
                             const isBottomRight = (e.clientX >= rect.right - 20) && (e.clientY >= rect.bottom - 20);
-                            
-                            // If clicked on the resize handle area (approximately)
                             if (isBottomRight) {
-                                target.style.height = ''; // Reset inline height
-                                target.style.maxHeight = ''; // Ensure max-height is also cleared if it was set inline
+                                target.style.height = '';
+                                target.style.maxHeight = '';
                             }
                         }
                     });
-</script>
-    </body>
-    </html>
+                </script>
+            </body>
+            </html>
         `;
     }
 
@@ -6093,8 +6614,7 @@ export class SyncManager {
                         (step.modelResponse && (step.modelResponse.text || step.modelResponse.content));
 
                     if (!isPrefetched && (step.status === 'CORTEX_STEP_STATUS_CLEARED' || step.status?.includes('CLEARED'))) {
-                        // If it's still cleared after pre-fetch attempt, show placeholder
-                        return `< span class="cleared-message" > ${lm.t('Message content has been cleared or archived.')} </span>`;
+                        return `<span class="cleared-message">${lm.t('Message content has been cleared or archived.')}</span>`;
                     }
 
                     // If we haven't even tried to pre-fetch (empty object mostly), return empty for now
@@ -6117,31 +6637,28 @@ export class SyncManager {
         const lm = LocalizationManager.getInstance();
         return content.replace(/\[TOOL_CALL:([^|\]]+)(?:\|([^|\]]+)(?:\|([^|\]]*))?)?(?:\|\|\|([^\]|]*))?(?:\|\|\|\|([^\]]*))?\]/g, (match, toolName, filePath, lineInfo, base64Args, execId) => {
             if (seenExecIds) {
-                // If execId is missing, use tool name + args as a fallback deduplication key
                 const dedupeId = execId || `${toolName}:${base64Args || ''}`;
                 if (seenExecIds.has(dedupeId)) return '';
                 seenExecIds.add(dedupeId);
             }
             let fileBadge = '';
             if (filePath) {
-                // Strip fragment for display clean-up
                 const cleanFilePath = filePath.includes('#') ? filePath.split('#')[0] : filePath;
                 const displayPath = cleanFilePath.split(/[/\\]/).pop() || cleanFilePath;
 
-                // Dynamic detection for 📂 icon
                 let isDirectory = toolName === 'list_dir' || toolName === 'find_by_name';
                 let exists = false;
                 try {
-                    if (fs.existsSync(cleanFilePath)) {
+                    if (isSafeLocalFsPath(cleanFilePath) && fs.existsSync(cleanFilePath)) {
                         exists = true;
                         isDirectory = fs.statSync(cleanFilePath).isDirectory();
                     }
                 } catch { /* ignore */ }
 
                 fileBadge = `
-                    <span class="file-badge mini ${isDirectory ? 'directory' : ''} ${!exists ? 'missing' : ''}" onclick="openFile('${filePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="${!exists ? lm.t('File not found locally') : ''}">
+                    <span class="file-badge mini ${isDirectory ? 'directory' : ''} ${!exists ? 'missing' : ''}" data-action="open-file" data-path="${escapeHtml(filePath)}" title="${!exists ? escapeHtml(lm.t('File not found locally')) : ''}">
                         <span class="icon">${isDirectory ? '📂' : (exists ? getFileIconSvg(cleanFilePath) : '🚫')}</span>
-                        <span class="path">${displayPath}${lineInfo || ''}</span>
+                        <span class="path">${escapeHtml(displayPath)}${escapeHtml(lineInfo || '')}</span>
                     </span>
                 `;
             }
@@ -6156,60 +6673,54 @@ export class SyncManager {
                     const jsonStr = Buffer.from(base64Args, 'base64').toString('utf8');
                     const args = JSON.parse(jsonStr);
                     const prettyJson = JSON.stringify(args, null, 2);
-                    const boxId = `args-${Math.random().toString(36).substr(2, 9)}`;
+                    const boxId = `args-${nodeCrypto.randomBytes(6).toString('hex')}`;
 
-                    argsButton = `<button class="tool-args-btn" onclick="toggleArgs('${boxId}')">${lm.t('Arguments')}</button>`;
+                    argsButton = `<button class="tool-args-btn" data-action="toggle-args" data-target="${boxId}">${escapeHtml(lm.t('Arguments'))}</button>`;
                     argsBox = `
                         <div id="${boxId}" class="tool-args-box">
-                            <pre>${prettyJson.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                            <pre>${escapeHtml(prettyJson)}</pre>
                         </div>
                     `;
 
-                    if (toolName === 'run_command' && (args.CommandLine || args.Command)) {
-                        // Copy button is handled via [COPY_CMD] replacement in the info string
-                    }
-
                     if (toolName === 'notify_user' && args.PathsToReview && Array.isArray(args.PathsToReview) && args.PathsToReview.length > 0) {
                         reviewBadges = args.PathsToReview.map((p: string) => {
-                            const name = p.split(/[/\\]/).pop() || p;
-                            const exists = fs.existsSync(p);
+                            const safeP = String(p || '');
+                            const name = safeP.split(/[/\\]/).pop() || safeP;
+                            const exists = isSafeLocalFsPath(safeP) && fs.existsSync(safeP);
                             return `
-                                <span class="file-badge mini ${!exists ? 'missing' : ''}" title="${p}${!exists ? ' (' + lm.t('File not found locally') + ')' : ''}" onclick="openFile('${p.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">
-                                    <span class="icon">${exists ? getFileIconSvg(p) : '🚫'}</span>
-                                    <span class="path">${name}</span>
+                                <span class="file-badge mini ${!exists ? 'missing' : ''}" title="${escapeHtml(safeP)}${!exists ? ' (' + escapeHtml(lm.t('File not found locally')) + ')' : ''}" data-action="open-file" data-path="${escapeHtml(safeP)}">
+                                    <span class="icon">${exists ? getFileIconSvg(safeP) : '🚫'}</span>
+                                    <span class="path">${escapeHtml(name)}</span>
                                 </span>
                             `;
                         }).join('');
                         reviewBadges = `<div style="display: flex; flex-wrap: wrap; gap: 4px; border-left: 2px solid var(--vscode-textLink-foreground); padding-left: 8px; margin-left: 8px;">
-                                            <span style="font-size: 0.85em; opacity: 0.8; display: flex; align-items: center;">${lm.t('Review Required')}:</span>
+                                            <span style="font-size: 0.85em; opacity: 0.8; display: flex; align-items: center;">${escapeHtml(lm.t('Review Required'))}:</span>
                                             ${reviewBadges}
                                         </div>`;
                     }
 
                     if (toolName === 'grep_search' || toolName === 'find_by_name' || toolName === 'view_file' || toolName === 'ls' || toolName === 'list_dir') {
                         const q = args.Query || args.Pattern || args.query || args.pattern || args.AbsolutePath || args.Path || args.SearchDirectory || args.SearchPath;
-                        // Strip fragment for equality check
                         const cleanFilePath = filePath ? (filePath.includes('#') ? filePath.split('#')[0] : filePath) : '';
 
-                        if (q && q !== filePath && q !== cleanFilePath) {
+                        if (q && typeof q === 'string' && q !== filePath && q !== cleanFilePath) {
                             let qIsDir = false;
                             let qExists = false;
                             try {
-                                if (fs.existsSync(q)) {
+                                if (isSafeLocalFsPath(q) && fs.existsSync(q)) {
                                     qExists = true;
                                     qIsDir = fs.statSync(q).isDirectory();
                                 }
                             } catch { /* ignore */ }
 
-                            // Smart join for find_by_name/grep_search if q looks like a relative filename
                             let openPath = q;
                             if ((toolName === 'find_by_name' || toolName === 'grep_search') && !path.isAbsolute(q) && filePath) {
-                                // If filePath is a directory, join it
                                 try {
-                                    const dir = (fs.existsSync(cleanFilePath) && fs.statSync(cleanFilePath).isDirectory()) ? cleanFilePath : undefined;
+                                    const dir = (isSafeLocalFsPath(cleanFilePath) && fs.existsSync(cleanFilePath) && fs.statSync(cleanFilePath).isDirectory()) ? cleanFilePath : undefined;
                                     if (dir) {
                                         openPath = path.posix.join(dir.replace(/\\/g, '/'), q.replace(/\\/g, '/'));
-                                        if (!qExists && fs.existsSync(openPath)) {
+                                        if (!qExists && isSafeLocalFsPath(openPath) && fs.existsSync(openPath)) {
                                             qExists = true;
                                             qIsDir = fs.statSync(openPath).isDirectory();
                                         }
@@ -6221,8 +6732,7 @@ export class SyncManager {
                             const qStyle = !qExists && toolName !== 'grep_search' ? 'opacity: 0.6; filter: grayscale(1);' : '';
                             const qClass = !qExists && toolName !== 'grep_search' ? 'missing' : '';
 
-                            detailBadges = `<span class="tool-query-badge ${qClass}" style="cursor: pointer; ${qStyle}" onclick="openFile('${openPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="${openPath.replace(/"/g, '&quot;')}"><small style="margin-right:4px; opacity:0.6; width: 14px; height: 14px; display: inline-flex; align-items: center; vertical-align: middle;">${qIcon}</small>${q.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
-
+                            detailBadges = `<span class="tool-query-badge ${qClass}" style="cursor: pointer; ${qStyle}" data-action="open-file" data-path="${escapeHtml(openPath)}" title="${escapeHtml(openPath)}"><small style="margin-right:4px; opacity:0.6; width: 14px; height: 14px; display: inline-flex; align-items: center; vertical-align: middle;">${qIcon}</small>${escapeHtml(q)}</span>`;
                         }
                     }
                 } catch (e) {
@@ -6232,7 +6742,6 @@ export class SyncManager {
 
             let infoBadges = '';
             if (detailBadges || fileBadge) {
-                // Fix: Properly insert style while maintaining the class attribute
                 const styledFileBadge = fileBadge.replace('class="file-badge mini', 'style="margin-left: 0" class="file-badge mini');
                 infoBadges = `
                     <div style="display: flex; align-items: center; gap: 6px; border-left: 1px solid var(--vscode-widget-border); padding-left: 8px; margin-left: 8px;">
@@ -6252,32 +6761,32 @@ export class SyncManager {
                         let name = args.TaskName || '';
                         let summary = args.TaskSummaryWithCitations || args.TaskSummary || '';
 
-                        // Handle %SAME% logic
                         if (name === '%SAME%') name = this.lastTaskName || '';
                         else if (name) this.lastTaskName = name;
 
                         if (summary === '%SAME%') summary = this.lastTaskSummary || '';
                         else if (summary) this.lastTaskSummary = summary;
 
-                        let summaryHtml = summary;
+                        let summaryHtml = escapeHtml(summary);
                         if (summary && this.md && typeof this.md.render === 'function') {
                             summaryHtml = this.md.render(summary);
                         }
                         if (name || summary) {
                             extraStuff = `
                                 <div class="task-boundary-info">
-                                    ${name ? `<div class="task-name-header">${name}</div>` : ''}
+                                    ${name ? `<div class="task-name-header">${escapeHtml(name)}</div>` : ''}
                                     ${summaryHtml ? `<div class="task-summary-box markdown-body">${summaryHtml}</div>` : ''}
                                 </div>
                             `;
                         }
                     } else if (toolName === 'run_command' && args.CommandLine) {
                         const desc = args.Message || args.Description || args.Summary || '';
+                        const cmdLine = String(args.CommandLine);
 
                         extraStuff = `
                             <div class="command-info">
-                                ${desc ? `<div class="command-desc">${desc}</div>` : ''}
-                                <div class="command-line">\`${args.CommandLine}\` <button class="copy-btn mini" title="${lm.t('Copy Link')}" onclick="copyToClipboard('${args.CommandLine.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', this)">📋</button></div>
+                                ${desc ? `<div class="command-desc">${escapeHtml(String(desc))}</div>` : ''}
+                                <div class="command-line"><code>${escapeHtml(cmdLine)}</code> <button class="copy-btn mini" title="${escapeHtml(lm.t('Copy Link'))}" data-action="copy-text" data-copy="${escapeHtml(cmdLine)}">📋</button></div>
                             </div>
                         `;
                     }
@@ -6287,8 +6796,8 @@ export class SyncManager {
             return `
                 <div class="tool-call">
                     <span class="tool-icon">🛠️</span>
-                    <span class="tool-label">${lm.t('Tool Use')}:</span>
-                    <span class="tool-name">${toolName}</span>
+                    <span class="tool-label">${escapeHtml(lm.t('Tool Use'))}:</span>
+                    <span class="tool-name">${escapeHtml(toolName)}</span>
                     ${infoBadges}
                     ${reviewBadges}
                     ${argsButton}
@@ -6297,47 +6806,44 @@ export class SyncManager {
                 ${extraStuff}
             `;
         }).replace(/\[NAV_BADGE:([^|\]]+)\|([^|\]]+)\|([^\]]*)\]/g, (match, filePath, lineInfo, label) => {
-            const exists = fs.existsSync(filePath);
+            const exists = isSafeLocalFsPath(filePath) && fs.existsSync(filePath);
             const iconSvg = getFileIconSvg(filePath);
             return `
-                <span class="file-badge mini ${!exists ? 'missing' : ''}" title="${!exists ? lm.t('File not found locally') : ''}" onclick="openFile('${filePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}${lineInfo}')">
+                <span class="file-badge mini ${!exists ? 'missing' : ''}" title="${!exists ? escapeHtml(lm.t('File not found locally')) : ''}" data-action="open-file" data-path="${escapeHtml(`${filePath}${lineInfo}`)}">
                     <span class="icon">${exists ? iconSvg : '🚫'}</span>
-                    <span class="path">${label}</span>
+                    <span class="path">${escapeHtml(label)}</span>
                 </span>
             `;
         }).replace(/\[COPY_CMD:([^\]]+)\]/g, (match, base64Cmd) => {
             try {
                 const cmd = Buffer.from(base64Cmd, 'base64').toString('utf8');
-                const escapedCmd = cmd.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
-                return `<button class="copy-btn" title="${lm.t('Copy to Clipboard')}" onclick="copyToClipboard('${escapedCmd}', this)">📋</button>`;
+                return `<button class="copy-btn" title="${escapeHtml(lm.t('Copy to Clipboard'))}" data-action="copy-text" data-copy="${escapeHtml(cmd)}">📋</button>`;
             } catch { return ''; }
-        }).replace(/\[DIFF:([^\]]+)\]/g, (match, base64Diff) => {
-            try {
-                return Buffer.from(base64Diff, 'base64').toString('utf8');
-            } catch { return ''; }
+        }).replace(/@@AG_DIFF_([a-f0-9]{24})@@/g, (_match, token) => {
+            return this.renderDiffStore?.get(token) || '';
         }).replace(/\[LOCAL_TIME:([^\]]+)\]/g, (match, timestamp) => {
             try {
-                const date = new Date(parseInt(timestamp));
-                return lm.formatDateTime(date);
-            } catch { return timestamp; }
+                const date = new Date(parseInt(timestamp, 10));
+                return escapeHtml(lm.formatDateTime(date));
+            } catch { return escapeHtml(timestamp); }
         });
     }
 
     private generateFileContentHtml(text: string, startLine: number, title?: string, collapsed: boolean = true, filename?: string): string {
         const lm = LocalizationManager.getInstance();
-        const t = title || lm.t('File Content');
+        const t = escapeHtml(title || lm.t('File Content'));
         const lines = text.split('\n');
 
         let html = '<div class="diff-container">';
         const iconSvg = filename ? getFileIconSvg(filename) : '<span class="icon">📄</span>';
-        html += `<div class="diff-header ${collapsed ? 'collapsed' : ''}" onclick="toggleDiff(this)">
+        html += `<div class="diff-header ${collapsed ? 'collapsed' : ''}" data-action="toggle-diff">
             <div class="diff-icon">${iconSvg}</div> ${t}
-            <div class="font-controls" onclick="event.stopPropagation()">
-                <button class="font-btn" onclick="changeFontSize(this, -1)">-</button>
-                <button class="font-btn" onclick="changeFontSize(this, 1)">+</button>
+            <div class="font-controls">
+                <button class="font-btn" data-action="font-size" data-delta="-1">-</button>
+                <button class="font-btn" data-action="font-size" data-delta="1">+</button>
                 <span class="zoom-level">1.0x</span>
             </div>
-            <span class="stats">${lines.length} ${lm.t('Lines')}</span>
+            <span class="stats">${lines.length} ${escapeHtml(lm.t('Lines'))}</span>
         </div>`;
         html += `<div class="diff-block ${collapsed ? 'collapsed' : ''}"><div class="diff-lines-wrapper">`;
 
@@ -6366,11 +6872,11 @@ export class SyncManager {
 
         let html = '<div class="diff-container">';
         const iconSvg = filename ? getFileIconSvg(filename) : '<span class="icon">📝</span>';
-        html += `<div class="diff-header collapsed" onclick="toggleDiff(this)">
-            <div class="diff-icon">${iconSvg}</div> ${lm.t('Code Changes')}
-            <div class="font-controls" onclick="event.stopPropagation()">
-                <button class="font-btn" onclick="changeFontSize(this, -1)">-</button>
-                <button class="font-btn" onclick="changeFontSize(this, 1)">+</button>
+        html += `<div class="diff-header collapsed" data-action="toggle-diff">
+            <div class="diff-icon">${iconSvg}</div> ${escapeHtml(lm.t('Code Changes'))}
+            <div class="font-controls">
+                <button class="font-btn" data-action="font-size" data-delta="-1">-</button>
+                <button class="font-btn" data-action="font-size" data-delta="1">+</button>
                 <span class="zoom-level">1.0x</span>
             </div>
             <span class="stats">(-${delCount}, +${addCount})</span>
@@ -6401,55 +6907,69 @@ export class SyncManager {
     }
 
     private highlightDiff(line: string): string {
-        // Escaping HTML characters first
-        let html = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        // Use a richer color palette similar to VS Code's Dark Pro
         const colors = {
-            keyword: '#c586c0',     // Purple
-            function: '#dcdcaa',    // Yellowish
-            string: '#ce9178',      // Orange tint
-            number: '#b5cea8',      // Light green
-            boolean: '#569cd6',     // Blue
-            type: '#4ec9b0',        // Teal
-            variable: '#9cdcfe',    // Light blue
-            comment: '#6a9955',     // Green
-            operator: '#d4d4d4'     // White/Gray
+            keyword: '#c586c0',
+            function: '#dcdcaa',
+            string: '#ce9178',
+            number: '#b5cea8',
+            boolean: '#569cd6',
+            type: '#4ec9b0',
+            comment: '#6a9955'
         };
 
-        // 1. Strings (careful with quotes)
-        html = html.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, `<span style="color: ${colors.string}">"$1"</span>`);
-        html = html.replace(/'([^'\\]*(\\.[^'\\]*)*)'/g, `<span style="color: ${colors.string}">'$1'</span>`);
+        const keywords = new Set([
+            'function', 'const', 'let', 'var', 'if', 'else', 'for', 'while', 'return',
+            'import', 'from', 'export', 'class', 'interface', 'type', 'private', 'public',
+            'protected', 'async', 'await', 'new', 'this', 'throw', 'try', 'catch', 'finally',
+            'extends', 'implements', 'as', 'readonly', 'static'
+        ]);
+        const types = new Set([
+            'string', 'number', 'boolean', 'any', 'void', 'unknown', 'never', 'object',
+            'Array', 'Promise', 'Map', 'Set'
+        ]);
+        const booleans = new Set(['true', 'false', 'null']);
 
-        // 2. Numbers
-        html = html.replace(/\b(\d+(\.\d+)?)\b/g, `<span style="color: ${colors.number}">$1</span>`);
+        if (line.length > 4000) {
+            return escapeHtml(line);
+        }
 
-        // 3. Booleans and null
-        html = html.replace(/\b(true|false|null)\b/g, `<span style="color: ${colors.boolean}">$1</span>`);
+        const tokenRegex = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_][a-zA-Z0-9_]*\b)/g;
+        let out = '';
+        let lastIndex = 0;
+        let match: RegExpExecArray | null;
 
-        // 4. Keywords
-        const keywords = ['function', 'const', 'let', 'var', 'if', 'else', 'for', 'while', 'return', 'import', 'from', 'export', 'class', 'interface', 'type', 'private', 'public', 'protected', 'async', 'await', 'new', 'this', 'throw', 'try', 'catch', 'finally', 'extends', 'implements', 'as', 'readonly', 'static'];
-        const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
-        html = html.replace(keywordRegex, `<span style="color: ${colors.keyword}">$1</span>`);
+        while ((match = tokenRegex.exec(line)) !== null) {
+            if (match.index > lastIndex) {
+                out += escapeHtml(line.slice(lastIndex, match.index));
+            }
+            const token = match[0];
+            const safeToken = escapeHtml(token);
 
-        // 5. Common built-ins and types
-        const types = ['string', 'number', 'boolean', 'any', 'void', 'unknown', 'never', 'object', 'Array', 'Promise', 'Map', 'Set'];
-        const typesRegex = new RegExp(`\\b(${types.join('|')})\\b`, 'g');
-        html = html.replace(typesRegex, `<span style="color: ${colors.type}">$1</span>`);
+            if (token.startsWith('//') || token.startsWith('/*')) {
+                out += `<span style="color: ${colors.comment}">${safeToken}</span>`;
+            } else if (token.startsWith('"') || token.startsWith("'")) {
+                out += `<span style="color: ${colors.string}">${safeToken}</span>`;
+            } else if (/^\d/.test(token)) {
+                out += `<span style="color: ${colors.number}">${safeToken}</span>`;
+            } else if (booleans.has(token)) {
+                out += `<span style="color: ${colors.boolean}">${safeToken}</span>`;
+            } else if (keywords.has(token)) {
+                out += `<span style="color: ${colors.keyword}">${safeToken}</span>`;
+            } else if (types.has(token)) {
+                out += `<span style="color: ${colors.type}">${safeToken}</span>`;
+            } else if (line.slice(tokenRegex.lastIndex).trimStart().startsWith('(')) {
+                out += `<span style="color: ${colors.function}">${safeToken}</span>`;
+            } else {
+                out += safeToken;
+            }
+            lastIndex = tokenRegex.lastIndex;
+        }
 
-        // 6. Functions (words before parenthesis)
-        html = html.replace(/\b([a-zA-Z0-9_]+)(?=\s*\()/g, `<span style="color: ${colors.function}">$1</span>`);
+        if (lastIndex < line.length) {
+            out += escapeHtml(line.slice(lastIndex));
+        }
 
-        // 7. HTML/XML Tags (basic)
-        html = html.replace(/(&lt;\/?)([a-zA-Z0-9]+)(.*?\/?[&gt;])/g, (m, open, tag, rest) => {
-            return `<span style="color: ${colors.boolean}">${open}</span><span style="color: ${colors.keyword}">${tag}</span><span style="color: ${colors.boolean}">${rest}</span>`;
-        });
-
-        // 8. Comments (at the end to avoid matching inside code)
-        html = html.replace(/(\/\/.*$)/g, `<span style="color: ${colors.comment}">$1</span>`);
-        html = html.replace(/(\/\*[\s\S]*?\*\/)/g, `<span style="color: ${colors.comment}">$1</span>`);
-
-        return html;
+        return out;
     }
 
     private formatToolCall(tc: any): string {
@@ -6493,9 +7013,9 @@ export class SyncManager {
                         const outputStr = typeof tc.output === 'string' ? tc.output : JSON.stringify(tc.output, null, 2);
                         if (outputStr.trim()) {
                             const raw = outputStr.length > 5000 ? outputStr.substring(0, 5000) + '...' : outputStr;
-                            const path = args.Path || args.path || args.TargetPath || args.targetPath || args.TargetFile || args.targetFile || args.AbsolutePath || args.absolutePath;
-                            const contentHtml = this.generateFileContentHtml(raw, -1, lm.t('Command Output'), true, path);
-                            infos.push(`[DIFF:${Buffer.from(contentHtml).toString('base64')}]`);
+                            const cmdPath = args.Path || args.path || args.TargetPath || args.targetPath || args.TargetFile || args.targetFile || args.AbsolutePath || args.absolutePath;
+                            const contentHtml = this.generateFileContentHtml(raw, -1, lm.t('Command Output'), true, cmdPath);
+                            infos.push(this.storeDiffHtml(contentHtml));
                         }
                     }
                 }
@@ -6504,7 +7024,7 @@ export class SyncManager {
                         const startLine = parseInt(args.StartLine) || 0;
                         const filename = args.TargetFile || args.File || args.Path || '';
                         const diffHtml = this.generateDiffHtml(args.TargetContent, args.ReplacementContent, startLine, filename);
-                        infos.push(`[DIFF:${Buffer.from(diffHtml).toString('base64')}]`);
+                        infos.push(this.storeDiffHtml(diffHtml));
                     }
                 } else if (tc.name === 'multi_replace_file_content') {
                     if (args.ReplacementChunks && Array.isArray(args.ReplacementChunks)) {
@@ -6527,11 +7047,10 @@ export class SyncManager {
                             }
 
                             const diffHtml = this.generateDiffHtml(chunk.TargetContent, chunk.ReplacementContent, start, filePath);
-                            infos.push(`[DIFF:${Buffer.from(diffHtml).toString('base64')}]`);
+                            infos.push(this.storeDiffHtml(diffHtml));
                         });
                     }
                 } else if (tc.name === 'grep_search') {
-                    // Query and SearchPath are handled in header
                     const outputToParse = tc.output || tc.response || tc.result;
                     if (outputToParse) {
                         try {
@@ -6543,34 +7062,34 @@ export class SyncManager {
                                 }
                                 if (data.results && Array.isArray(data.results)) {
                                     const resultsHtml = data.results.slice(0, 20).map((item: any) => {
-                                        const file = item.file || item.path || item.relativePath || item.absolutePath || item.filepath || item.file_path || '???';
+                                        const file = String(item.file || item.path || item.relativePath || item.absolutePath || item.filepath || item.file_path || '???');
                                         const lineNum = item.line || item.lineNumber || '';
-                                        const content = item.content || item.lineContent || '';
-                                        const displayFile = (typeof file === 'string' ? file.split(/[/\\]/).pop() : file) || file;
+                                        const content = String(item.content || item.lineContent || '');
+                                        const displayFile = file.split(/[/\\]/).pop() || file;
                                         return `<div class="outline-item" style="padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,0.05);">
                                             <div style="display: flex; gap: 8px; font-size: 0.85em; opacity: 0.7; margin-bottom: 2px;">
-                                                <span onclick="openFile('${file.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}${lineNum ? '#L' + lineNum : ''}')" style="cursor: pointer; color: var(--vscode-textLink-foreground); font-weight: 600;">${displayFile}${lineNum ? ':' + lineNum : ''}</span>
+                                                <span data-action="open-file" data-path="${escapeHtml(`${file}${lineNum ? '#L' + lineNum : ''}`)}" style="cursor: pointer; color: var(--vscode-textLink-foreground); font-weight: 600;">${escapeHtml(displayFile)}${lineNum ? ':' + escapeHtml(String(lineNum)) : ''}</span>
                                             </div>
-                                            <div style="font-family: var(--vscode-editor-font-family); font-size: 0.9em; white-space: pre-wrap; word-break: break-all; opacity: 0.9;">${content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                                            <div style="font-family: var(--vscode-editor-font-family); font-size: 0.9em; white-space: pre-wrap; word-break: break-all; opacity: 0.9;">${escapeHtml(content)}</div>
                                         </div>`;
                                     }).join('');
 
                                     if (resultsHtml) {
                                         const containerHtml = `<div class="diff-container">
-                                            <div class="diff-header collapsed" onclick="toggleDiff(this)">
-                                                <span class="icon">🔍</span> ${lm.t('Search Results')}
-                                                <span class="stats">${data.results.length} ${lm.t('matches')}</span>
+                                            <div class="diff-header collapsed" data-action="toggle-diff">
+                                                <span class="icon">🔍</span> ${escapeHtml(lm.t('Search Results'))}
+                                                <span class="stats">${data.results.length} ${escapeHtml(lm.t('matches'))}</span>
                                             </div>
                                             <div class="diff-block collapsed" style="padding: 8px 12px;">
                                                 ${resultsHtml}
                                             </div>
                                         </div>`;
-                                        infos.push(`[DIFF:${Buffer.from(containerHtml).toString('base64')}]`);
+                                        infos.push(this.storeDiffHtml(containerHtml));
                                     }
                                 } else if (data.rawOutput) {
                                     const raw = data.rawOutput.length > 5000 ? data.rawOutput.substring(0, 5000) + '...' : data.rawOutput;
                                     const contentHtml = this.generateFileContentHtml(raw, -1, lm.t('Search Results'));
-                                    infos.push(`[DIFF:${Buffer.from(contentHtml).toString('base64')}]`);
+                                    infos.push(this.storeDiffHtml(contentHtml));
                                 }
                             }
                         } catch { /* ignore */ }
@@ -6588,28 +7107,27 @@ export class SyncManager {
                                     const children = item.numChildren !== undefined ? ` [${item.numChildren}]` : '';
                                     return `<div class="outline-item" style="display: flex; gap: 8px; font-size: 0.9em; padding: 2px 0; border-bottom: 1px solid rgba(127,127,127,0.05);">
                                         <span style="opacity: 0.6; min-width: 20px; text-align: center;">${icon}</span>
-                                        <span style="font-weight: 500;">${item.name || item.path || '???'}</span>
-                                        <span style="margin-left: auto; opacity: 0.5; font-family: var(--vscode-editor-font-family);">${children}${size}</span>
+                                        <span style="font-weight: 500;">${escapeHtml(String(item.name || item.path || '???'))}</span>
+                                        <span style="margin-left: auto; opacity: 0.5; font-family: var(--vscode-editor-font-family);">${escapeHtml(children)}${escapeHtml(size)}</span>
                                     </div>`;
                                 }).join('');
 
                                 if (listHtml) {
                                     const containerHtml = `<div class="diff-container">
-                                        <div class="diff-header collapsed" onclick="toggleDiff(this)">
-                                            <span class="icon">📁</span> ${lm.t('Directory Listing')}
-                                            <span class="stats">${data.results.length} ${lm.t('items')}</span>
+                                        <div class="diff-header collapsed" data-action="toggle-diff">
+                                            <span class="icon">📁</span> ${escapeHtml(lm.t('Directory Listing'))}
+                                            <span class="stats">${data.results.length} ${escapeHtml(lm.t('items'))}</span>
                                         </div>
                                         <div class="diff-block collapsed" style="padding: 8px 12px;">
                                             ${listHtml}
                                         </div>
                                     </div>`;
-                                    infos.push(`[DIFF:${Buffer.from(containerHtml).toString('base64')}]`);
+                                    infos.push(this.storeDiffHtml(containerHtml));
                                 }
                             }
                         } catch { /* ignore */ }
                     }
                 } else if (tc.name === 'find_by_name') {
-                    // Prepend directory to pattern for direct opening if it looks like a filename
                     const pattern = args.Pattern || args.pattern;
                     const directory = args.SearchDirectory || args.SearchPath || args.Directory || args.directory || args.path || '.';
                     if (pattern && directory && !pattern.includes('*') && !pattern.includes('?') && !pattern.includes('[') && !pattern.includes('{')) {
@@ -6624,32 +7142,32 @@ export class SyncManager {
                             if (data) {
                                 if (data.results && Array.isArray(data.results)) {
                                     const resultsHtml = data.results.slice(0, 30).map((item: any) => {
-                                        const p = item.path || item.relative_path || item.name || '???';
+                                        const p = String(item.path || item.relative_path || item.name || '???');
                                         const icon = (item.type === 'directory') ? '📁' : '📄';
                                         const displayPath = p.split(/[/\\]/).pop() || p;
                                         return `<div class="outline-item" style="display: flex; gap: 8px; font-size: 0.9em; padding: 2px 0;">
                                             <span style="opacity: 0.6; min-width: 20px; text-align: center;">${icon}</span>
-                                            <span onclick="openFile('${p.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" style="cursor: pointer; color: var(--vscode-textLink-foreground); font-weight: 500;">${displayPath}</span>
-                                            <span style="margin-left: auto; opacity: 0.4; font-size: 0.8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">${p}</span>
+                                            <span data-action="open-file" data-path="${escapeHtml(p)}" style="cursor: pointer; color: var(--vscode-textLink-foreground); font-weight: 500;">${escapeHtml(displayPath)}</span>
+                                            <span style="margin-left: auto; opacity: 0.4; font-size: 0.8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">${escapeHtml(p)}</span>
                                         </div>`;
                                     }).join('');
 
                                     if (resultsHtml) {
                                         const containerHtml = `<div class="diff-container">
-                                            <div class="diff-header collapsed" onclick="toggleDiff(this)">
-                                                <span class="icon">🔍</span> ${lm.t('Find Results')}
-                                                <span class="stats">${data.results.length} ${lm.t('matches')}</span>
+                                            <div class="diff-header collapsed" data-action="toggle-diff">
+                                                <span class="icon">🔍</span> ${escapeHtml(lm.t('Find Results'))}
+                                                <span class="stats">${data.results.length} ${escapeHtml(lm.t('matches'))}</span>
                                             </div>
                                             <div class="diff-block collapsed" style="padding: 8px 12px;">
                                                 ${resultsHtml}
                                             </div>
                                         </div>`;
-                                        infos.push(`[DIFF:${Buffer.from(containerHtml).toString('base64')}]`);
+                                        infos.push(this.storeDiffHtml(containerHtml));
                                     }
                                 } else if (data.rawOutput) {
                                     const raw = data.rawOutput.length > 5000 ? data.rawOutput.substring(0, 5000) + '...' : data.rawOutput;
                                     const contentHtml = this.generateFileContentHtml(raw, -1, lm.t('Find Results'));
-                                    infos.push(`[DIFF:${Buffer.from(contentHtml).toString('base64')}]`);
+                                    infos.push(this.storeDiffHtml(contentHtml));
                                 }
                             }
                         } catch { /* ignore */ }
@@ -6660,17 +7178,16 @@ export class SyncManager {
                             const res = typeof tc.output === 'string' ? JSON.parse(tc.output) : tc.output;
                             const content = res.content || res.text || (typeof res === 'string' ? res : '');
                             if (content) {
-                                let rendered = content;
-                                if (this.md) rendered = this.md.render(content);
+                                const rendered = this.md ? this.md.render(String(content)) : escapeHtml(String(content));
                                 const containerHtml = `<div class="diff-container">
-                                    <div class="diff-header collapsed" onclick="toggleDiff(this)">
-                                        <span class="icon">🌐</span> ${lm.t('Page Content')}
+                                    <div class="diff-header collapsed" data-action="toggle-diff">
+                                        <span class="icon">🌐</span> ${escapeHtml(lm.t('Page Content'))}
                                     </div>
                                     <div class="diff-block collapsed markdown-body" style="padding: 15px;">
                                         ${rendered}
                                     </div>
                                 </div>`;
-                                infos.push(`[DIFF:${Buffer.from(containerHtml).toString('base64')}]`);
+                                infos.push(this.storeDiffHtml(containerHtml));
                             }
                         } catch { /* ignore */ }
                     }
@@ -6683,22 +7200,28 @@ export class SyncManager {
                             }
                             if (res.results && Array.isArray(res.results)) {
                                 const listHtml = res.results.slice(0, 5).map((r: any) => {
+                                    const rawUrl = typeof r.url === 'string' ? r.url.trim() : '';
+                                    const isSafeUrl = /^https?:\/\//i.test(rawUrl);
+                                    const safeTitle = escapeHtml(String(r.title || rawUrl || 'Result'));
+                                    const titleHtml = isSafeUrl
+                                        ? `<a href="${escapeHtml(rawUrl)}" style="color: var(--vscode-textLink-foreground); text-decoration: none;">${safeTitle}</a>`
+                                        : `<span>${safeTitle}</span>`;
                                     return `<div style="margin-bottom: 8px;">
-                                        <div style="font-weight: 600;"><a href="${r.url}" style="color: var(--vscode-textLink-foreground); text-decoration: none;">${r.title}</a></div>
-                                        <div style="font-size: 0.85em; opacity: 0.8; white-space: pre-wrap;">${r.snippet}</div>
+                                        <div style="font-weight: 600;">${titleHtml}</div>
+                                        <div style="font-size: 0.85em; opacity: 0.8; white-space: pre-wrap;">${escapeHtml(String(r.snippet || ''))}</div>
                                     </div>`;
                                 }).join('');
 
                                 if (listHtml) {
                                     const containerHtml = `<div class="diff-container">
-                                        <div class="diff-header collapsed" onclick="toggleDiff(this)">
-                                            <span class="icon">🔍</span> ${lm.t('Web Search Results')}
+                                        <div class="diff-header collapsed" data-action="toggle-diff">
+                                            <span class="icon">🔍</span> ${escapeHtml(lm.t('Web Search Results'))}
                                         </div>
                                         <div class="diff-block collapsed" style="padding: 12px;">
                                             ${listHtml}
                                         </div>
                                     </div>`;
-                                    infos.push(`[DIFF:${Buffer.from(containerHtml).toString('base64')}]`);
+                                    infos.push(this.storeDiffHtml(containerHtml));
                                 }
                             }
                         } catch { /* ignore */ }
@@ -6715,7 +7238,7 @@ export class SyncManager {
                                     const start = cci.startLine !== undefined ? cci.startLine : '';
                                     const end = cci.endLine !== undefined ? cci.endLine : '';
                                     const range = start !== '' ? `L${start}-${end}` : '';
-                                    const name = cci.nodeName || '???';
+                                    const name = String(cci.nodeName || '???');
 
                                     let icon = '📦';
                                     if (cci.contextType?.includes('CLASS')) icon = '🏛️';
@@ -6724,22 +7247,22 @@ export class SyncManager {
 
                                     return `<div class="outline-item" style="display: flex; gap: 8px; font-size: 0.9em; padding: 2px 0;">
                                         <span style="opacity: 0.6; min-width: 20px; text-align: center;">${icon}</span>
-                                        <span style="font-weight: 600; color: var(--vscode-symbolIcon-methodForeground);">${name}</span>
-                                        <span style="margin-left: auto; opacity: 0.5; font-family: var(--vscode-editor-font-family);">${range}</span>
+                                        <span style="font-weight: 600; color: var(--vscode-symbolIcon-methodForeground);">${escapeHtml(name)}</span>
+                                        <span style="margin-left: auto; opacity: 0.5; font-family: var(--vscode-editor-font-family);">${escapeHtml(range)}</span>
                                     </div>`;
                                 }).join('');
 
                                 if (linesHtml) {
                                     const containerHtml = `<div class="diff-container">
-                                        <div class="diff-header collapsed" onclick="toggleDiff(this)">
-                                            <span class="icon">🧱</span> ${lm.t('File Outline')}
-                                            <span class="stats">${outline.ccis.length} ${lm.t('symbols')}</span>
+                                        <div class="diff-header collapsed" data-action="toggle-diff">
+                                            <span class="icon">🧱</span> ${escapeHtml(lm.t('File Outline'))}
+                                            <span class="stats">${outline.ccis.length} ${escapeHtml(lm.t('symbols'))}</span>
                                         </div>
                                         <div class="diff-block collapsed" style="padding: 8px 12px;">
                                             ${linesHtml}
                                         </div>
                                     </div>`;
-                                    infos.push(`[DIFF:${Buffer.from(containerHtml).toString('base64')}]`);
+                                    infos.push(this.storeDiffHtml(containerHtml));
                                 }
                             }
                         } catch {
@@ -6747,7 +7270,6 @@ export class SyncManager {
                         }
                     }
                 } else if (tc.name === 'view_file') {
-                    // Lines info is already in the badge
                     const outputToParse = tc.output || tc.response || tc.result;
                     if (outputToParse) {
                         const outputStr = typeof outputToParse === 'string' ? outputToParse : JSON.stringify(outputToParse);
@@ -6759,7 +7281,6 @@ export class SyncManager {
                         let numBytes = '';
                         let startLine = 1;
 
-                        // Priority 1: Structured data if available
                         const data = res?.viewFile || res?.view_file || res?.viewFileContent || res?.view_file_content || res;
                         if (data && typeof data === 'object') {
                             fileContent = data.content || data.chunk || data.text || data.fileContent || data.file_content || '';
@@ -6771,7 +7292,6 @@ export class SyncManager {
                         }
 
                         if (!fileContent) {
-                            // Priority 2: Parse raw string output from tool
                             const linesMatch = outputStr.match(/Total Lines: (\d+)/);
                             if (linesMatch) numLines = linesMatch[1];
 
@@ -6795,19 +7315,15 @@ export class SyncManager {
                                     if (/^\d+:/.test(line)) {
                                         codeLines.push(line.replace(/^\d+:\s?/, ''));
                                     } else {
-                                        // If we are capturing but line doesn't start with digits, it might be a multi-line wrap
-                                        // but usually tool prefixes EVERY line.
                                         codeLines.push(line);
                                     }
                                 }
                             }
                             if (codeLines.length > 0) fileContent = codeLines.join('\n');
 
-                            // Priority 3: Raw fallback if structured/regex parsing failed and it's not JSON
                             if (!fileContent && outputStr.trim()) {
                                 if (outputStr.trim().startsWith('{')) {
                                     try {
-                                        // Final attempt: if it's JSON but we didn't find specific fields, just show it pretty-printed
                                         const obj = JSON.parse(outputStr);
                                         fileContent = JSON.stringify(obj, null, 2);
                                         startLine = -1;
@@ -6815,7 +7331,7 @@ export class SyncManager {
                                 }
                                 if (!fileContent) {
                                     fileContent = outputStr.trim();
-                                    startLine = -1; // No line numbers
+                                    startLine = -1;
                                 }
                             }
                         }
@@ -6830,7 +7346,7 @@ export class SyncManager {
                             const filePath = args.AbsolutePath || args.Path || args.File || args.TargetFile || '';
                             const displayTitle = filePath ? path.basename(filePath) : undefined;
                             const contentHtml = this.generateFileContentHtml(fileContent, startLine, displayTitle, true);
-                            infos.push(`[DIFF:${Buffer.from(contentHtml).toString('base64')}]`);
+                            infos.push(this.storeDiffHtml(contentHtml));
                         }
                     }
                 } else if (tc.name === 'generate_image') {
@@ -6838,16 +7354,18 @@ export class SyncManager {
                         try {
                             const res = typeof tc.output === 'string' ? JSON.parse(tc.output) : tc.output;
                             const imagePath = res.image_path || res.imagePath;
-                            if (imagePath) {
-                                const desc = res.description || res.Prompt || args.Prompt || '';
+                            if (imagePath && typeof imagePath === 'string') {
+                                const desc = String(res.description || res.Prompt || args.Prompt || '');
+                                const safeSrc = escapeHtml(`vscode-resource:${imagePath.replace(/\\/g, '/')}`);
+                                const safeDesc = escapeHtml(desc);
                                 const containerHtml = `<div class="diff-container">
-                                    <div class="diff-header" onclick="toggleDiff(this)">${lm.t('Generated Image')}</div>
+                                    <div class="diff-header" data-action="toggle-diff">${escapeHtml(lm.t('Generated Image'))}</div>
                                     <div class="diff-block" style="padding: 10px; background: var(--vscode-editor-background); text-align: center;">
-                                        <img src="vscode-resource:${imagePath.replace(/\\/g, '/')}" style="max-width: 100%; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" alt="${desc}"/>
-                                        ${desc ? `<div style="margin-top: 8px; font-size: 0.9em; opacity: 0.8;">${desc}</div>` : ''}
+                                        <img src="${safeSrc}" style="max-width: 100%; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" alt="${safeDesc}"/>
+                                        ${safeDesc ? `<div style="margin-top: 8px; font-size: 0.9em; opacity: 0.8;">${safeDesc}</div>` : ''}
                                     </div>
                                 </div>`;
-                                infos.push(`[DIFF:${Buffer.from(containerHtml).toString('base64')}]`);
+                                infos.push(this.storeDiffHtml(containerHtml));
                             }
                         } catch { /* ignore */ }
                     }
@@ -6886,72 +7404,74 @@ export class SyncManager {
         return result;
     }
 
-    private extractFromObj(obj: any): string {
-        if (!obj) return '';
+    private extractFromObj(obj: any, depth: number = 0, seen: WeakSet<object> = new WeakSet()): string {
+        if (!obj || depth > 15) return '';
         if (typeof obj === 'string') return obj;
-        if (Array.isArray(obj)) return obj.map(o => this.extractFromObj(o)).filter(Boolean).join('\n');
+        if (typeof obj === 'object') {
+            if (seen.has(obj)) return '';
+            seen.add(obj);
+        }
+        if (Array.isArray(obj)) return obj.map(o => this.extractFromObj(o, depth + 1, seen)).filter(Boolean).join('\n');
 
         // Standard protobuf text containers
         if (obj.content !== undefined) {
             if (typeof obj.content === 'string') return obj.content;
-            if (Array.isArray(obj.content)) return this.extractFromObj(obj.content);
+            if (Array.isArray(obj.content)) return this.extractFromObj(obj.content, depth + 1, seen);
         }
         if (obj.text !== undefined && typeof obj.text === 'string') return obj.text;
         if (obj.text && typeof obj.text === 'object') {
             const res = obj.text.content || obj.text.text || obj.text.value;
             if (typeof res === 'string') return res;
-            return this.extractFromObj(obj.text);
+            return this.extractFromObj(obj.text, depth + 1, seen);
         }
         if (obj.value !== undefined) {
             if (typeof obj.value === 'string') return obj.value;
-            if (typeof obj.value === 'object') return this.extractFromObj(obj.value);
+            if (typeof obj.value === 'object') return this.extractFromObj(obj.value, depth + 1, seen);
         }
 
         // Specific fields depending on object type
-        if (obj.modelResponse) return this.extractFromObj(obj.modelResponse.content || obj.modelResponse.parts || obj.modelResponse.text || obj.modelResponse);
-        if (obj.userInput) return this.extractFromObj(obj.userInput.items || obj.userInput.userResponse || obj.userInput.text || obj.userInput);
+        if (obj.modelResponse) return this.extractFromObj(obj.modelResponse.content || obj.modelResponse.parts || obj.modelResponse.text || obj.modelResponse, depth + 1, seen);
+        if (obj.userInput) return this.extractFromObj(obj.userInput.items || obj.userInput.userResponse || obj.userInput.text || obj.userInput, depth + 1, seen);
         if (obj.plannerResponse) {
             const thinking = obj.plannerResponse.thinking || obj.plannerResponse.thought;
-            if (thinking) return typeof thinking === 'string' ? thinking : this.extractFromObj(thinking);
+            if (thinking) return typeof thinking === 'string' ? thinking : this.extractFromObj(thinking, depth + 1, seen);
             const resp = obj.plannerResponse.response || obj.plannerResponse.modifiedResponse || obj.plannerResponse.message || obj.plannerResponse.text;
-            return this.extractFromObj(resp || obj.plannerResponse);
+            return this.extractFromObj(resp || obj.plannerResponse, depth + 1, seen);
         }
         if (obj.errorMessage) {
             const err = obj.errorMessage.error || obj.errorMessage || {};
             const userMsg = err.userErrorMessage || err.message || (typeof obj.errorMessage === 'string' ? obj.errorMessage : '');
             const details = err.shortError || err.fullError || err.modelErrorMessage || '';
             if (userMsg && details && details !== userMsg) return `${userMsg}\n\n${details}`;
-            return userMsg || details || this.extractFromObj(obj.errorMessage);
+            return userMsg || details || this.extractFromObj(obj.errorMessage, depth + 1, seen);
         }
-        if (obj.notifyUser) return obj.notifyUser.notificationContent || obj.notifyUser.message || this.extractFromObj(obj.notifyUser);
-        if (obj.message) return this.extractFromObj(obj.message);
+        if (obj.notifyUser) return obj.notifyUser.notificationContent || obj.notifyUser.message || this.extractFromObj(obj.notifyUser, depth + 1, seen);
+        if (obj.message) return this.extractFromObj(obj.message, depth + 1, seen);
 
         // Expanded generic fields
-        if (obj.thinking) return typeof obj.thinking === 'string' ? obj.thinking : this.extractFromObj(obj.thinking);
+        if (obj.thinking) return typeof obj.thinking === 'string' ? obj.thinking : this.extractFromObj(obj.thinking, depth + 1, seen);
         if (obj.error) {
             const userMsg = obj.error.userErrorMessage || obj.error.message || '';
             const details = obj.error.shortError || obj.error.fullError || obj.error.modelErrorMessage || '';
             if (userMsg && details && details !== userMsg) return `${userMsg}\n\n${details}`;
-            return userMsg || details || this.extractFromObj(obj.error);
+            return userMsg || details || this.extractFromObj(obj.error, depth + 1, seen);
         }
         if (obj.modelErrorMessage) return obj.modelErrorMessage;
 
-        if (obj.details) return this.extractFromObj(obj.details);
-        if (obj.stack) return this.extractFromObj(obj.stack);
-        if (obj.description) return this.extractFromObj(obj.description);
-        if (obj.summary) return this.extractFromObj(obj.summary);
-        if (obj.query) return this.extractFromObj(obj.query);
-        if (obj.input) return this.extractFromObj(obj.input);
-        if (obj.notificationContent) return this.extractFromObj(obj.notificationContent);
+        if (obj.details) return this.extractFromObj(obj.details, depth + 1, seen);
+        if (obj.stack) return this.extractFromObj(obj.stack, depth + 1, seen);
+        if (obj.description) return this.extractFromObj(obj.description, depth + 1, seen);
+        if (obj.summary) return this.extractFromObj(obj.summary, depth + 1, seen);
+        if (obj.query) return this.extractFromObj(obj.query, depth + 1, seen);
+        if (obj.input) return this.extractFromObj(obj.input, depth + 1, seen);
+        if (obj.notificationContent) return this.extractFromObj(obj.notificationContent, depth + 1, seen);
 
-        // Tool Calls
         if (obj.toolCalls && Array.isArray(obj.toolCalls)) {
             return obj.toolCalls.map((tc: any) => `[TOOL_CALL:${tc.name || 'Unknown'}]`).join('\n');
         }
 
-        // Generic fallbacks for any object that might have 'content' or 'text' as a deeper field
-        if (obj.items && Array.isArray(obj.items)) return this.extractFromObj(obj.items);
-        if (obj.parts && Array.isArray(obj.parts)) return this.extractFromObj(obj.parts);
+        if (obj.items && Array.isArray(obj.items)) return this.extractFromObj(obj.items, depth + 1, seen);
+        if (obj.parts && Array.isArray(obj.parts)) return this.extractFromObj(obj.parts, depth + 1, seen);
 
         return '';
     }
@@ -6976,44 +7496,44 @@ export class SyncManager {
         const attachmentsHtml = items.map((item: any) => {
             if (item.image || item.inlineData?.mimeType?.startsWith('image/') || (item.mimeType?.startsWith('image/') && item.inlineData)) {
                 const data = item.image?.data || item.inlineData?.data || item.inlineData;
-                const mime = item.image?.mimeType || item.inlineData?.mimeType || item.mimeType || 'image/png';
-                const base64Data = typeof data === 'string' ? data : data?.data;
+                const rawMime = String(item.image?.mimeType || item.inlineData?.mimeType || item.mimeType || 'image/png');
+                const mime = /^image\/[a-zA-Z0-9.+-]+$/.test(rawMime) ? rawMime : 'image/png';
+                const base64Data = typeof data === 'string' ? data : data?.data || '';
+                const safeBase64 = String(base64Data).replace(/[^A-Za-z0-9+/=]/g, '');
 
-                const uri = item.image?.uri || item.uri;
+                const uri = String(item.image?.uri || item.uri || '');
                 let fileName = item.image?.name || item.name || '';
-                if (!fileName && typeof uri === 'string' && !uri.startsWith('data:')) {
+                if (!fileName && uri && !uri.startsWith('data:')) {
                     try {
                         const cleanPath = uri.startsWith('file://') ? uri.substring(7) : uri;
                         fileName = decodeURIComponent(cleanPath).split(/[/\\]/).pop() || '';
                     } catch {
-                        fileName = (uri as string).split(/[/\\]/).pop() || '';
+                        fileName = uri.split(/[/\\]/).pop() || '';
                     }
                 }
-                const label = fileName || `${mime.split('/')[1].toUpperCase()}`;
-                const escapedUri = (uri || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const label = String(fileName || `${mime.split('/')[1].toUpperCase()}`);
 
                 return `
-                        <div class="attachment-item" title="${uri || ''}">
-                            <img src="data:${mime};base64,${base64Data}" onclick="showImage(this.src)" alt="${label}">
+                        <div class="attachment-item" title="${escapeHtml(uri)}">
+                            <img src="data:${mime};base64,${safeBase64}" data-action="show-image" alt="${escapeHtml(label)}">
                             <div class="attachment-label">
-                                <span class="name">🖼️ ${label}</span>
-                                <button class="copy-btn mini" title="${lm.t('Copy Link')}" onclick="copyToClipboard('${escapedUri}', this)">📋</button>
+                                <span class="name">🖼️ ${escapeHtml(label)}</span>
+                                <button class="copy-btn mini" title="${escapeHtml(lm.t('Copy Link'))}" data-action="copy-text" data-copy="${escapeHtml(uri)}">📋</button>
                             </div>
                         </div>
                     `;
             }
             if (item.fileData || item.file || (item.mimeType && !item.mimeType.startsWith('image/'))) {
-                const name = item.fileData?.name || item.file?.name || item.name || 'File';
-                const fPath = item.fileData?.path || item.file?.path || item.path || name;
+                const name = String(item.fileData?.name || item.file?.name || item.name || 'File');
+                const fPath = String(item.fileData?.path || item.file?.path || item.path || name);
                 const icon = getFileIconSvg(name);
-                const escapedPath = fPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
                 return `
-                    <div class="attachment-item file-button" onclick="openFile('${escapedPath}')">
+                    <div class="attachment-item file-button" data-action="open-file" data-path="${escapeHtml(fPath)}">
                         <div class="attachment-icon">${icon}</div>
-                        <div class="attachment-label" title="${fPath || name}">
-                            <span class="name">${name}</span>
-                            <button class="copy-btn mini" title="${lm.t('Copy Link')}" onclick="event.stopPropagation(); copyToClipboard('${escapedPath}', this)">📋</button>
+                        <div class="attachment-label" title="${escapeHtml(fPath || name)}">
+                            <span class="name">${escapeHtml(name)}</span>
+                            <button class="copy-btn mini" title="${escapeHtml(lm.t('Copy Link'))}" data-action="copy-text" data-copy="${escapeHtml(fPath)}">📋</button>
                         </div>
                     </div>
                 `;
@@ -7088,27 +7608,27 @@ export class SyncManager {
         if (!usage && latencyMs === 0) return '';
         const lm = LocalizationManager.getInstance();
 
-        const input = parseInt(usage.inputTokens) || 0;
-        const output = parseInt(usage.outputTokens) || 0;
-        const thinking = parseInt(usage.thinkingOutputTokens) || 0;
-        const cache = parseInt(usage.cacheReadTokens) || 0;
+        const input = parseInt(usage?.inputTokens) || 0;
+        const output = parseInt(usage?.outputTokens) || 0;
+        const thinking = parseInt(usage?.thinkingOutputTokens) || 0;
+        const cache = parseInt(usage?.cacheReadTokens) || 0;
         const total = input + output;
         const totalWithThr = total + thinking + cache;
 
         if (totalWithThr === 0 && latencyMs === 0) return '';
 
         let html = '<div class="token-usage">';
-        if (input > 0) html += `<div class="token-badge"><span class="token-icon">📥</span><span>${lm.t('Input')}: ${input.toLocaleString()}</span></div>`;
-        if (output > 0) html += `<div class="token-badge"><span class="token-icon">📤</span><span>${lm.t('Output')}: ${output.toLocaleString()}</span></div>`;
-        if (thinking > 0) html += `<div class="token-badge thinking"><span class="token-icon">🧠</span><span>${lm.t('Thinking')}: ${thinking.toLocaleString()}</span></div>`;
-        if (cache > 0) html += `<div class="token-badge"><span class="token-icon">💾</span><span>${lm.t('Cached')}: ${cache.toLocaleString()}</span></div>`;
+        if (input > 0) html += `<div class="token-badge"><span class="token-icon">📥</span><span>${escapeHtml(lm.t('Input'))}: ${input.toLocaleString()}</span></div>`;
+        if (output > 0) html += `<div class="token-badge"><span class="token-icon">📤</span><span>${escapeHtml(lm.t('Output'))}: ${output.toLocaleString()}</span></div>`;
+        if (thinking > 0) html += `<div class="token-badge thinking"><span class="token-icon">🧠</span><span>${escapeHtml(lm.t('Thinking'))}: ${thinking.toLocaleString()}</span></div>`;
+        if (cache > 0) html += `<div class="token-badge"><span class="token-icon">💾</span><span>${escapeHtml(lm.t('Cached'))}: ${cache.toLocaleString()}</span></div>`;
 
         if (latencyMs > 0) {
             const seconds = (latencyMs / 1000).toFixed(1);
-            html += `<div class="token-badge thinking" style="border-color: rgba(255, 165, 0, 0.5);"><span class="token-icon">⏱️</span><span>${lm.t('Thinking')}: ${seconds}${lm.t('s')}</span></div>`;
+            html += `<div class="token-badge thinking" style="border-color: rgba(255, 165, 0, 0.5);"><span class="token-icon">⏱️</span><span>${escapeHtml(lm.t('Thinking'))}: ${seconds}${escapeHtml(lm.t('s'))}</span></div>`;
         }
 
-        html += `<div class="token-badge total" title="${lm.formatDateTime(new Date())}"><span class="token-icon">📊</span><span>${lm.t('Total')}: ${totalWithThr.toLocaleString()}</span></div>`;
+        html += `<div class="token-badge total" title="${escapeHtml(lm.formatDateTime(new Date()))}"><span class="token-icon">📊</span><span>${escapeHtml(lm.t('Total'))}: ${totalWithThr.toLocaleString()}</span></div>`;
         html += '</div>';
 
         return html;
@@ -7130,10 +7650,8 @@ export class SyncManager {
 
             if (errorCode || details) {
                 if (details) {
-                    // details is often an object or string
                     const detailsStr = typeof details === 'string' ? details : JSON.stringify(details, null, 2);
                     try {
-                        // Attempt to parse if string looks like JSON
                         const obj = typeof details === 'string' ? JSON.parse(details) : details;
                         const highlightedJson = this.highlightDiff(JSON.stringify(obj, null, 2));
                         detailsHtml = `<pre>${highlightedJson}</pre>`;
@@ -7159,20 +7677,20 @@ export class SyncManager {
                             const obj = JSON.parse(jsonStr);
                             if (obj.error) {
                                 if (obj.error.message) {
-                                    if (!displayMessage) displayMessage = obj.error.message;
-                                    detailsHtml += `<div class="error-message" style="margin: 0; padding: 2px 0;"><b>Message:</b> ${obj.error.message}</div>`;
+                                    if (!displayMessage) displayMessage = String(obj.error.message);
+                                    detailsHtml += `<div class="error-message" style="margin: 0; padding: 2px 0;"><b>Message:</b> ${escapeHtml(String(obj.error.message))}</div>`;
                                 }
-                                if (obj.error.status) detailsHtml += `<div class="error-status" style="margin: 0; padding: 2px 0;"><b>Status:</b> ${obj.error.status}</div>`;
+                                if (obj.error.status) detailsHtml += `<div class="error-status" style="margin: 0; padding: 2px 0;"><b>Status:</b> ${escapeHtml(String(obj.error.status))}</div>`;
                                 if (obj.error.details) {
                                     const highlightedDetails = this.highlightDiff(JSON.stringify(obj.error.details, null, 2));
                                     detailsHtml += `<pre>${highlightedDetails}</pre>`;
                                 }
                             } else {
-                                detailsHtml = `<pre>${jsonStr}</pre>`;
-                                if (!displayMessage && obj.message) displayMessage = obj.message;
+                                detailsHtml = `<pre>${escapeHtml(String(jsonStr))}</pre>`;
+                                if (!displayMessage && obj.message) displayMessage = String(obj.message);
                             }
                         } catch {
-                            detailsHtml = `<pre>${this.highlightDiff(jsonStr)}</pre>`;
+                            detailsHtml = `<pre>${this.highlightDiff(String(jsonStr))}</pre>`;
                         }
                     } catch {
                         detailsHtml = `<pre>${this.highlightDiff(detailsMatch[1])}</pre>`;
@@ -7182,7 +7700,7 @@ export class SyncManager {
         }
 
         if (errorCode || (text.includes('Encountered retryable error') && detailsHtml)) {
-            const headerText = `${lm.t('Model Provider Error')}${errorCode ? ' ' + errorCode : ''}`;
+            const headerText = escapeHtml(`${lm.t('Model Provider Error')}${errorCode ? ' ' + errorCode : ''}`);
             return `
                     <div class="model-error-card" style="border: 1px solid rgba(255, 70, 70, 0.3); background: linear-gradient(135deg, var(--vscode-inputValidation-errorBackground), rgba(80, 20, 20, 0.45)); padding: 8px 12px; border-radius: 8px; margin: 8px 0; position: relative; font-size: 0.9em; box-shadow: 0 4px 15px rgba(0,0,0,0.25), inset 0 0 8px rgba(255,100,100,0.05); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); overflow: hidden;">
                         <div class="error-header" style="display: flex; align-items: center; color: var(--vscode-errorForeground); margin-bottom: 4px;">
@@ -7191,19 +7709,18 @@ export class SyncManager {
                         </div>
                         <div class="error-body" style="font-family: var(--vscode-editor-font-family); white-space: normal; line-height: 1.4;">${(() => {
                     const bodyParts: string[] = [];
-                    const mainMsg = displayMessage && displayMessage !== lm.t('Model Provider Error') ? displayMessage : '';
+                    const mainMsg = displayMessage && displayMessage !== lm.t('Model Provider Error') ? String(displayMessage) : '';
 
                     if (mainMsg) {
-                        bodyParts.push(`<div style="font-weight: 600; white-space: pre-wrap; opacity: 0.9; margin-bottom: 4px;">${mainMsg}</div>`);
+                        bodyParts.push(`<div style="font-weight: 600; white-space: pre-wrap; opacity: 0.9; margin-bottom: 4px;">${escapeHtml(mainMsg)}</div>`);
                     }
 
                     if (detailsHtml) {
-                        // Use the exact same structure as "Code Changes" for consistency
                         const cleanedDetails = detailsHtml.replace(/<pre>/g, '<pre style="margin: 0; padding: 6px; background: rgba(0,0,0,0.25); border-radius: 4px; line-height: 1.3; overflow-x: auto; max-width: 100%; border: 1px solid rgba(255,255,255,0.05);">');
                         bodyParts.push(`<div class="diff-container" style="border:none; margin: 0; background: transparent; width: 100%;">
-                            <div class="diff-header collapsed" onclick="toggleDiff(this)" style="padding: 2px 8px; background: rgba(255,255,255,0.07); font-size: 10px; opacity: 0.8; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; min-height: 0; margin: 4px 0; display: inline-flex; align-items: center; cursor: pointer; transition: all 0.2s; color: var(--vscode-foreground);">
+                            <div class="diff-header collapsed" data-action="toggle-diff" style="padding: 2px 8px; background: rgba(255,255,255,0.07); font-size: 10px; opacity: 0.8; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; min-height: 0; margin: 4px 0; display: inline-flex; align-items: center; cursor: pointer; transition: all 0.2s; color: var(--vscode-foreground);">
                                 <div class="diff-icon" style="font-size: 9px; width: 14px; margin-right: 4px;">🔍</div>
-                                <span style="font-weight: 500;">${lm.t('Show details')}</span>
+                                <span style="font-weight: 500;">${escapeHtml(lm.t('Show details'))}</span>
                             </div>
                             <div class="diff-block collapsed" style="border:none; background: rgba(0,0,0,0.15); border-radius: 6px; padding: 0; margin: 4px 0 0 0; width: 100%; overflow: hidden;">
                                 <div class="diff-lines-wrapper" style="font-size: 11px; line-height: 1.4; padding: 4px; overflow-x: auto;">
@@ -7215,7 +7732,7 @@ export class SyncManager {
                         let rawText = text.replace(/errorCode[\s\S]*}/, '').split('details')[0].trim();
                         rawText = rawText.replace(/^[{},]+|[{},]+$/g, '').trim();
                         if (rawText && rawText !== mainMsg && rawText !== lm.t('Model Provider Error') && !mainMsg.includes(rawText)) {
-                            bodyParts.push(`<div style="opacity: 0.8; font-size: 0.9em; white-space: pre-wrap; background: rgba(0,0,0,0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid var(--vscode-errorForeground);">${rawText}</div>`);
+                            bodyParts.push(`<div style="opacity: 0.8; font-size: 0.9em; white-space: pre-wrap; background: rgba(0,0,0,0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid var(--vscode-errorForeground);">${escapeHtml(rawText)}</div>`);
                         }
                     }
 

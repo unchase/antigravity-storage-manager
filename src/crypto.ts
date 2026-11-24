@@ -6,12 +6,16 @@ import { LocalizationManager } from './l10n/localizationManager';
 // Encryption configuration
 const ALGORITHM = 'aes-256-gcm';
 const KEY_LENGTH = 32; // 256 bits
-const IV_LENGTH = 16; // 128 bits for GCM
+const IV_LENGTH = 16; // 128 bits for GCM (v1/v2 compatibility)
+const IV_LENGTH_V3 = 12; // 96 bits standard NIST GCM IV (v3)
 const SALT_LENGTH = 32; // 256 bits
 const AUTH_TAG_LENGTH = 16; // 128 bits
 const PBKDF2_ITERATIONS = 100000;
+const PBKDF2_ITERATIONS_V3 = 600000;
+export const MAX_DECOMPRESSED_BYTES = 256 * 1024 * 1024; // 256 MB gzip bomb guard
 const HEADER = Buffer.from('AGSYNC01'); // 8 bytes version header
 const HEADER_V2 = Buffer.from('AGSYNC02'); // 8 bytes version header (Compressed)
+const HEADER_V3 = Buffer.from('AGSYNC03'); // 8 bytes version header (AAD + 12-byte IV + 600k PBKDF2 + flag byte)
 
 /**
  * File format:
@@ -24,11 +28,11 @@ const HEADER_V2 = Buffer.from('AGSYNC02'); // 8 bytes version header (Compressed
 /**
  * Derives a 256-bit key from a password using PBKDF2
  */
-export function deriveKey(password: string, salt: Buffer): Buffer {
+export function deriveKey(password: string, salt: Buffer, iterations: number = PBKDF2_ITERATIONS): Buffer {
     return crypto.pbkdf2Sync(
         password,
         salt,
-        PBKDF2_ITERATIONS,
+        iterations,
         KEY_LENGTH,
         'sha256'
     );
@@ -53,96 +57,202 @@ export function generateIV(): Buffer {
  * Returns a buffer containing: header + salt + iv + authTag + encryptedData
  */
 export function encrypt(data: Buffer, password: string, useCompression: boolean = true): Buffer {
+    if (!password) {
+        throw new Error('Encryption password cannot be empty');
+    }
+
     const salt = generateSalt();
     const iv = generateIV();
     const key = deriveKey(password, salt);
 
-    const cipher = crypto.createCipheriv(ALGORITHM, key, iv, {
-        authTagLength: AUTH_TAG_LENGTH
-    });
+    try {
+        const cipher = crypto.createCipheriv(ALGORITHM, key, iv, {
+            authTagLength: AUTH_TAG_LENGTH
+        });
 
-    let dataToEncrypt = data;
-    let header = HEADER;
+        let dataToEncrypt = data;
+        let header = HEADER;
 
-    if (useCompression) {
-        try {
-            dataToEncrypt = compress(data);
-            header = HEADER_V2;
-        } catch (e) {
-            console.error('Compression failed, falling back to uncompressed', e);
-            // Fallback to uncompressed
+        if (useCompression) {
+            try {
+                dataToEncrypt = compress(data);
+                header = HEADER_V2;
+            } catch (e) {
+                console.error('Compression failed, falling back to uncompressed', e);
+            }
         }
+
+        const encrypted = Buffer.concat([
+            cipher.update(dataToEncrypt),
+            cipher.final()
+        ]);
+
+        const authTag = cipher.getAuthTag();
+
+        // Combine all parts: header + salt + iv + authTag + encrypted
+        return Buffer.concat([
+            header,
+            salt,
+            iv,
+            authTag,
+            encrypted
+        ]);
+    } finally {
+        key.fill(0);
     }
-
-    const encrypted = Buffer.concat([
-        cipher.update(dataToEncrypt),
-        cipher.final()
-    ]);
-
-    const authTag = cipher.getAuthTag();
-
-    // Combine all parts: header + salt + iv + authTag + encrypted
-    return Buffer.concat([
-        header,
-        salt,
-        iv,
-        authTag,
-        encrypted
-    ]);
 }
 
 /**
- * Decrypts data that was encrypted with the encrypt function
- * Throws an error if the password is incorrect or data is corrupted
+ * Encrypts data using the hardened AGSYNC03 format:
+ * Header(8) + Flags(1: bit0=compressed) + Salt(32) + IV(12) + AuthTag(16) + Ciphertext
+ * Authenticates Header + Flags + Salt + IV via GCM AAD and uses 600k PBKDF2 iterations.
+ */
+export function encryptV3(data: Buffer, password: string, useCompression: boolean = true): Buffer {
+    if (!password) {
+        throw new Error('Encryption password cannot be empty');
+    }
+
+    const salt = generateSalt();
+    const iv = crypto.randomBytes(IV_LENGTH_V3);
+    const key = deriveKey(password, salt, PBKDF2_ITERATIONS_V3);
+
+    try {
+        let dataToEncrypt = data;
+        let flagsByte = 0;
+
+        if (useCompression) {
+            try {
+                dataToEncrypt = compress(data);
+                flagsByte = 1;
+            } catch (e) {
+                console.error('Compression failed, falling back to uncompressed', e);
+            }
+        }
+
+        const flags = Buffer.from([flagsByte]);
+        const aad = Buffer.concat([HEADER_V3, flags, salt, iv]);
+        const cipher = crypto.createCipheriv(ALGORITHM, key, iv, {
+            authTagLength: AUTH_TAG_LENGTH
+        });
+        cipher.setAAD(aad);
+
+        const encrypted = Buffer.concat([
+            cipher.update(dataToEncrypt),
+            cipher.final()
+        ]);
+        const authTag = cipher.getAuthTag();
+
+        return Buffer.concat([
+            HEADER_V3,
+            flags,
+            salt,
+            iv,
+            authTag,
+            encrypted
+        ]);
+    } finally {
+        key.fill(0);
+    }
+}
+
+/**
+ * Decrypts data that was encrypted with encrypt (AGSYNC01/AGSYNC02) or encryptV3 (AGSYNC03).
+ * Throws an error if the password is incorrect or data is corrupted.
  */
 export function decrypt(encryptedData: Buffer, password: string): Buffer {
     const headerOffset = HEADER.length;
-    const saltOffset = headerOffset + SALT_LENGTH;
-    const ivOffset = saltOffset + IV_LENGTH;
-    const authTagOffset = ivOffset + AUTH_TAG_LENGTH;
-
-    // Validate minimum size
-    if (encryptedData.length < authTagOffset) {
+    if (encryptedData.length < headerOffset) {
         throw new Error('Encrypted data is too short');
     }
 
-    // Validate header
     const header = encryptedData.subarray(0, headerOffset);
-    if (!header.equals(HEADER) && !header.equals(HEADER_V2)) {
+    const isV3 = header.equals(HEADER_V3);
+    const isV2 = header.equals(HEADER_V2);
+    const isV1 = header.equals(HEADER);
+
+    if (!isV1 && !isV2 && !isV3) {
         throw new Error('Invalid file format or unsupported version');
     }
 
-    // Extract components
-    const salt = encryptedData.subarray(headerOffset, saltOffset);
-    const iv = encryptedData.subarray(saltOffset, ivOffset);
-    const authTag = encryptedData.subarray(ivOffset, authTagOffset);
-    const encrypted = encryptedData.subarray(authTagOffset);
+    let key: Buffer;
+    let decrypted: Buffer;
+    let isCompressed = isV2;
 
-    // Derive key from password
-    const key = deriveKey(password, salt);
+    if (isV3) {
+        const flagsOffset = headerOffset + 1;
+        const saltOffset = flagsOffset + SALT_LENGTH;
+        const ivOffset = saltOffset + IV_LENGTH_V3;
+        const authTagOffset = ivOffset + AUTH_TAG_LENGTH;
 
-    // Create decipher
-    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, {
-        authTagLength: AUTH_TAG_LENGTH
-    });
-    decipher.setAuthTag(authTag);
-
-    try {
-        const decrypted = Buffer.concat([
-            decipher.update(encrypted),
-            decipher.final()
-        ]);
-
-        // If version 2, decompress
-        if (header.equals(HEADER_V2)) {
-            return decompress(decrypted);
+        if (encryptedData.length < authTagOffset) {
+            throw new Error('Encrypted data is too short');
         }
 
-        return decrypted;
-    } catch {
-        const lm = LocalizationManager.getInstance();
-        throw new Error(lm.t('Decryption failed: incorrect password or corrupted data'));
+        const flags = encryptedData.subarray(headerOffset, flagsOffset);
+        isCompressed = (flags[0] & 1) === 1;
+        const salt = encryptedData.subarray(flagsOffset, saltOffset);
+        const iv = encryptedData.subarray(saltOffset, ivOffset);
+        const authTag = encryptedData.subarray(ivOffset, authTagOffset);
+        const encrypted = encryptedData.subarray(authTagOffset);
+
+        key = deriveKey(password, salt, PBKDF2_ITERATIONS_V3);
+        try {
+            const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, {
+                authTagLength: AUTH_TAG_LENGTH
+            });
+            decipher.setAAD(Buffer.concat([header, flags, salt, iv]));
+            decipher.setAuthTag(authTag);
+            decrypted = Buffer.concat([
+                decipher.update(encrypted),
+                decipher.final()
+            ]);
+        } catch {
+            const lm = LocalizationManager.getInstance();
+            throw new Error(lm.t('Decryption failed: incorrect password or corrupted data'));
+        } finally {
+            key.fill(0);
+        }
+    } else {
+        const saltOffset = headerOffset + SALT_LENGTH;
+        const ivOffset = saltOffset + IV_LENGTH;
+        const authTagOffset = ivOffset + AUTH_TAG_LENGTH;
+
+        if (encryptedData.length < authTagOffset) {
+            throw new Error('Encrypted data is too short');
+        }
+
+        const salt = encryptedData.subarray(headerOffset, saltOffset);
+        const iv = encryptedData.subarray(saltOffset, ivOffset);
+        const authTag = encryptedData.subarray(ivOffset, authTagOffset);
+        const encrypted = encryptedData.subarray(authTagOffset);
+
+        key = deriveKey(password, salt);
+        try {
+            const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, {
+                authTagLength: AUTH_TAG_LENGTH
+            });
+            decipher.setAuthTag(authTag);
+            decrypted = Buffer.concat([
+                decipher.update(encrypted),
+                decipher.final()
+            ]);
+        } catch {
+            const lm = LocalizationManager.getInstance();
+            throw new Error(lm.t('Decryption failed: incorrect password or corrupted data'));
+        } finally {
+            key.fill(0);
+        }
     }
+
+    if (isCompressed) {
+        try {
+            return decompress(decrypted);
+        } catch (err: any) {
+            throw new Error(`Decompression failed: ${err?.message || String(err)}`);
+        }
+    }
+
+    return decrypted;
 }
 
 /**
@@ -191,10 +301,10 @@ export function compress(data: Buffer): Buffer {
 }
 
 /**
- * Decompress data using Gzip
+ * Decompress data using Gzip with a maximum output limit to prevent gzip bombs (OOM)
  */
-export function decompress(data: Buffer): Buffer {
-    return zlib.gunzipSync(data);
+export function decompress(data: Buffer, maxOutputLength: number = MAX_DECOMPRESSED_BYTES): Buffer {
+    return zlib.gunzipSync(data, { maxOutputLength });
 }
 
 /**
@@ -202,7 +312,13 @@ export function decompress(data: Buffer): Buffer {
  * This ensures the same machine gets the same ID even after extension reinstall
  */
 export function generateMachineId(): string {
-    const identifier = `${os.hostname()}-${os.userInfo().username}`;
+    let username = process.env.USER || process.env.USERNAME || 'user';
+    try {
+        username = os.userInfo().username || username;
+    } catch {
+        // Fallback to env username in containers/WSL without /etc/passwd entry
+    }
+    const identifier = `${os.hostname()}-${username}`;
     return computeMd5Hash(Buffer.from(identifier)).substring(0, 32);
 }
 
@@ -212,5 +328,9 @@ export function generateMachineId(): string {
  */
 export function hashPassword(password: string, salt: Buffer): string {
     const key = deriveKey(password, salt);
-    return key.toString('hex');
+    try {
+        return key.toString('hex');
+    } finally {
+        key.fill(0);
+    }
 }

@@ -10,7 +10,7 @@ import { GoogleAuthProvider } from './googleAuth';
 import { SyncManager, SyncConflict } from './sync';
 import { getConversationsAsync, ConversationItem, formatSize, getStoragePaths } from './utils';
 import { resolveConflictsCommand } from './conflicts';
-import { reindexConversationsCommand, exportIdeStateCommand, importIdeStateCommand } from './ideState';
+import { reindexConversationsCommand, exportIdeStateCommand, importIdeStateCommand, validateExtractedDirectory } from './ideState';
 import { DiagnosticsManager } from './diagnostics/diagnosticsManager';
 import { LocalizationManager } from './l10n/localizationManager';
 import { BackupManager } from './backup';
@@ -90,8 +90,16 @@ export async function activate(context: vscode.ExtensionContext) {
     // Initialize Proxy Dashboard
     proxyDashboard = new ProxyDashboardWebview(context.extensionUri, proxyManager, profileManager);
 
-    // Register disposables containing proxyManager
-    context.subscriptions.push(telegramService, statsScheduler, telegramCommandController, proxyManager);
+    // Register disposables
+    context.subscriptions.push(
+        authProvider,
+        syncManager,
+        backupManager,
+        telegramService,
+        statsScheduler,
+        telegramCommandController,
+        proxyManager
+    );
 
     // Register existing commands
     context.subscriptions.push(
@@ -120,9 +128,14 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.resolveConflicts`, () => resolveConflictsCommand(getBrainDir(), getConvDir())),
         vscode.commands.registerCommand(`${EXT_NAME}.migrateData`, migrateData),
-        vscode.commands.registerCommand(`${EXT_NAME}.reindexConversations`, () => reindexConversationsCommand(getBrainDir(), getConvDir())),
-        vscode.commands.registerCommand(`${EXT_NAME}.exportIdeState`, exportIdeStateCommand),
-        vscode.commands.registerCommand(`${EXT_NAME}.importIdeState`, importIdeStateCommand),
+        vscode.commands.registerCommand(`${EXT_NAME}.reindexConversations`, async () => {
+            await reindexConversationsCommand(getBrainDir(), getConvDir(), context);
+            if (syncManager && syncManager.isReady()) {
+                await syncManager.reindexConversations();
+            }
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.exportIdeState`, () => exportIdeStateCommand(context)),
+        vscode.commands.registerCommand(`${EXT_NAME}.importIdeState`, () => importIdeStateCommand(context)),
 
         vscode.commands.registerCommand(`${EXT_NAME}.proxy.dashboard`, () => {
             proxyDashboard.show();
@@ -367,7 +380,16 @@ export async function activate(context: vscode.ExtensionContext) {
                 title: lm.t('Syncing conversations...'),
                 cancellable: true
             }, async (progress, token) => {
-                const result = await syncManager.syncNow(progress, token);
+                let result;
+                try {
+                    result = await syncManager.syncNow(progress, token);
+                } catch (err: any) {
+                    if (err instanceof vscode.CancellationError) {
+                        return;
+                    }
+                    vscode.window.showErrorMessage(lm.t('Sync failed: {0}', err?.message || String(err)));
+                    return;
+                }
 
                 if (result.success) {
                     const message = [];
@@ -390,7 +412,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     } else {
                         vscode.window.showInformationMessage(lm.t('Sync complete: Everything is up to date'));
                     }
-                } else {
+                } else if (!result.cancelled) {
                     vscode.window.showErrorMessage(lm.t('Sync failed: {0}', result.errors.join(', ')));
                 }
 
@@ -412,10 +434,19 @@ export async function activate(context: vscode.ExtensionContext) {
                 title: lm.t('Force Syncing conversations...'),
                 cancellable: true
             }, async (progress, token) => {
-                const result = await syncManager.syncNow(progress, token, true);
+                let result;
+                try {
+                    result = await syncManager.syncNow(progress, token, true);
+                } catch (err: any) {
+                    if (err instanceof vscode.CancellationError) {
+                        return;
+                    }
+                    vscode.window.showErrorMessage(lm.t('Force Sync failed: {0}', err?.message || String(err)));
+                    return;
+                }
                 if (result.success) {
                     vscode.window.showInformationMessage(lm.t('Force Sync complete!'));
-                } else {
+                } else if (!result.cancelled) {
                     vscode.window.showErrorMessage(lm.t('Force Sync failed: {0}', result.errors.join(', ')));
                 }
                 if (result.conflicts && result.conflicts.length > 0) {
@@ -431,7 +462,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.syncManage`, async () => {
             const lm = LocalizationManager.getInstance();
-            if (!syncManager.isEnabled()) {
+            if (!syncManager.isReady()) {
                 vscode.window.showWarningMessage(lm.t('Sync is not enabled. Please set up sync first.'));
                 return;
             }
@@ -451,9 +482,6 @@ export async function activate(context: vscode.ExtensionContext) {
             if (confirm === lm.t('Disconnect')) {
                 await syncManager.disconnect();
             }
-        }),
-        vscode.commands.registerCommand(`${EXT_NAME}.reindexConversations`, async () => {
-            await syncManager.reindexConversations();
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.showSyncStats`, async () => {
             await syncManager.showStatistics();
@@ -659,22 +687,30 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     }
 
-    // Verify installation_id to prevent "Installation ID mismatch"
+    // Verify installation_id scoped to the active storageRoot to avoid false alerts when switching directories
     try {
-        const installIdPath = path.join(getStorageRoot(), 'installation_id');
+        const storageRoot = path.resolve(getStorageRoot());
+        const installIdPath = path.join(storageRoot, 'installation_id');
         if (fs.existsSync(installIdPath)) {
             const currentInstallId = fs.readFileSync(installIdPath, 'utf8').trim();
-            const storedInstallId = context.globalState.get<string>('localInstallationId');
-            
+            const scopedKey = `localInstallationId:${storageRoot.toLowerCase()}`;
+            let storedInstallId = context.globalState.get<string>(scopedKey);
             if (!storedInstallId) {
-                // Save it for the first time
-                await context.globalState.update('localInstallationId', currentInstallId);
+                // Migrate legacy key only if it matches the current ID (never trigger false mismatch from another root)
+                const legacyId = context.globalState.get<string>('localInstallationId');
+                if (legacyId === currentInstallId) {
+                    storedInstallId = legacyId;
+                    await context.globalState.update(scopedKey, legacyId);
+                }
+            }
+
+            if (!storedInstallId) {
+                await context.globalState.update(scopedKey, currentInstallId);
             } else if (storedInstallId !== currentInstallId) {
-                // Mismatch detected! Ask user
                 const lm = LocalizationManager.getInstance();
                 const restoreAction = lm.t('Restore Original ID');
                 const updateAction = lm.t('Use New ID');
-                
+
                 vscode.window.showWarningMessage(
                     lm.t('Antigravity Storage Manager: Detected a change in installation_id. This might cause an "Installation ID mismatch" error in the IDE.'),
                     restoreAction,
@@ -682,13 +718,13 @@ export async function activate(context: vscode.ExtensionContext) {
                 ).then(async selection => {
                     if (selection === restoreAction) {
                         try {
-                            fs.writeFileSync(installIdPath, storedInstallId, 'utf8');
+                            fs.writeFileSync(installIdPath, storedInstallId!, 'utf8');
                             vscode.window.showInformationMessage(lm.t('Original Installation ID restored.'));
                         } catch (e: any) {
                             vscode.window.showErrorMessage(lm.t('Failed to restore Installation ID: {0}', e.message));
                         }
                     } else if (selection === updateAction) {
-                        await context.globalState.update('localInstallationId', currentInstallId);
+                        await context.globalState.update(scopedKey, currentInstallId);
                         vscode.window.showInformationMessage(lm.t('Local Installation ID updated.'));
                     }
                 });
@@ -706,19 +742,36 @@ async function handleSyncConflicts(conflicts: SyncConflict[], syncManager: SyncM
     const lm = LocalizationManager.getInstance();
     if (!conflicts || conflicts.length === 0) return;
 
+    const resolveOne = async (conflict: SyncConflict, policy: 'keepLocal' | 'keepRemote' | 'keepBoth' | 'keepNewer' | 'keepLarger'): Promise<boolean> => {
+        try {
+            await syncManager.resolveConflict(conflict, policy);
+            return true;
+        } catch (e: any) {
+            console.error(`Failed to resolve conflict for ${conflict.conversationId}:`, e);
+            vscode.window.showErrorMessage(lm.t('Sync failed: {0}', `${conflict.conversationTitle || conflict.conversationId}: ${e?.message || e}`));
+            return false;
+        }
+    };
+
     const conflictSetting = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.conflictResolution', 'prompt');
 
     if (conflictSetting !== 'prompt') {
+        let resolvedCount = 0;
+        let failedCount = 0;
         for (const conflict of conflicts) {
-            try {
-                await syncManager.resolveConflict(conflict, conflictSetting as any);
-            } catch (e: any) {
-                console.error(`Failed to auto-resolve conflict for ${conflict.conversationId}:`, e);
-            }
+            const ok = await resolveOne(conflict, conflictSetting as any);
+            if (ok) resolvedCount++;
+            else failedCount++;
         }
-        vscode.window.showInformationMessage(
-            lm.t('Auto-resolved {0} conflict(s) using "{1}" policy.', conflicts.length, conflictSetting)
-        );
+        if (failedCount === 0) {
+            vscode.window.showInformationMessage(
+                lm.t('Auto-resolved {0} conflict(s) using "{1}" policy.', resolvedCount, conflictSetting)
+            );
+        } else {
+            vscode.window.showWarningMessage(
+                `${lm.t('Auto-resolved {0} conflict(s) using "{1}" policy.', resolvedCount, conflictSetting)} (${failedCount} failed)`
+            );
+        }
         return;
     }
 
@@ -745,11 +798,11 @@ async function handleSyncConflicts(conflicts: SyncConflict[], syncManager: SyncM
         );
 
         if (choice === lm.t('Keep Local')) {
-            await syncManager.resolveConflict(conflict, 'keepLocal');
+            await resolveOne(conflict, 'keepLocal');
         } else if (choice === lm.t('Keep Remote')) {
-            await syncManager.resolveConflict(conflict, 'keepRemote');
+            await resolveOne(conflict, 'keepRemote');
         } else if (choice === lm.t('Keep Both')) {
-            await syncManager.resolveConflict(conflict, 'keepBoth');
+            await resolveOne(conflict, 'keepBoth');
         }
     } else {
         const keepAllLocal = lm.t('Keep All Local');
@@ -767,21 +820,17 @@ async function handleSyncConflicts(conflicts: SyncConflict[], syncManager: SyncM
             reviewOneByOne
         );
 
-        if (batchChoice === keepAllLocal) {
+        const policyMap: Record<string, 'keepLocal' | 'keepRemote' | 'keepNewer' | 'keepLarger'> = {
+            [keepAllLocal]: 'keepLocal',
+            [keepAllRemote]: 'keepRemote',
+            [keepAllNewer]: 'keepNewer',
+            [keepAllLarger]: 'keepLarger'
+        };
+
+        if (batchChoice && policyMap[batchChoice]) {
+            const policy = policyMap[batchChoice];
             for (const c of conflicts) {
-                await syncManager.resolveConflict(c, 'keepLocal');
-            }
-        } else if (batchChoice === keepAllRemote) {
-            for (const c of conflicts) {
-                await syncManager.resolveConflict(c, 'keepRemote');
-            }
-        } else if (batchChoice === keepAllNewer) {
-            for (const c of conflicts) {
-                await syncManager.resolveConflict(c, 'keepNewer');
-            }
-        } else if (batchChoice === keepAllLarger) {
-            for (const c of conflicts) {
-                await syncManager.resolveConflict(c, 'keepLarger');
+                await resolveOne(c, policy);
             }
         } else if (batchChoice === reviewOneByOne) {
             for (const conflict of conflicts) {
@@ -807,11 +856,11 @@ async function handleSyncConflicts(conflicts: SyncConflict[], syncManager: SyncM
                 );
 
                 if (choice === lm.t('Keep Local')) {
-                    await syncManager.resolveConflict(conflict, 'keepLocal');
+                    await resolveOne(conflict, 'keepLocal');
                 } else if (choice === lm.t('Keep Remote')) {
-                    await syncManager.resolveConflict(conflict, 'keepRemote');
+                    await resolveOne(conflict, 'keepRemote');
                 } else if (choice === lm.t('Keep Both')) {
-                    await syncManager.resolveConflict(conflict, 'keepBoth');
+                    await resolveOne(conflict, 'keepBoth');
                 } else if (choice === lm.t('Cancel Remaining') || !choice) {
                     break;
                 }
@@ -1109,6 +1158,7 @@ async function importConversations() {
 
                 try {
                     await extract(zipPath, { dir: tempDir });
+                    validateExtractedDirectory(tempDir);
 
                     // Collect conversation IDs from both brain/ and conversations/
                     const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -1147,7 +1197,6 @@ async function importConversations() {
                         let targetId = id;
 
                         if (alreadyExists) {
-                            // Conflict! Ask user
                             const choice = await vscode.window.showWarningMessage(
                                 lm.t('Conversation "{0}" already exists.', id),
                                 { modal: true },
@@ -1156,7 +1205,7 @@ async function importConversations() {
                                 lm.t('Skip')
                             );
 
-                            if (choice === lm.t('Skip')) {
+                            if (!choice || choice === lm.t('Skip')) {
                                 skippedCount++;
                                 continue;
                             } else if (choice === lm.t('Rename')) {
@@ -1165,6 +1214,9 @@ async function importConversations() {
                                     value: `${id}-imported`,
                                     validateInput: (value) => {
                                         if (!value) return lm.t('ID cannot be empty');
+                                        if (value === '.' || value === '..' || !/^[a-zA-Z0-9._-]+$/.test(value)) {
+                                            return 'ID may only contain letters, digits, dots, hyphens and underscores';
+                                        }
                                         if (fs.existsSync(path.join(getBrainDir(), value)) ||
                                             fs.existsSync(path.join(getConvDir(), `${value}.db`)) ||
                                             fs.existsSync(path.join(getConvDir(), `${value}.pb`))) {
@@ -1180,7 +1232,6 @@ async function importConversations() {
                                 }
                                 targetId = newId;
                             }
-                            // else Overwrite - continue with same ID
                         }
 
                         // Copy or ensure brain directory exists
@@ -1198,12 +1249,19 @@ async function importConversations() {
                             }
                         }
 
-                        // Copy conversation files (.pb, .db, .db-wal, .db-shm) if exists
+                        // Clean any stale conversation files (.pb, .db, .db-wal, .db-shm) before copying new ones
                         const destConv = getConvDir();
                         if (!fs.existsSync(destConv)) {
                             fs.mkdirSync(destConv, { recursive: true });
                         }
-                        const convExts = ['.pb', '.db', '.db-wal', '.db-shm'];
+                        for (const ext of ['.pb', '.db', '.db-wal', '.db-shm']) {
+                            const existingTarget = path.join(destConv, `${targetId}${ext}`);
+                            if (fs.existsSync(existingTarget)) {
+                                try { fs.unlinkSync(existingTarget); } catch { /* ignore */ }
+                            }
+                        }
+                        // Never copy ephemeral .db-shm from archive
+                        const convExts = ['.pb', '.db', '.db-wal'];
                         for (const ext of convExts) {
                             const sourceFile = path.join(tempDir, 'conversations', `${id}${ext}`);
                             if (fs.existsSync(sourceFile)) {
@@ -1381,12 +1439,37 @@ async function exportAsMarkdown() {
     });
 }
 
-// MIGRATE: Migrate conversations between legacy ~/.gemini/antigravity and ~/.gemini/antigravity-ide
+// MIGRATE: Migrate conversations between ~/.gemini/antigravity and ~/.gemini/antigravity-ide
 async function migrateData() {
     const lm = LocalizationManager.getInstance();
     const homedir = os.homedir();
-    const sourceStorage = path.join(homedir, '.gemini', 'antigravity');
-    const targetStorage = path.join(homedir, '.gemini', 'antigravity-ide');
+    const standardStorage = path.join(homedir, '.gemini', 'antigravity');
+    const ideStorage = path.join(homedir, '.gemini', 'antigravity-ide');
+
+    const direction = await vscode.window.showQuickPick(
+        [
+            {
+                label: '~/.gemini/antigravity  →  ~/.gemini/antigravity-ide',
+                description: 'Standard → Antigravity IDE',
+                source: standardStorage,
+                target: ideStorage
+            },
+            {
+                label: '~/.gemini/antigravity-ide  →  ~/.gemini/antigravity',
+                description: 'Antigravity IDE → Standard',
+                source: ideStorage,
+                target: standardStorage
+            }
+        ],
+        { placeHolder: lm.t('Migrate data between standard and IDE storage') }
+    );
+
+    if (!direction) {
+        return;
+    }
+
+    const sourceStorage = direction.source;
+    const targetStorage = direction.target;
 
     if (!fs.existsSync(sourceStorage)) {
         vscode.window.showInformationMessage(lm.t('No source data found at {0}', sourceStorage));
@@ -1415,59 +1498,70 @@ async function migrateData() {
         return;
     }
 
-    let migratedCount = 0;
-    const targetBrain = path.join(targetStorage, 'brain');
-    const targetConv = path.join(targetStorage, 'conversations');
+    try {
+        const migratedIds = new Set<string>();
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: lm.t('Migrate data between standard and IDE storage'),
+            cancellable: false
+        }, async () => {
+            const targetBrain = path.join(targetStorage, 'brain');
+            const targetConv = path.join(targetStorage, 'conversations');
 
-    if (!fs.existsSync(targetBrain)) {
-        fs.mkdirSync(targetBrain, { recursive: true });
-    }
-    if (!fs.existsSync(targetConv)) {
-        fs.mkdirSync(targetConv, { recursive: true });
-    }
+            await fs.promises.mkdir(targetBrain, { recursive: true });
+            await fs.promises.mkdir(targetConv, { recursive: true });
 
-    if (hasBrain) {
-        const brainDirs = fs.readdirSync(sourceBrain).filter(d => {
-            try {
-                return fs.statSync(path.join(sourceBrain, d)).isDirectory();
-            } catch {
-                return false;
+            if (hasBrain) {
+                const entries = await fs.promises.readdir(sourceBrain);
+                for (const dir of entries) {
+                    const src = path.join(sourceBrain, dir);
+                    try {
+                        if (!(await fs.promises.stat(src)).isDirectory()) continue;
+                    } catch {
+                        continue;
+                    }
+                    const dst = path.join(targetBrain, dir);
+                    if (!fs.existsSync(dst)) {
+                        await fs.promises.cp(src, dst, { recursive: true });
+                        migratedIds.add(dir);
+                    }
+                }
+            }
+
+            if (hasConv) {
+                const convFiles = await fs.promises.readdir(sourceConv);
+                for (const file of convFiles) {
+                    // Never copy ephemeral SQLite shared-memory index files
+                    if (file.endsWith('.db-shm')) continue;
+                    const src = path.join(sourceConv, file);
+                    const dst = path.join(targetConv, file);
+                    if (!fs.existsSync(dst)) {
+                        await fs.promises.copyFile(src, dst);
+                        const baseId = file.replace(/\.(?:pb|db|db-wal)$/i, '');
+                        migratedIds.add(baseId);
+                    }
+                }
             }
         });
-        for (const dir of brainDirs) {
-            const src = path.join(sourceBrain, dir);
-            const dst = path.join(targetBrain, dir);
-            if (!fs.existsSync(dst)) {
-                fs.cpSync(src, dst, { recursive: true });
-                migratedCount++;
-            }
+
+        const choice = await vscode.window.showInformationMessage(
+            lm.t('Successfully migrated data to Antigravity IDE storage ({0} conversation(s)). Reload window to refresh?', migratedIds.size),
+            lm.t('Reload'),
+            lm.t('Later')
+        );
+
+        if (choice === lm.t('Reload')) {
+            vscode.commands.executeCommand('workbench.action.reloadWindow');
         }
-    }
-
-    if (hasConv) {
-        const convFiles = fs.readdirSync(sourceConv);
-        for (const file of convFiles) {
-            const src = path.join(sourceConv, file);
-            const dst = path.join(targetConv, file);
-            if (!fs.existsSync(dst)) {
-                fs.copyFileSync(src, dst);
-            }
-        }
-    }
-
-    const choice = await vscode.window.showInformationMessage(
-        lm.t('Successfully migrated data to Antigravity IDE storage ({0} conversation(s)). Reload window to refresh?', migratedCount),
-        lm.t('Reload'),
-        lm.t('Later')
-    );
-
-    if (choice === lm.t('Reload')) {
-        vscode.commands.executeCommand('workbench.action.reloadWindow');
+    } catch (e: any) {
+        vscode.window.showErrorMessage(`${lm.t('Error')}: ${e?.message || e}`);
     }
 }
 
 export function deactivate() {
-    // Clear global instances
+    try { syncManager?.dispose(); } catch { /* ignore */ }
+    try { backupManager?.dispose(); } catch { /* ignore */ }
+    try { authProvider?.dispose(); } catch { /* ignore */ }
     // @ts-expect-error Global instance reset
     profileManager = undefined;
     // @ts-expect-error Global instance reset

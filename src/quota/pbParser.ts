@@ -212,12 +212,35 @@ export class PbParser {
     }
 
     /**
-     * Attempts to extract a descriptive title/summary from a .pb file.
+     * Extract strings from only the leading prefix of a file (bounded memory, safe for huge .db/.pb files).
+     */
+    static async extractStringsPrefix(filePath: string, maxBytes: number = 256 * 1024): Promise<string[]> {
+        const handle = await fs.promises.open(filePath, 'r');
+        try {
+            const stat = await handle.stat();
+            const toRead = Math.min(stat.size, maxBytes);
+            if (toRead <= 0) {
+                return [];
+            }
+            const buffer = Buffer.alloc(toRead);
+            const { bytesRead } = await handle.read(buffer, 0, toRead, 0);
+            const slice = bytesRead < toRead ? buffer.subarray(0, bytesRead) : buffer;
+            if (filePath.toLowerCase().endsWith('.db')) {
+                return PbParser.extractStringsFromDb(slice);
+            }
+            return PbParser.parseBuffer(slice);
+        } finally {
+            await handle.close();
+        }
+    }
+
+    /**
+     * Attempts to extract a descriptive title/summary from a .pb/.db file using a bounded prefix read.
      */
     static async extractTitle(filePath: string): Promise<string | null> {
         try {
             if (!fs.existsSync(filePath)) return null;
-            const strings = await this.extractStrings(filePath);
+            const strings = await this.extractStringsPrefix(filePath, 256 * 1024);
 
             // Heuristic to find the title:
             // 1. Exclude UUIDs, paths, very short strings, and technical IDs.

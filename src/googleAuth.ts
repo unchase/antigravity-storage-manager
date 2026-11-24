@@ -12,17 +12,26 @@ import * as crypto from 'crypto';
 // 4. Enter Client ID and Secret in VS Code settings for this extension
 const REDIRECT_PORT = 47842;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
+const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+const API_TIMEOUT_MS = 30000;
 
 // Scopes for Google Drive access
 const SCOPES = [
-    'https://www.googleapis.com/auth/drive.file', // Access only files created by this app
+    DRIVE_FILE_SCOPE, // Access only files created by this app
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile'
 ];
 
 const EXT_NAME = 'antigravity-storage-manager';
 
-interface StoredTokens {
+const PERMANENT_AUTH_ERRORS = new Set([
+    'invalid_grant',
+    'unauthorized_client',
+    'invalid_client'
+]);
+
+export interface StoredTokens {
     accessToken: string;
     refreshToken: string;
     expiryDate: number;
@@ -36,48 +45,112 @@ export interface StoredAccount {
 }
 
 /**
+ * Escape text for safe interpolation into HTML.
+ */
+export function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
+ * Constant-time string comparison for OAuth CSRF state validation.
+ */
+export function safeEqualString(a: string, b: string): boolean {
+    const bufA = Buffer.from(a, 'utf8');
+    const bufB = Buffer.from(b, 'utf8');
+    if (bufA.length !== bufB.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Check whether an OAuth token refresh error indicates permanent session revocation
+ * (as opposed to a transient network/server error).
+ */
+export function isPermanentAuthError(error: any): boolean {
+    if (!error) return false;
+    const responseError = error?.response?.data?.error;
+    if (typeof responseError === 'string' && PERMANENT_AUTH_ERRORS.has(responseError)) {
+        return true;
+    }
+    const msg = typeof error.message === 'string' ? error.message : '';
+    for (const code of PERMANENT_AUTH_ERRORS) {
+        if (msg.includes(code)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Manages Google OAuth2 authentication for the extension
  */
-export class GoogleAuthProvider {
+export class GoogleAuthProvider implements vscode.Disposable {
     private oauth2Client!: InstanceType<typeof google.auth.OAuth2>;
     private context: vscode.ExtensionContext;
     private tokens: StoredTokens | null = null;
     private server: http.Server | null = null;
+    private authTimeout: NodeJS.Timeout | null = null;
     private currentAccountId: string | null = null;
+    private loadedClientId: string = '';
+    private loadedClientSecret: string = '';
+    private refreshPromise: Promise<void> | null = null;
     private _onDidChangeSessions = new vscode.EventEmitter<void>();
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
-        this.loadCredentials();
+        if (typeof google?.options === 'function') {
+            google.options({ timeout: API_TIMEOUT_MS });
+        }
+        this.loadCredentials(true);
+    }
 
-        // Set up token refresh handler
-        this.oauth2Client.on('tokens', (tokens) => {
-            if (tokens.refresh_token) {
-                this.saveTokens({
-                    accessToken: tokens.access_token || '',
-                    refreshToken: tokens.refresh_token,
-                    expiryDate: tokens.expiry_date || 0
-                });
-            } else if (this.tokens) {
-                this.saveTokens({
-                    ...this.tokens,
-                    accessToken: tokens.access_token || '',
-                    expiryDate: tokens.expiry_date || 0
-                });
+    dispose(): void {
+        this.closeServer();
+        this._onDidChangeSessions.dispose();
+    }
+
+    private attachTokenListener(client: InstanceType<typeof google.auth.OAuth2>): void {
+        client.on('tokens', (tokens) => {
+            const targetAccountId = this.currentAccountId;
+            if (!targetAccountId) {
+                return;
             }
+            const current = this.tokens;
+            const nextTokens: StoredTokens = {
+                accessToken: tokens.access_token ?? current?.accessToken ?? '',
+                refreshToken: tokens.refresh_token ?? current?.refreshToken ?? '',
+                expiryDate: tokens.expiry_date ?? current?.expiryDate ?? 0
+            };
+            if (!nextTokens.refreshToken && !nextTokens.accessToken) {
+                return;
+            }
+            this.tokens = nextTokens;
+            this.saveTokensForAccount(targetAccountId, nextTokens).catch(err => {
+                console.error('GoogleAuthProvider: Failed to persist refreshed tokens:', err);
+            });
         });
     }
 
     /**
      * Load or reload credentials from configuration
      */
-    public loadCredentials(): void {
+    public loadCredentials(force: boolean = false): void {
         const config = vscode.workspace.getConfiguration(EXT_NAME);
-        const clientId = config.get<string>('google.clientId');
-        const clientSecret = config.get<string>('google.clientSecret');
+        const clientId = (config.get<string>('google.clientId') || '').trim();
+        const clientSecret = (config.get<string>('google.clientSecret') || '').trim();
 
-        // Preserve existing listeners if we are re-creating the client
-        const listeners = this.oauth2Client ? this.oauth2Client.listeners('tokens') : [];
+        if (!force && this.oauth2Client && clientId === this.loadedClientId && clientSecret === this.loadedClientSecret) {
+            return;
+        }
+
+        this.loadedClientId = clientId;
+        this.loadedClientSecret = clientSecret;
 
         if (!clientId || !clientSecret || clientId.includes('YOUR_CLIENT_ID')) {
             // Initialize with dummy values to prevent crash, checkAuth will fail gracefully
@@ -90,10 +163,7 @@ export class GoogleAuthProvider {
             );
         }
 
-        // Restore listeners
-        listeners.forEach(listener => {
-            this.oauth2Client.on('tokens', listener as any);
-        });
+        this.attachTokenListener(this.oauth2Client);
 
         // Restore credentials if we have them
         if (this.tokens) {
@@ -116,8 +186,7 @@ export class GoogleAuthProvider {
         if (legacyTokensStr && !accountsStr) {
             console.log('GoogleAuthProvider: Migrating legacy tokens...');
             try {
-                const legacyTokens = JSON.parse(legacyTokensStr);
-                // Attempt to get user info to build account profile
+                const legacyTokens = JSON.parse(legacyTokensStr) as StoredTokens;
                 this.tokens = legacyTokens;
                 this.oauth2Client.setCredentials({
                     access_token: legacyTokens.accessToken,
@@ -127,7 +196,6 @@ export class GoogleAuthProvider {
 
                 let userInfo = await this.getUserInfo();
                 if (!userInfo) {
-                    // Fallback
                     userInfo = { email: 'Legacy User', name: 'Legacy User' };
                 }
 
@@ -160,12 +228,21 @@ export class GoogleAuthProvider {
     }
 
     private generateAccountId(email: string): string {
-        return crypto.createHash('md5').update(email).digest('hex');
+        return crypto.createHash('md5').update(email.trim().toLowerCase()).digest('hex');
     }
 
     async getAccounts(): Promise<StoredAccount[]> {
         const accountsStr = await this.context.secrets.get(`${EXT_NAME}.google.accounts`);
-        return accountsStr ? JSON.parse(accountsStr) : [];
+        if (!accountsStr) {
+            return [];
+        }
+        try {
+            const parsed = JSON.parse(accountsStr);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+            console.error('GoogleAuthProvider: Corrupted accounts JSON in SecretStorage:', err);
+            return [];
+        }
     }
 
     private async saveAccountList(accounts: StoredAccount[]): Promise<void> {
@@ -178,7 +255,19 @@ export class GoogleAuthProvider {
 
     private async loadTokensForAccount(accountId: string): Promise<StoredTokens | null> {
         const tokenStr = await this.context.secrets.get(`${EXT_NAME}.google.tokens.${accountId}`);
-        return tokenStr ? JSON.parse(tokenStr) : null;
+        if (!tokenStr) {
+            return null;
+        }
+        try {
+            const parsed = JSON.parse(tokenStr);
+            if (!parsed || typeof parsed !== 'object') {
+                return null;
+            }
+            return parsed as StoredTokens;
+        } catch (err) {
+            console.error(`GoogleAuthProvider: Corrupted tokens JSON for account ${accountId}:`, err);
+            return null;
+        }
     }
 
     /**
@@ -187,11 +276,12 @@ export class GoogleAuthProvider {
     async switchAccount(accountId: string): Promise<void> {
         const accounts = await this.getAccounts();
         const account = accounts.find(a => a.id === accountId);
-        if (!account) throw new Error('Account not found');
+        if (!account) {
+            throw new Error('Account not found');
+        }
 
         await this.loadAccount(accountId);
 
-        // Update last active
         account.lastActive = Date.now();
         await this.saveAccountList(accounts);
 
@@ -210,10 +300,22 @@ export class GoogleAuthProvider {
             });
             await this.context.secrets.store(`${EXT_NAME}.google.currentAccountId`, accountId);
         } else {
-            // Handle stale account entry?
             this.tokens = null;
             this.currentAccountId = null;
+            this.oauth2Client.setCredentials({});
+            await this.context.secrets.delete(`${EXT_NAME}.google.currentAccountId`);
         }
+    }
+
+    private async clearActiveSessionState(revoke: boolean = true): Promise<void> {
+        const hadCredentials = this.tokens !== null;
+        this.tokens = null;
+        this.currentAccountId = null;
+        if (revoke && hadCredentials && typeof this.oauth2Client.revokeCredentials === 'function') {
+            this.oauth2Client.revokeCredentials().catch(() => { });
+        }
+        this.oauth2Client.setCredentials({});
+        await this.context.secrets.delete(`${EXT_NAME}.google.currentAccountId`);
     }
 
     async removeAccount(accountId: string): Promise<void> {
@@ -223,13 +325,16 @@ export class GoogleAuthProvider {
         await this.context.secrets.delete(`${EXT_NAME}.google.tokens.${accountId}`);
 
         if (this.currentAccountId === accountId) {
-            // If removed active account, switch to another or logout
             if (accounts.length > 0) {
+                // switchAccount already fires _onDidChangeSessions once
                 await this.switchAccount(accounts[0].id);
-            } else {
-                await this.signOut();
+                return;
             }
+            // Directly clear active session without recursing into signOut()
+            await this.clearActiveSessionState(true);
+            await this.context.secrets.delete(`${EXT_NAME}.google.tokens`);
         }
+
         this._onDidChangeSessions.fire();
     }
 
@@ -252,8 +357,7 @@ export class GoogleAuthProvider {
      * Get the OAuth2 client for API calls
      */
     getOAuth2Client(): InstanceType<typeof google.auth.OAuth2> {
-        // Safety check: Ensure client has credentials if we have tokens
-        if (this.tokens && (!this.oauth2Client.credentials || !this.oauth2Client.credentials.access_token)) {
+        if (this.tokens && (!this.oauth2Client.credentials || !this.oauth2Client.credentials.refresh_token)) {
             console.log('GoogleAuthProvider: Restoring credentials to OAuth2Client');
             this.oauth2Client.setCredentials({
                 access_token: this.tokens.accessToken,
@@ -272,9 +376,9 @@ export class GoogleAuthProvider {
             return null;
         }
 
-        // Check if token is expired or will expire in the next minute
+        // Refresh if expiryDate is missing/0, expired, or expiring within 60s
         const now = Date.now();
-        if (this.tokens.expiryDate && this.tokens.expiryDate < now + 60000) {
+        if (!this.tokens.expiryDate || this.tokens.expiryDate < now + 60000) {
             await this.refreshToken();
         }
 
@@ -282,33 +386,59 @@ export class GoogleAuthProvider {
     }
 
     /**
-     * Refresh the access token using the refresh token
+     * Refresh the access token using the refresh token (single-flight)
      */
     async refreshToken(): Promise<void> {
-        // Ensure we have the latest client secret
+        if (this.refreshPromise) {
+            return this.refreshPromise;
+        }
+
+        const task = this.doRefreshToken();
+        this.refreshPromise = task;
+        try {
+            await task;
+        } finally {
+            if (this.refreshPromise === task) {
+                this.refreshPromise = null;
+            }
+        }
+    }
+
+    private async doRefreshToken(): Promise<void> {
+        // Reload credentials only if settings changed
         this.loadCredentials();
 
         if (!this.tokens?.refreshToken) {
             throw new Error('No refresh token available');
         }
 
+        const targetAccountId = this.currentAccountId;
+
         try {
             const { credentials } = await this.oauth2Client.refreshAccessToken();
-            this.tokens = {
-                accessToken: credentials.access_token || '',
-                refreshToken: credentials.refresh_token || this.tokens.refreshToken,
-                expiryDate: credentials.expiry_date || 0
+            const updated: StoredTokens = {
+                accessToken: credentials.access_token ?? this.tokens.accessToken,
+                refreshToken: credentials.refresh_token ?? this.tokens.refreshToken,
+                expiryDate: credentials.expiry_date ?? this.tokens.expiryDate
             };
-            await this.saveTokens(this.tokens);
+            this.tokens = updated;
+            if (targetAccountId) {
+                await this.saveTokensForAccount(targetAccountId, updated);
+            } else {
+                await this.saveTokens(updated);
+            }
         } catch (error: any) {
             const lm = LocalizationManager.getInstance();
-            const msg = error.message || '';
-            const isInvalidGrant = msg.includes('invalid_grant') ||
-                (error.response && error.response.data && error.response.data.error === 'invalid_grant');
 
-            if (isInvalidGrant) {
+            if (isPermanentAuthError(error)) {
                 console.warn(lm.t('GoogleAuthProvider: Invalid grant detected. Signing out.'));
-                await this.signOut();
+
+                // Invalidate only the revoked account's session; never silently switch to another account
+                if (targetAccountId) {
+                    await this.context.secrets.delete(`${EXT_NAME}.google.tokens.${targetAccountId}`);
+                }
+                await this.clearActiveSessionState(false);
+                this._onDidChangeSessions.fire();
 
                 const signIn = lm.t('Sign In');
                 const selection = await vscode.window.showWarningMessage(
@@ -317,15 +447,14 @@ export class GoogleAuthProvider {
                 );
 
                 if (selection === signIn) {
-                    this.signIn();
+                    this.signIn().catch(err => console.error('GoogleAuthProvider: Re-sign-in failed:', err));
                 }
                 throw new Error(lm.t('Session expired. Please sign in again.'));
             }
 
-            vscode.window.showErrorMessage(lm.t('Failed to refresh token: {0}', error.message));
-            // Clear tokens on refresh failure
-            await this.signOut();
-            throw new Error(lm.t('Session expired. Please sign in again.'));
+            // Transient network/server error — preserve stored tokens and propagate error
+            console.warn('GoogleAuthProvider: Transient error refreshing token (keeping session):', error?.message);
+            throw error;
         }
     }
 
@@ -333,7 +462,7 @@ export class GoogleAuthProvider {
      * Start the OAuth2 sign-in flow
      */
     async signIn(): Promise<void> {
-        await this.startAuthFlow();
+        await this.startAuthFlow(false);
     }
 
     /**
@@ -345,13 +474,11 @@ export class GoogleAuthProvider {
 
     private async startAuthFlow(isAdd: boolean = false): Promise<void> {
         const lm = LocalizationManager.getInstance();
-        // Reload credentials just in case they were updated
         this.loadCredentials();
 
-        // Check for client ID/Secret
         const config = vscode.workspace.getConfiguration(EXT_NAME);
-        const clientId = config.get<string>('google.clientId');
-        const clientSecret = config.get<string>('google.clientSecret');
+        const clientId = (config.get<string>('google.clientId') || '').trim();
+        const clientSecret = (config.get<string>('google.clientSecret') || '').trim();
 
         if (!clientId || !clientSecret || clientId.includes('YOUR_CLIENT_ID')) {
             const openSettings = lm.t('Open Settings');
@@ -365,36 +492,74 @@ export class GoogleAuthProvider {
             throw new Error(lm.t('Missing OAuth credentials'));
         }
 
+        // Close any leftover callback server before starting a new flow
+        this.closeServer();
+
+        // Generate CSRF state and PKCE verifier/challenge
+        const expectedState = crypto.randomBytes(32).toString('hex');
+        const codeVerifier = crypto.randomBytes(32).toString('base64url');
+        const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+
+        // Use an isolated temporary OAuth2 client so an aborted/failed flow never corrupts the active session
+        const tempOAuth2Client = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
+
         return new Promise((resolve, reject) => {
-            // Create a local HTTP server to receive the OAuth callback
+            let settled = false;
+            const settleResolve = () => {
+                if (!settled) {
+                    settled = true;
+                    this.closeServer();
+                    resolve();
+                }
+            };
+            const settleReject = (err: Error) => {
+                if (!settled) {
+                    settled = true;
+                    this.closeServer();
+                    reject(err);
+                }
+            };
+
             this.server = http.createServer(async (req, res) => {
                 try {
                     const parsedUrl = url.parse(req.url || '', true);
 
-                    if (parsedUrl.pathname === '/callback') {
-                        const code = parsedUrl.query.code as string;
-                        const error = parsedUrl.query.error as string;
+                    if (parsedUrl.pathname !== '/callback') {
+                        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+                        res.end('Not Found');
+                        return;
+                    }
 
-                        if (error) {
-                            // Build user-friendly troubleshooting hint based on error type
-                            let hint = '';
-                            let vscodeHint = '';
-                            if (error === 'access_denied') {
-                                hint = '<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• Make sure you click <strong>"Allow"</strong> on the Google consent screen.<br>• The extension requires the <em>"See, edit, create, and delete only the specific Google Drive files you use with this app"</em> permission.<br>• If your Google account is managed by an organization, your admin may need to approve this app.</p>';
-                                vscodeHint = lm.t('You must grant the Google Drive file access permission. Please try again and click "Allow" on the consent screen.');
-                            } else if (error === 'invalid_client') {
-                                hint = '<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• Check your <strong>Client ID</strong> and <strong>Client Secret</strong> in VS Code Settings → Antigravity Storage Manager.<br>• Ensure the OAuth credentials are for a <em>Desktop App</em> type in Google Cloud Console.<br>• Verify the Google Drive API is enabled in your Google Cloud project.</p>';
-                                vscodeHint = lm.t('Invalid OAuth credentials. Please verify your Client ID and Client Secret in Settings.');
-                            } else if (error === 'redirect_uri_mismatch') {
-                                hint = `<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• In Google Cloud Console → Credentials, add <code>http://localhost:${REDIRECT_PORT}/callback</code> as an Authorized redirect URI.<br>• Make sure the OAuth credential type is <em>Desktop App</em>.</p>`;
-                                vscodeHint = lm.t('Redirect URI mismatch. Please add http://localhost:{0}/callback to your OAuth credentials in Google Cloud Console.', REDIRECT_PORT);
-                            } else {
-                                hint = '<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• Remove and re-add your account in VS Code.<br>• Check the <a href="https://github.com/unchase/antigravity-storage-manager/blob/master/SYNC_SETUP.md" style="color:#58a6ff;">Sync Setup Guide</a> for detailed instructions.</p>';
-                                vscodeHint = lm.t('Authentication error: {0}. Please check the Sync Setup Guide for help.', error);
-                            }
+                    const returnedState = typeof parsedUrl.query.state === 'string' ? parsedUrl.query.state : '';
+                    if (!returnedState || !safeEqualString(returnedState, expectedState)) {
+                        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+                        res.end('Invalid OAuth state parameter');
+                        return;
+                    }
 
-                            res.writeHead(400, { 'Content-Type': 'text/html' });
-                            res.end(`
+                    const code = typeof parsedUrl.query.code === 'string' ? parsedUrl.query.code : '';
+                    const error = typeof parsedUrl.query.error === 'string' ? parsedUrl.query.error : '';
+
+                    if (error) {
+                        let hint = '';
+                        let vscodeHint = '';
+                        if (error === 'access_denied') {
+                            hint = '<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• Make sure you click <strong>"Allow"</strong> on the Google consent screen.<br>• The extension requires the <em>"See, edit, create, and delete only the specific Google Drive files you use with this app"</em> permission.<br>• If your Google account is managed by an organization, your admin may need to approve this app.</p>';
+                            vscodeHint = lm.t('You must grant the Google Drive file access permission. Please try again and click "Allow" on the consent screen.');
+                        } else if (error === 'invalid_client') {
+                            hint = '<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• Check your <strong>Client ID</strong> and <strong>Client Secret</strong> in VS Code Settings → Antigravity Storage Manager.<br>• Ensure the OAuth credentials are for a <em>Desktop App</em> type in Google Cloud Console.<br>• Verify the Google Drive API is enabled in your Google Cloud project.</p>';
+                            vscodeHint = lm.t('Invalid OAuth credentials. Please verify your Client ID and Client Secret in Settings.');
+                        } else if (error === 'redirect_uri_mismatch') {
+                            hint = `<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• In Google Cloud Console → Credentials, add <code>http://localhost:${REDIRECT_PORT}/callback</code> as an Authorized redirect URI.<br>• Make sure the OAuth credential type is <em>Desktop App</em>.</p>`;
+                            vscodeHint = lm.t('Redirect URI mismatch. Please add http://localhost:{0}/callback to your OAuth credentials in Google Cloud Console.', REDIRECT_PORT);
+                        } else {
+                            hint = '<p style="text-align:left;font-size:0.85em;opacity:0.85;margin-top:20px;"><strong>Troubleshooting:</strong><br>• Remove and re-add your account in VS Code.<br>• Check the <a href="https://github.com/unchase/antigravity-storage-manager/blob/master/SYNC_SETUP.md" style="color:#58a6ff;">Sync Setup Guide</a> for detailed instructions.</p>';
+                            vscodeHint = lm.t('Authentication error: {0}. Please check the Sync Setup Guide for help.', error);
+                        }
+
+                        const safeErrorHtml = escapeHtml(error);
+                        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+                        res.end(`
                                 <!DOCTYPE html>
                                 <html>
                                 <head>
@@ -443,84 +608,106 @@ export class GoogleAuthProvider {
                                         <div class="icon">❌</div>
                                         <h1>Authentication Failed</h1>
                                         <p>Something went wrong during the sign-in process.</p>
-                                        <p><span class="error-code">${error}</span></p>
+                                        <p><span class="error-code">${safeErrorHtml}</span></p>
                                         ${hint}
                                         <p style="font-size: 0.9em; opacity: 0.6; margin-top: 20px;">You can close this window and try again from VS Code.</p>
                                     </div>
                                 </body>
                                 </html>
                             `);
-                            this.closeServer();
 
-                            // Show actionable notification in VS Code
-                            const setupGuide = lm.t('Open Setup Guide');
-                            const retryAction = lm.t('Retry');
-                            vscode.window.showErrorMessage(
-                                vscodeHint || lm.t('Authentication failed: {0}', error),
-                                setupGuide,
-                                retryAction
-                            ).then(selection => {
-                                if (selection === setupGuide) {
-                                    vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager/blob/master/SYNC_SETUP.md'));
-                                } else if (selection === retryAction) {
-                                    this.signIn();
-                                }
-                            });
+                        const setupGuide = lm.t('Open Setup Guide');
+                        const retryAction = lm.t('Retry');
+                        vscode.window.showErrorMessage(
+                            vscodeHint || lm.t('Authentication failed: {0}', error),
+                            setupGuide,
+                            retryAction
+                        ).then(selection => {
+                            if (selection === setupGuide) {
+                                vscode.env.openExternal(vscode.Uri.parse('https://github.com/unchase/antigravity-storage-manager/blob/master/SYNC_SETUP.md'));
+                            } else if (selection === retryAction) {
+                                this.signIn().catch(err => console.error('GoogleAuthProvider: Retry sign-in failed:', err));
+                            }
+                        });
 
-                            reject(new Error(`OAuth error: ${error}`));
-                            return;
+                        settleReject(new Error(`OAuth error: ${error}`));
+                        return;
+                    }
+
+                    if (!code) {
+                        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+                        res.end('Missing authorization code');
+                        return;
+                    }
+
+                    // Exchange code for tokens using the isolated temp client + PKCE verifier
+                    const { tokens } = await tempOAuth2Client.getToken({ code, codeVerifier });
+                    tempOAuth2Client.setCredentials(tokens);
+                    console.log('Scopes granted:', tokens.scope);
+
+                    // Verify exact drive.file scope
+                    if (tokens.scope) {
+                        const grantedScopes = tokens.scope.split(/\s+/).filter(Boolean);
+                        if (!grantedScopes.includes(DRIVE_FILE_SCOPE)) {
+                            throw new Error(lm.t('You must grant the "See, edit, create, and delete only the specific Google Drive files you use with this app" permission to use this extension.'));
                         }
+                    }
 
-                        if (code) {
-                            // Exchange code for tokens
-                            const { tokens } = await this.oauth2Client.getToken(code);
-                            this.oauth2Client.setCredentials(tokens);
-                            console.log('Scopes granted:', tokens.scope);
+                    // Fetch User Info with the temporary client before touching active session
+                    const oauth2 = google.oauth2({ version: 'v2', auth: tempOAuth2Client });
+                    const { data: userData } = await oauth2.userinfo.get();
+                    const userEmail = (userData.email || '').trim();
+                    if (!userEmail) {
+                        throw new Error('Failed to retrieve user info');
+                    }
+                    const userInfo = {
+                        email: userEmail,
+                        name: userData.name || userEmail
+                    };
 
-                            // Verify scopes
-                            if (tokens.scope && !tokens.scope.includes('drive.file')) {
-                                throw new Error(lm.t('You must grant the "See, edit, create, and delete only the specific Google Drive files you use with this app" permission to use this extension.'));
-                            }
+                    const accountId = this.generateAccountId(userInfo.email);
+                    const previousTokens = await this.loadTokensForAccount(accountId);
+                    const effectiveRefreshToken = tokens.refresh_token || previousTokens?.refreshToken || '';
+                    if (!effectiveRefreshToken) {
+                        throw new Error('Google did not return a refresh token. Please revoke app access in your Google Account and try signing in again.');
+                    }
 
-                            const tempTokens = {
-                                accessToken: tokens.access_token || '',
-                                refreshToken: tokens.refresh_token || '',
-                                expiryDate: tokens.expiry_date || 0
-                            };
+                    const newTokens: StoredTokens = {
+                        accessToken: tokens.access_token || '',
+                        refreshToken: effectiveRefreshToken,
+                        expiryDate: tokens.expiry_date || 0
+                    };
 
-                            // Temporarily set tokens to fetch user info
-                            this.tokens = tempTokens;
+                    const newAccount: StoredAccount = {
+                        id: accountId,
+                        email: userInfo.email,
+                        name: userInfo.name,
+                        lastActive: Date.now()
+                    };
 
-                            // Fetch User Info
-                            const userInfo = await this.getUserInfo();
-                            if (!userInfo) {
-                                throw new Error('Failed to retrieve user info');
-                            }
+                    // Persist account and tokens, then commit to live OAuth2 client
+                    const existingAccounts = await this.getAccounts();
+                    const existingIdx = existingAccounts.findIndex(a => a.id === accountId);
+                    if (existingIdx >= 0) {
+                        existingAccounts[existingIdx] = newAccount;
+                    } else {
+                        existingAccounts.push(newAccount);
+                    }
+                    await this.saveAccountList(existingAccounts);
+                    await this.saveTokensForAccount(accountId, newTokens);
+                    await this.setCurrentAccount(accountId);
 
-                            // Create Account Record
-                            const accountId = this.generateAccountId(userInfo.email);
-                            const newAccount: StoredAccount = {
-                                id: accountId,
-                                email: userInfo.email,
-                                name: userInfo.name,
-                                lastActive: Date.now()
-                            };
+                    this.tokens = newTokens;
+                    this.oauth2Client.setCredentials({
+                        access_token: newTokens.accessToken,
+                        refresh_token: newTokens.refreshToken,
+                        expiry_date: newTokens.expiryDate
+                    });
 
-                            // Check if account already exists
-                            const existingAccounts = await this.getAccounts();
-                            if (!existingAccounts.find(a => a.id === accountId)) {
-                                existingAccounts.push(newAccount);
-                                await this.saveAccountList(existingAccounts);
-                            }
+                    this._onDidChangeSessions.fire();
 
-                            // Save tokens specifically for this account
-                            await this.saveTokensForAccount(accountId, tempTokens);
-                            await this.setCurrentAccount(accountId);
-
-                            this._onDidChangeSessions.fire();
-
-                            res.writeHead(200, { 'Content-Type': 'text/html' });
-                            res.end(`
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                    res.end(`
                                 <!DOCTYPE html>
                                 <html>
                                 <head>
@@ -590,35 +777,32 @@ export class GoogleAuthProvider {
                                 </body>
                                 </html>
                             `);
-                            this.closeServer();
-                            resolve();
-                        }
-                    }
-                } catch (err) {
-                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    settleResolve();
+                } catch (err: any) {
+                    res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
                     res.end('Authentication failed');
-                    this.closeServer();
-                    reject(err);
+                    settleReject(err instanceof Error ? err : new Error(String(err)));
                 }
             });
 
             this.server.on('error', (err: NodeJS.ErrnoException) => {
                 if (err.code === 'EADDRINUSE') {
-                    reject(new Error(lm.t('Port {0} is already in use. Please close any other authentication attempts.', REDIRECT_PORT)));
+                    settleReject(new Error(lm.t('Port {0} is already in use. Please close any other authentication attempts.', REDIRECT_PORT)));
                 } else {
-                    reject(err);
+                    settleReject(err);
                 }
             });
 
-            this.server.listen(REDIRECT_PORT, () => {
-                // Generate the authorization URL
-                const authUrl = this.oauth2Client.generateAuthUrl({
+            this.server.listen(REDIRECT_PORT, '127.0.0.1', () => {
+                const authUrl = tempOAuth2Client.generateAuthUrl({
                     access_type: 'offline',
                     scope: SCOPES,
-                    prompt: isAdd ? 'consent select_account' : 'consent' // Force consent to get refresh token, select_account if adding
+                    prompt: isAdd ? 'consent select_account' : 'consent',
+                    state: expectedState,
+                    code_challenge: codeChallenge,
+                    code_challenge_method: 'S256' as any
                 });
 
-                // Open the browser for authentication
                 vscode.env.openExternal(vscode.Uri.parse(authUrl));
 
                 vscode.window.withProgress({
@@ -628,34 +812,30 @@ export class GoogleAuthProvider {
                 }, async (progress, token) => {
                     progress.report({ message: lm.t('Please authorize access in the browser window') });
 
-                    // Wait for server to close (which happens on success or timeout)
                     return new Promise<void>((resolveProgress) => {
                         const checkInterval = setInterval(() => {
-                            if (!this.server) {
+                            if (!this.server || settled) {
                                 clearInterval(checkInterval);
                                 resolveProgress();
                             }
-                        }, 1000);
+                        }, 500);
 
                         token.onCancellationRequested(() => {
-                            if (this.server) {
-                                this.closeServer();
-                                reject(new Error(lm.t('Authentication cancelled by user')));
-                            }
                             clearInterval(checkInterval);
+                            if (!settled) {
+                                settleReject(new Error(lm.t('Authentication cancelled by user')));
+                            }
                             resolveProgress();
                         });
                     });
                 });
             });
 
-            // Timeout after 5 minutes
-            setTimeout(() => {
-                if (this.server) {
-                    this.closeServer();
-                    reject(new Error(lm.t('Authentication timed out')));
+            this.authTimeout = setTimeout(() => {
+                if (!settled) {
+                    settleReject(new Error(lm.t('Authentication timed out')));
                 }
-            }, 5 * 60 * 1000);
+            }, AUTH_TIMEOUT_MS);
         });
     }
 
@@ -671,9 +851,7 @@ export class GoogleAuthProvider {
         if (this.currentAccountId) {
             await this.removeAccount(this.currentAccountId);
         } else {
-            // Fallback classic signout
-            this.tokens = null;
-            this.oauth2Client.revokeCredentials().catch(() => { });
+            await this.clearActiveSessionState(true);
             await this.context.secrets.delete(`${EXT_NAME}.google.tokens`);
             this._onDidChangeSessions.fire();
         }
@@ -687,7 +865,6 @@ export class GoogleAuthProvider {
         if (this.currentAccountId) {
             await this.saveTokensForAccount(this.currentAccountId, tokens);
         } else {
-            // Fallback for before-migration or edge cases
             await this.context.secrets.store(
                 `${EXT_NAME}.google.tokens`,
                 JSON.stringify(tokens)
@@ -696,12 +873,22 @@ export class GoogleAuthProvider {
     }
 
     /**
-     * Close the local callback server
+     * Close the local callback server and clear pending auth timeout
      */
     private closeServer(): void {
+        if (this.authTimeout) {
+            clearTimeout(this.authTimeout);
+            this.authTimeout = null;
+        }
         if (this.server) {
-            this.server.close();
+            const srv = this.server;
             this.server = null;
+            try {
+                srv.close();
+                if (typeof (srv as any).closeAllConnections === 'function') {
+                    (srv as any).closeAllConnections();
+                }
+            } catch { /* ignore */ }
         }
     }
 

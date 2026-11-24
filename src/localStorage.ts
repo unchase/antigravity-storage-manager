@@ -2,8 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
-import { SyncManifest, SyncedConversation, Machine, MachineState, FileHashInfo, LockFile, DriveFile } from './googleDrive';
-import { LocalizationManager } from './l10n/localizationManager';
+import { LockFile, DriveFile } from './googleDrive';
 
 /**
  * Interface for storage services used by SyncManager.
@@ -33,6 +32,74 @@ export interface StorageService {
     deleteFile(fileId: string): Promise<void>;
 }
 
+const SAFE_ID_REGEX = /^[a-zA-Z0-9._-]+$/;
+
+function isEnoent(err: unknown): boolean {
+    return Boolean(err && typeof err === 'object' && (err as NodeJS.ErrnoException).code === 'ENOENT');
+}
+
+function validateSafeId(id: string, label: string): string {
+    if (!id || id === '.' || id === '..' || !SAFE_ID_REGEX.test(id)) {
+        throw new Error(`Invalid ${label}: "${id}"`);
+    }
+    return id;
+}
+
+function resolveSafePath(rootDir: string, ...relativeSegments: string[]): string {
+    const resolvedRoot = path.resolve(rootDir);
+    const normalizedSegments: string[] = [];
+
+    for (const seg of relativeSegments) {
+        const parts = seg.replace(/\\/g, '/').split('/');
+        for (const p of parts) {
+            if (!p || p === '.') continue;
+            if (p === '..' || p.includes('\0') || /^[a-zA-Z]:/.test(p)) {
+                throw new Error(`Path traversal detected in segment: "${seg}"`);
+            }
+            normalizedSegments.push(p);
+        }
+    }
+
+    if (normalizedSegments.length === 0) {
+        throw new Error('Resolved relative path cannot be empty');
+    }
+
+    const resolvedTarget = path.resolve(resolvedRoot, ...normalizedSegments);
+    const rel = path.relative(resolvedRoot, resolvedTarget);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+        throw new Error(`Resolved path escapes root directory: "${resolvedTarget}"`);
+    }
+    return resolvedTarget;
+}
+
+async function atomicWriteFile(targetPath: string, data: Buffer | string): Promise<void> {
+    const dir = path.dirname(targetPath);
+    const base = path.basename(targetPath);
+    const tmpPath = path.join(dir, `.${base}.${process.pid}.${crypto.randomUUID()}.tmp`);
+
+    try {
+        await fs.promises.writeFile(tmpPath, data);
+        await fs.promises.rename(tmpPath, targetPath);
+    } catch (err) {
+        try {
+            await fs.promises.unlink(tmpPath);
+        } catch {
+            // Best effort cleanup
+        }
+        throw err;
+    }
+}
+
+async function computeFileMd5Stream(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('md5');
+        const stream = fs.createReadStream(filePath);
+        stream.on('data', chunk => hash.update(chunk));
+        stream.on('end', () => resolve(hash.digest('hex')));
+        stream.on('error', reject);
+    });
+}
+
 /**
  * Local filesystem storage service for sync.
  * Stores encrypted files in a local directory, mirroring the GoogleDriveService API.
@@ -42,148 +109,158 @@ export class LocalStorageService implements StorageService {
     private syncFolderPath: string | null = null;
     private machinesFolderPath: string | null = null;
     private conversationsFolderPath: string | null = null;
+    private activeLockToken: string | null = null;
 
     constructor(localPath: string) {
-        // Expand ~ to home directory
-        if (localPath.startsWith('~')) {
-            localPath = path.join(os.homedir(), localPath.slice(1));
+        // Expand ~ or ~/ or ~\ to home directory
+        if (localPath === '~') {
+            localPath = os.homedir();
+        } else if (localPath.startsWith('~/') || localPath.startsWith('~\\')) {
+            localPath = path.join(os.homedir(), localPath.slice(2));
         }
-        this.basePath = localPath;
+        this.basePath = path.resolve(localPath);
     }
 
     async ensureSyncFolders(): Promise<{ syncFolderId: string; machinesFolderId: string; conversationsFolderId: string }> {
-        if (this.syncFolderPath && this.machinesFolderPath && this.conversationsFolderPath) {
-            return {
-                syncFolderId: this.syncFolderPath,
-                machinesFolderId: this.machinesFolderPath,
-                conversationsFolderId: this.conversationsFolderPath
-            };
-        }
+        const syncFolder = path.join(this.basePath, 'AntigravitySync');
+        const machinesFolder = path.join(syncFolder, 'machines');
+        const conversationsFolder = path.join(syncFolder, 'conversations');
 
-        this.syncFolderPath = path.join(this.basePath, 'AntigravitySync');
-        this.machinesFolderPath = path.join(this.syncFolderPath, 'machines');
-        this.conversationsFolderPath = path.join(this.syncFolderPath, 'conversations');
+        await fs.promises.mkdir(syncFolder, { recursive: true });
+        await fs.promises.mkdir(machinesFolder, { recursive: true });
+        await fs.promises.mkdir(conversationsFolder, { recursive: true });
 
-        await fs.promises.mkdir(this.syncFolderPath, { recursive: true });
-        await fs.promises.mkdir(this.machinesFolderPath, { recursive: true });
-        await fs.promises.mkdir(this.conversationsFolderPath, { recursive: true });
+        this.syncFolderPath = syncFolder;
+        this.machinesFolderPath = machinesFolder;
+        this.conversationsFolderPath = conversationsFolder;
 
         return {
-            syncFolderId: this.syncFolderPath,
-            machinesFolderId: this.machinesFolderPath,
-            conversationsFolderId: this.conversationsFolderPath
+            syncFolderId: syncFolder,
+            machinesFolderId: machinesFolder,
+            conversationsFolderId: conversationsFolder
         };
     }
 
     async getManifest(): Promise<Buffer | null> {
-        await this.ensureSyncFolders();
-        const manifestPath = path.join(this.syncFolderPath!, 'manifest.json.enc');
+        const { syncFolderId } = await this.ensureSyncFolders();
+        const manifestPath = path.join(syncFolderId, 'manifest.json.enc');
         try {
             return await fs.promises.readFile(manifestPath);
-        } catch {
-            return null;
+        } catch (err) {
+            if (isEnoent(err)) return null;
+            throw err;
         }
     }
 
     async updateManifest(encryptedManifest: Buffer): Promise<void> {
-        await this.ensureSyncFolders();
-        const manifestPath = path.join(this.syncFolderPath!, 'manifest.json.enc');
-        await fs.promises.writeFile(manifestPath, encryptedManifest);
+        const { syncFolderId } = await this.ensureSyncFolders();
+        const manifestPath = path.join(syncFolderId, 'manifest.json.enc');
+        await atomicWriteFile(manifestPath, encryptedManifest);
     }
 
     async getMachineState(machineId: string): Promise<Buffer | null> {
-        await this.ensureSyncFolders();
-        const statePath = path.join(this.machinesFolderPath!, `${machineId}.json.enc`);
+        const safeId = validateSafeId(machineId, 'machineId');
+        const { machinesFolderId } = await this.ensureSyncFolders();
+        const statePath = resolveSafePath(machinesFolderId, `${safeId}.json.enc`);
         try {
             return await fs.promises.readFile(statePath);
-        } catch {
-            return null;
+        } catch (err) {
+            if (isEnoent(err)) return null;
+            throw err;
         }
     }
 
     async updateMachineState(machineId: string, encryptedState: Buffer): Promise<void> {
-        await this.ensureSyncFolders();
-        const statePath = path.join(this.machinesFolderPath!, `${machineId}.json.enc`);
-        await fs.promises.writeFile(statePath, encryptedState);
+        const safeId = validateSafeId(machineId, 'machineId');
+        const { machinesFolderId } = await this.ensureSyncFolders();
+        const statePath = resolveSafePath(machinesFolderId, `${safeId}.json.enc`);
+        await atomicWriteFile(statePath, encryptedState);
     }
 
     async listMachineStates(): Promise<DriveFile[]> {
-        await this.ensureSyncFolders();
+        const { machinesFolderId } = await this.ensureSyncFolders();
         try {
-            const entries = await fs.promises.readdir(this.machinesFolderPath!);
+            const entries = await fs.promises.readdir(machinesFolderId, { withFileTypes: true });
             const results: DriveFile[] = [];
             for (const entry of entries) {
-                if (entry.endsWith('.json.enc')) {
-                    const fullPath = path.join(this.machinesFolderPath!, entry);
-                    const stats = await fs.promises.stat(fullPath);
-                    results.push({
-                        id: fullPath,
-                        name: entry,
-                        mimeType: 'application/json',
-                        modifiedTime: stats.mtime.toISOString()
-                    });
+                if (entry.isSymbolicLink() || !entry.isFile() || !entry.name.endsWith('.json.enc')) {
+                    continue;
                 }
+                const fullPath = path.join(machinesFolderId, entry.name);
+                const stats = await fs.promises.lstat(fullPath);
+                results.push({
+                    id: fullPath,
+                    name: entry.name,
+                    mimeType: 'application/json',
+                    modifiedTime: stats.mtime.toISOString()
+                });
             }
             return results;
-        } catch {
-            return [];
+        } catch (err) {
+            if (isEnoent(err)) return [];
+            throw err;
         }
     }
 
     async uploadConversation(conversationId: string, encryptedData: Buffer): Promise<string> {
-        await this.ensureSyncFolders();
-        const filePath = path.join(this.conversationsFolderPath!, `${conversationId}.zip.enc`);
-        await fs.promises.writeFile(filePath, encryptedData);
+        const safeId = validateSafeId(conversationId, 'conversationId');
+        const { conversationsFolderId } = await this.ensureSyncFolders();
+        const filePath = resolveSafePath(conversationsFolderId, `${safeId}.zip.enc`);
+        await atomicWriteFile(filePath, encryptedData);
         return filePath;
     }
 
     async downloadConversation(conversationId: string): Promise<Buffer | null> {
-        await this.ensureSyncFolders();
-        const filePath = path.join(this.conversationsFolderPath!, `${conversationId}.zip.enc`);
+        const safeId = validateSafeId(conversationId, 'conversationId');
+        const { conversationsFolderId } = await this.ensureSyncFolders();
+        const filePath = resolveSafePath(conversationsFolderId, `${safeId}.zip.enc`);
         try {
             return await fs.promises.readFile(filePath);
-        } catch {
-            return null;
+        } catch (err) {
+            if (isEnoent(err)) return null;
+            throw err;
         }
     }
 
     async deleteConversation(conversationId: string): Promise<void> {
-        await this.ensureSyncFolders();
-        const filePath = path.join(this.conversationsFolderPath!, `${conversationId}.zip.enc`);
+        const safeId = validateSafeId(conversationId, 'conversationId');
+        const { conversationsFolderId } = await this.ensureSyncFolders();
+        const filePath = resolveSafePath(conversationsFolderId, `${safeId}.zip.enc`);
         try {
             await fs.promises.unlink(filePath);
-        } catch {
-            // Ignore if not exists
+        } catch (err) {
+            if (!isEnoent(err)) throw err;
         }
 
-        // Also delete per-file folder if exists
-        const folderPath = path.join(this.conversationsFolderPath!, conversationId);
+        const folderPath = resolveSafePath(conversationsFolderId, safeId);
         try {
             await fs.promises.rm(folderPath, { recursive: true, force: true });
-        } catch {
-            // Ignore
+        } catch (err) {
+            if (!isEnoent(err)) throw err;
         }
     }
 
     async listConversations(): Promise<DriveFile[]> {
-        await this.ensureSyncFolders();
+        const { conversationsFolderId } = await this.ensureSyncFolders();
         try {
-            const entries = await fs.promises.readdir(this.conversationsFolderPath!);
+            const entries = await fs.promises.readdir(conversationsFolderId, { withFileTypes: true });
             const results: DriveFile[] = [];
             for (const entry of entries) {
-                const fullPath = path.join(this.conversationsFolderPath!, entry);
-                const stats = await fs.promises.stat(fullPath);
+                if (entry.isSymbolicLink() || entry.name.endsWith('.tmp')) continue;
+                const fullPath = path.join(conversationsFolderId, entry.name);
+                const stats = await fs.promises.lstat(fullPath);
                 results.push({
                     id: fullPath,
-                    name: entry,
+                    name: entry.name,
                     mimeType: stats.isDirectory() ? 'application/vnd.google-apps.folder' : 'application/octet-stream',
                     modifiedTime: stats.mtime.toISOString(),
                     size: stats.isFile() ? stats.size.toString() : undefined
                 });
             }
             return results;
-        } catch {
-            return [];
+        } catch (err) {
+            if (isEnoent(err)) return [];
+            throw err;
         }
     }
 
@@ -193,24 +270,23 @@ export class LocalStorageService implements StorageService {
         encryptedData: Buffer,
         originalMd5?: string
     ): Promise<string> {
-        await this.ensureSyncFolders();
-        const convFolder = path.join(this.conversationsFolderPath!, conversationId);
+        const safeId = validateSafeId(conversationId, 'conversationId');
+        const { conversationsFolderId } = await this.ensureSyncFolders();
+        const convFolder = resolveSafePath(conversationsFolderId, safeId);
+        const filePath = resolveSafePath(convFolder, `${relativePath}.enc`);
 
-        // Create subdirectories from relativePath
-        const parts = relativePath.split('/');
-        const fileName = parts[parts.length - 1] + '.enc';
-        const subDir = parts.slice(0, -1).join(path.sep);
-        const targetDir = subDir ? path.join(convFolder, subDir) : convFolder;
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+        await atomicWriteFile(filePath, encryptedData);
 
-        await fs.promises.mkdir(targetDir, { recursive: true });
-
-        const filePath = path.join(targetDir, fileName);
-        await fs.promises.writeFile(filePath, encryptedData);
-
-        // Store originalMd5 as a sidecar file if provided
+        const metaPath = filePath + '.meta';
         if (originalMd5) {
-            const metaPath = filePath + '.meta';
-            await fs.promises.writeFile(metaPath, JSON.stringify({ originalMd5 }), 'utf8');
+            await atomicWriteFile(metaPath, JSON.stringify({ originalMd5 }));
+        } else {
+            try {
+                await fs.promises.unlink(metaPath);
+            } catch (err) {
+                if (!isEnoent(err)) throw err;
+            }
         }
 
         return filePath;
@@ -220,18 +296,16 @@ export class LocalStorageService implements StorageService {
         conversationId: string,
         relativePath: string
     ): Promise<Buffer | null> {
-        await this.ensureSyncFolders();
-        const convFolder = path.join(this.conversationsFolderPath!, conversationId);
-        const parts = relativePath.split('/');
-        const fileName = parts[parts.length - 1] + '.enc';
-        const subDir = parts.slice(0, -1).join(path.sep);
-        const targetDir = subDir ? path.join(convFolder, subDir) : convFolder;
-        const filePath = path.join(targetDir, fileName);
+        const safeId = validateSafeId(conversationId, 'conversationId');
+        const { conversationsFolderId } = await this.ensureSyncFolders();
+        const convFolder = resolveSafePath(conversationsFolderId, safeId);
+        const filePath = resolveSafePath(convFolder, `${relativePath}.enc`);
 
         try {
             return await fs.promises.readFile(filePath);
-        } catch {
-            return null;
+        } catch (err) {
+            if (isEnoent(err)) return null;
+            throw err;
         }
     }
 
@@ -239,31 +313,33 @@ export class LocalStorageService implements StorageService {
         conversationId: string,
         relativePath: string
     ): Promise<void> {
-        await this.ensureSyncFolders();
-        const convFolder = path.join(this.conversationsFolderPath!, conversationId);
-        const parts = relativePath.split('/');
-        const fileName = parts[parts.length - 1] + '.enc';
-        const subDir = parts.slice(0, -1).join(path.sep);
-        const targetDir = subDir ? path.join(convFolder, subDir) : convFolder;
-        const filePath = path.join(targetDir, fileName);
+        const safeId = validateSafeId(conversationId, 'conversationId');
+        const { conversationsFolderId } = await this.ensureSyncFolders();
+        const convFolder = resolveSafePath(conversationsFolderId, safeId);
+        const filePath = resolveSafePath(convFolder, `${relativePath}.enc`);
 
         try {
             await fs.promises.unlink(filePath);
-            // Also remove meta file
-            try { await fs.promises.unlink(filePath + '.meta'); } catch { /* ignore */ }
-        } catch {
-            // Ignore if not exists
+        } catch (err) {
+            if (!isEnoent(err)) throw err;
+        }
+        try {
+            await fs.promises.unlink(filePath + '.meta');
+        } catch (err) {
+            if (!isEnoent(err)) throw err;
         }
     }
 
     async listConversationFilesDetails(conversationId: string): Promise<Map<string, { id: string; md5: string; originalMd5?: string }>> {
-        await this.ensureSyncFolders();
-        const convFolder = path.join(this.conversationsFolderPath!, conversationId);
+        const safeId = validateSafeId(conversationId, 'conversationId');
+        const { conversationsFolderId } = await this.ensureSyncFolders();
+        const convFolder = resolveSafePath(conversationsFolderId, safeId);
 
         try {
             await fs.promises.access(convFolder);
-        } catch {
-            return new Map();
+        } catch (err) {
+            if (isEnoent(err)) return new Map();
+            throw err;
         }
 
         return this.listFilesRecursiveDetails(convFolder, '');
@@ -274,45 +350,40 @@ export class LocalStorageService implements StorageService {
         prefix: string
     ): Promise<Map<string, { id: string; md5: string; originalMd5?: string }>> {
         const files = new Map<string, { id: string; md5: string; originalMd5?: string }>();
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
 
-        try {
-            const entries = await fs.promises.readdir(dirPath);
-            for (const entry of entries) {
-                // Skip .meta sidecar files
-                if (entry.endsWith('.meta')) continue;
+        for (const entry of entries) {
+            if (entry.isSymbolicLink()) continue;
+            if (entry.name.endsWith('.meta') || entry.name.endsWith('.tmp')) continue;
 
-                const fullPath = path.join(dirPath, entry);
-                const entryPath = prefix ? `${prefix}/${entry}` : entry;
-                const stats = await fs.promises.stat(fullPath);
+            const fullPath = path.join(dirPath, entry.name);
+            const entryPath = prefix ? `${prefix}/${entry.name}` : entry.name;
 
-                if (stats.isDirectory()) {
-                    const subFiles = await this.listFilesRecursiveDetails(fullPath, entryPath);
-                    subFiles.forEach((val, key) => files.set(key, val));
-                } else {
-                    // Remove .enc extension for the relative path
-                    const relativePath = entryPath.replace(/\.enc$/, '');
-                    const content = await fs.promises.readFile(fullPath);
-                    const md5 = crypto.createHash('md5').update(content).digest('hex');
+            if (entry.isDirectory()) {
+                const subFiles = await this.listFilesRecursiveDetails(fullPath, entryPath);
+                subFiles.forEach((val, key) => files.set(key, val));
+            } else if (entry.isFile() && entry.name.endsWith('.enc')) {
+                const relativePath = entryPath.slice(0, -4); // strip '.enc'
+                const md5 = await computeFileMd5Stream(fullPath);
 
-                    let originalMd5: string | undefined;
-                    try {
-                        const metaPath = fullPath + '.meta';
-                        const metaContent = await fs.promises.readFile(metaPath, 'utf8');
-                        const meta = JSON.parse(metaContent);
+                let originalMd5: string | undefined;
+                try {
+                    const metaPath = fullPath + '.meta';
+                    const metaContent = await fs.promises.readFile(metaPath, 'utf8');
+                    const meta = JSON.parse(metaContent);
+                    if (typeof meta.originalMd5 === 'string') {
                         originalMd5 = meta.originalMd5;
-                    } catch {
-                        // No meta file
                     }
-
-                    files.set(relativePath, {
-                        id: fullPath,
-                        md5,
-                        originalMd5
-                    });
+                } catch {
+                    // No meta file or invalid JSON
                 }
+
+                files.set(relativePath, {
+                    id: fullPath,
+                    md5,
+                    originalMd5
+                });
             }
-        } catch {
-            // Directory doesn't exist or not readable
         }
 
         return files;
@@ -334,11 +405,9 @@ export class LocalStorageService implements StorageService {
     }
 
     async getStorageInfo(): Promise<{ used: number; limit: number } | null> {
-        // For local storage, calculate used space in sync folder
         try {
-            await this.ensureSyncFolders();
-            const used = await this.getDirSize(this.syncFolderPath!);
-            // No real limit for local filesystem, use 0 to indicate unlimited
+            const { syncFolderId } = await this.ensureSyncFolders();
+            const used = await this.getDirSize(syncFolderId);
             return { used, limit: 0 };
         } catch {
             return null;
@@ -350,11 +419,12 @@ export class LocalStorageService implements StorageService {
         try {
             const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
             for (const entry of entries) {
+                if (entry.isSymbolicLink()) continue;
                 const fullPath = path.join(dirPath, entry.name);
                 if (entry.isDirectory()) {
                     totalSize += await this.getDirSize(fullPath);
-                } else {
-                    const stats = await fs.promises.stat(fullPath);
+                } else if (entry.isFile()) {
+                    const stats = await fs.promises.lstat(fullPath);
                     totalSize += stats.size;
                 }
             }
@@ -365,54 +435,81 @@ export class LocalStorageService implements StorageService {
     }
 
     async getUserInfo(): Promise<{ email: string; name: string } | null> {
-        // Local storage doesn't have user info
         return {
             email: 'local',
             name: os.hostname()
         };
     }
 
-    async acquireLock(machineId: string, ttlMs: number = 60000): Promise<boolean> {
-        await this.ensureSyncFolders();
-        const lockPath = path.join(this.syncFolderPath!, 'sync.lock');
+    async acquireLock(machineId: string, ttlMs: number = 300000): Promise<boolean> {
+        const { syncFolderId } = await this.ensureSyncFolders();
+        const lockPath = path.join(syncFolderId, 'sync.lock');
+        const token = crypto.randomUUID();
+
+        const tryCreateExclusive = async (): Promise<boolean> => {
+            const lockData: LockFile & { token?: string } = {
+                machineId,
+                expiresAt: Date.now() + ttlMs,
+                token
+            };
+            const fh = await fs.promises.open(lockPath, 'wx');
+            try {
+                await fh.writeFile(JSON.stringify(lockData), 'utf8');
+            } finally {
+                await fh.close();
+            }
+            this.activeLockToken = token;
+            return true;
+        };
 
         try {
-            // Check existing lock
+            return await tryCreateExclusive();
+        } catch (err: any) {
+            if (err?.code !== 'EEXIST') {
+                return false;
+            }
+        }
+
+        // Lock exists — inspect whether it is expired, corrupted, or owned by us
+        try {
+            const content = await fs.promises.readFile(lockPath, 'utf8');
+            let lockData: (LockFile & { token?: string }) | null = null;
             try {
-                const content = await fs.promises.readFile(lockPath, 'utf8');
-                const lockData = JSON.parse(content) as LockFile;
-
-                if (Date.now() < lockData.expiresAt && lockData.machineId !== machineId) {
-                    return false; // Locked by another machine
-                }
-
-                // Expired or owned by us - remove it
-                await fs.promises.unlink(lockPath);
+                lockData = JSON.parse(content);
             } catch {
-                // No lock file or invalid - proceed
+                // Corrupted JSON — safe to remove and retry
+                lockData = null;
             }
 
-            // Create lock
-            const lockData: LockFile = {
-                machineId,
-                expiresAt: Date.now() + ttlMs
-            };
-            await fs.promises.writeFile(lockPath, JSON.stringify(lockData), 'utf8');
-            return true;
+            if (lockData && Date.now() < lockData.expiresAt && lockData.machineId !== machineId) {
+                return false;
+            }
+
+            await fs.promises.unlink(lockPath);
+        } catch (err) {
+            if (!isEnoent(err)) {
+                return false;
+            }
+        }
+
+        try {
+            return await tryCreateExclusive();
         } catch {
             return false;
         }
     }
 
     async releaseLock(machineId: string): Promise<void> {
-        await this.ensureSyncFolders();
-        const lockPath = path.join(this.syncFolderPath!, 'sync.lock');
+        const { syncFolderId } = await this.ensureSyncFolders();
+        const lockPath = path.join(syncFolderId, 'sync.lock');
 
         try {
             const content = await fs.promises.readFile(lockPath, 'utf8');
-            const lockData = JSON.parse(content) as LockFile;
-            if (lockData.machineId === machineId) {
+            const lockData = JSON.parse(content) as LockFile & { token?: string };
+            const tokenMatches = !this.activeLockToken || !lockData.token || lockData.token === this.activeLockToken;
+            if (lockData.machineId === machineId && tokenMatches) {
                 await fs.promises.unlink(lockPath);
+                this.activeLockToken = null;
             }
         } catch {
             // No lock or already released
@@ -420,16 +517,38 @@ export class LocalStorageService implements StorageService {
     }
 
     async deleteFile(fileId: string): Promise<void> {
-        // fileId is the full path for local storage
+        const { syncFolderId, machinesFolderId, conversationsFolderId } = await this.ensureSyncFolders();
+        const resolvedRoot = path.resolve(syncFolderId);
+        const resolvedTarget = path.resolve(fileId);
+        const rel = path.relative(resolvedRoot, resolvedTarget);
+
+        if (
+            !rel ||
+            rel.startsWith('..') ||
+            path.isAbsolute(rel) ||
+            resolvedTarget === resolvedRoot ||
+            resolvedTarget === path.resolve(machinesFolderId) ||
+            resolvedTarget === path.resolve(conversationsFolderId)
+        ) {
+            throw new Error(`Refusing to delete path outside AntigravitySync: "${fileId}"`);
+        }
+
         try {
-            const stats = await fs.promises.stat(fileId);
-            if (stats.isDirectory()) {
-                await fs.promises.rm(fileId, { recursive: true, force: true });
-            } else {
-                await fs.promises.unlink(fileId);
+            const stats = await fs.promises.lstat(resolvedTarget);
+            if (stats.isSymbolicLink()) {
+                await fs.promises.unlink(resolvedTarget);
+                return;
             }
-        } catch {
-            // Ignore if not exists
+            if (stats.isDirectory()) {
+                await fs.promises.rm(resolvedTarget, { recursive: true, force: true });
+            } else {
+                await fs.promises.unlink(resolvedTarget);
+                if (resolvedTarget.endsWith('.enc')) {
+                    try { await fs.promises.unlink(resolvedTarget + '.meta'); } catch { /* ignore */ }
+                }
+            }
+        } catch (err) {
+            if (!isEnoent(err)) throw err;
         }
     }
 }

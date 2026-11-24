@@ -10,6 +10,23 @@ export interface StoragePaths {
     convDir: string;
 }
 
+function hasStorageData(rootDir: string): boolean {
+    if (!fs.existsSync(rootDir)) {
+        return false;
+    }
+    for (const sub of ['brain', 'conversations']) {
+        const subPath = path.join(rootDir, sub);
+        try {
+            if (fs.existsSync(subPath) && fs.readdirSync(subPath).length > 0) {
+                return true;
+            }
+        } catch {
+            // ignore unreadable directory
+        }
+    }
+    return false;
+}
+
 /**
  * Get resolved storage paths for Antigravity data.
  * Checks user setting first, then detects Antigravity IDE (~/.gemini/antigravity-ide),
@@ -36,12 +53,17 @@ export function getStoragePaths(): StoragePaths {
         appName.toLowerCase().includes('antigravity') ||
         appRoot.toLowerCase().includes('antigravity');
 
+    const ideHasData = hasStorageData(ideDir);
+    const standardHasData = hasStorageData(standardDir);
+
     let chosenRoot = standardDir;
     if (isAntigravityIDE) {
-        if (fs.existsSync(ideDir) || !fs.existsSync(standardDir)) {
+        if (ideHasData || (!standardHasData && (fs.existsSync(ideDir) || !fs.existsSync(standardDir)))) {
             chosenRoot = ideDir;
         }
-    } else if (fs.existsSync(ideDir)) {
+    } else if (ideHasData && !standardHasData) {
+        chosenRoot = ideDir;
+    } else if (fs.existsSync(ideDir) && !fs.existsSync(standardDir)) {
         chosenRoot = ideDir;
     }
 
@@ -175,40 +197,54 @@ export async function getConversationsAsync(brainDir: string): Promise<Conversat
                     return null;
                 };
 
-                // Priority 1: .db/.pb file (via heuristic extraction and for timestamps)
+                // Determine timestamps from .db/.db-wal/.pb files (take max mtime across .db and .db-wal)
                 let modDate = dirStats ? dirStats.mtime : new Date();
                 let birthDate = dirStats ? dirStats.birthtime : new Date();
-                try {
-                    const { PbParser } = await import('./quota/pbParser');
-                    const conversationsDir = path.join(brainDir, '..', 'conversations');
-                    const dbPath = path.join(conversationsDir, `${id}.db`);
-                    const pbPath = path.join(conversationsDir, `${id}.pb`);
-                    const activePath = fs.existsSync(dbPath) ? dbPath : (fs.existsSync(pbPath) ? pbPath : null);
+                const dbPath = path.join(conversationsDir, `${id}.db`);
+                const walPath = path.join(conversationsDir, `${id}.db-wal`);
+                const pbPath = path.join(conversationsDir, `${id}.pb`);
+                const activePath = fs.existsSync(dbPath) ? dbPath : (fs.existsSync(pbPath) ? pbPath : null);
 
-                    if (activePath) {
-                        const fileStats = fs.statSync(activePath);
+                if (activePath) {
+                    try {
+                        const fileStats = await fs.promises.stat(activePath);
                         modDate = fileStats.mtime;
                         birthDate = fileStats.birthtime;
+                    } catch {
+                        // ignore stat errors
+                    }
+                }
+                if (fs.existsSync(walPath)) {
+                    try {
+                        const walStats = await fs.promises.stat(walPath);
+                        if (walStats.mtime.getTime() > modDate.getTime()) {
+                            modDate = walStats.mtime;
+                        }
+                    } catch {
+                        // ignore stat errors
+                    }
+                }
 
+                // Priority 1: Lightweight markdown title sources (task.md > implementation_plan.md > walkthrough.md)
+                const titleSourceFiles = ['task.md', 'implementation_plan.md', 'walkthrough.md'];
+                for (const file of titleSourceFiles) {
+                    const foundTitle = await parseTitle(file);
+                    if (foundTitle && !foundTitle.startsWith('SQLite format') && foundTitle.trim().length > 0) {
+                        label = foundTitle.trim();
+                        break;
+                    }
+                }
+
+                // Priority 2: .db/.pb file bounded-prefix heuristic extraction (only if label is still UUID)
+                if (label === id && activePath) {
+                    try {
+                        const { PbParser } = await import('./quota/pbParser');
                         const pbTitle = await PbParser.extractTitle(activePath);
                         if (pbTitle && !pbTitle.startsWith('SQLite format') && pbTitle.trim().length > 0) {
                             label = pbTitle.trim();
                         }
-                    }
-                } catch {
-                    // Ignore errors from pb parsing or missing files
-                }
-
-                // Priority 2: task.md > implementation_plan.md > walkthrough.md (only if label is still UUID)
-                if (label === id) {
-                    const titleSourceFiles = ['task.md', 'implementation_plan.md', 'walkthrough.md'];
-
-                    for (const file of titleSourceFiles) {
-                        const foundTitle = await parseTitle(file);
-                        if (foundTitle && !foundTitle.startsWith('SQLite format') && foundTitle.trim().length > 0) {
-                            label = foundTitle.trim();
-                            break;
-                        }
+                    } catch {
+                        // Ignore errors from pb parsing or missing files
                     }
                 }
 
