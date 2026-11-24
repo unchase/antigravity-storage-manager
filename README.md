@@ -96,8 +96,8 @@ Keep your conversations synchronized across multiple machines using your Google 
     - **Connected Devices**: Visualize sessions grouped by machine (e.g., "Home PC").
     - **Status Indicators**: See which sessions are **Online** (Green) or **Offline** (Red) based on recent activity.
     - **Quota Tracking**: Monitor quota usage (Credits/Limits) for each active session.
-    - **Manage Conversations**: Rename or Delete conversations directly from the list.
-    - **Selective Sync**: Manually **Upload** (Local Only) or **Download** (Remote Only) individual conversations.
+    - **Manage Conversations**: Rename, **Archive / Unarchive** (exclude from sync without moving files), or Delete conversations directly from the list, with **`Active`**, **`Archived`**, and **`All`** filter tabs.
+    - **Selective Sync**: Manually **Upload** (Local Only) or **Download** (Remote Only) individual active conversations.
     - **Visual Analytics**: Interactive pie charts showing sync coverage (Local vs Synced, Remote vs Synced).
     - **Machine Management**:
       - **Delete (🗑️)**: Remove stale machines and their sessions.

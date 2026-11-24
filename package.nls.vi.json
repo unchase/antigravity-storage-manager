@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "Luôn ghi đè phiên bản cục bộ bằng phiên bản từ xa",
     "antigravity.config.conflictResolution.keepNewer": "Giữ phiên bản được sửa đổi gần đây hơn (Last-Write-Wins)",
     "antigravity.config.conflictResolution.keepLarger": "Giữ phiên bản có kích thước tệp lớn hơn",
-    "antigravity.config.storagePath": "Đường dẫn tùy chỉnh đến thư mục lưu trữ dữ liệu Antigravity (chứa các thư mục brain và conversations). Để trống để tự động phát hiện."
+    "antigravity.config.storagePath": "Đường dẫn tùy chỉnh đến thư mục lưu trữ dữ liệu Antigravity (chứa các thư mục brain và conversations). Để trống để tự động phát hiện.",
+    "antigravity.command.archiveConversations": "Lưu trữ cuộc trò chuyện",
+    "antigravity.command.unarchiveConversations": "Bỏ lưu trữ cuộc trò chuyện"
 }

@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "Vždy přepsat místní verzi vzdálenou verzí",
     "antigravity.config.conflictResolution.keepNewer": "Ponechat verzi upravenou později (Last-Write-Wins)",
     "antigravity.config.conflictResolution.keepLarger": "Ponechat verzi s větší velikostí souboru",
-    "antigravity.config.storagePath": "Vlastní cesta k adresáři úložiště dat Antigravity (obsahujícímu složky brain a conversations). Ponechte prázdné pro automatickou detekci."
+    "antigravity.config.storagePath": "Vlastní cesta k adresáři úložiště dat Antigravity (obsahujícímu složky brain a conversations). Ponechte prázdné pro automatickou detekci.",
+    "antigravity.command.archiveConversations": "Archivovat konverzace",
+    "antigravity.command.unarchiveConversations": "Obnovit konverzace z archivu"
 }

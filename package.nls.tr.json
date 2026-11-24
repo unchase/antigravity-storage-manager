@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "Yerel sürümü her zaman uzak sürümle üzerine yaz",
     "antigravity.config.conflictResolution.keepNewer": "En son değiştirilen sürümü sakla (Last-Write-Wins)",
     "antigravity.config.conflictResolution.keepLarger": "Dosya boyutu daha büyük olan sürümü sakla",
-    "antigravity.config.storagePath": "Antigravity veri depolama dizini için özel yol (brain ve conversations klasörlerini içeren). Otomatik algılama için boş bırakın."
+    "antigravity.config.storagePath": "Antigravity veri depolama dizini için özel yol (brain ve conversations klasörlerini içeren). Otomatik algılama için boş bırakın.",
+    "antigravity.command.archiveConversations": "Konuşmaları Arşivle",
+    "antigravity.command.unarchiveConversations": "Konuşmaları Arşivden Çıkar"
 }

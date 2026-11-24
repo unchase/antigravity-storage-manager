@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "常にローカルバージョンをリモートバージョンで上書きする",
     "antigravity.config.conflictResolution.keepNewer": "より最近変更されたバージョンを保持 (Last-Write-Wins)",
     "antigravity.config.conflictResolution.keepLarger": "ファイルサイズが大きいバージョンを保持",
-    "antigravity.config.storagePath": "Antigravity データストレージディレクトリ (brain および conversations フォルダを含む) へのカスタムパス。自動検出の場合は空のままにします。"
+    "antigravity.config.storagePath": "Antigravity データストレージディレクトリ (brain および conversations フォルダを含む) へのカスタムパス。自動検出の場合は空のままにします。",
+    "antigravity.command.archiveConversations": "会話をアーカイブ",
+    "antigravity.command.unarchiveConversations": "会話のアーカイブを解除"
 }

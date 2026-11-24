@@ -242,6 +242,16 @@ export async function activate(context: vscode.ExtensionContext) {
                     requiresAuth: true
                 },
                 {
+                    label: `$(archive) ${lm.t('Archive Conversations')}`,
+                    description: lm.t('Archive conversations to exclude them from sync'),
+                    command: `${EXT_NAME}.archiveConversations`
+                },
+                {
+                    label: `$(inbox) ${lm.t('Unarchive Conversations')}`,
+                    description: lm.t('Restore archived conversations to sync'),
+                    command: `${EXT_NAME}.unarchiveConversations`
+                },
+                {
                     label: `$(sign-out) ${lm.t('Disconnect Google Drive Sync')}`,
                     description: lm.t('Disconnect from Google Drive'),
                     command: `${EXT_NAME}.syncDisconnect`,
@@ -485,6 +495,12 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.showSyncStats`, async () => {
             await syncManager.showStatistics();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.archiveConversations`, async () => {
+            await syncManager.archiveConversationsInteractive();
+        }),
+        vscode.commands.registerCommand(`${EXT_NAME}.unarchiveConversations`, async () => {
+            await syncManager.unarchiveConversationsInteractive();
         }),
         vscode.commands.registerCommand(`${EXT_NAME}.runDiagnostics`, async () => {
             const lm = LocalizationManager.getInstance();

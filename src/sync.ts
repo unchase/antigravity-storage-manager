@@ -71,12 +71,15 @@ export interface SyncConfig {
     machineId: string;
     machineName: string;
     selectedConversations: string[] | 'all';
+    archivedConversations?: string[];
     autoSync: boolean;
     syncInterval: number; // ms
     lastSync: string | null;
     showStatusBar: boolean;
     silent: boolean;
 }
+
+const ARCHIVED_CONVERSATIONS_KEY = 'antigravity-storage-manager.archivedConversations';
 
 
 
@@ -166,7 +169,8 @@ export class SyncManager implements vscode.Disposable {
                 if (
                     e.affectsConfiguration(`${EXT_NAME}.sync.autoSync`) ||
                     e.affectsConfiguration(`${EXT_NAME}.sync.syncInterval`) ||
-                    e.affectsConfiguration(`${EXT_NAME}.sync.showStatusBar`)
+                    e.affectsConfiguration(`${EXT_NAME}.sync.showStatusBar`) ||
+                    e.affectsConfiguration(`${EXT_NAME}.sync.machineName`)
                 ) {
                     this.applyWorkspaceSyncSettings();
                 }
@@ -215,16 +219,26 @@ export class SyncManager implements vscode.Disposable {
         this.updateStatusBar('idle');
     }
 
+    private getEffectiveMachineName(): string {
+        const configName = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.machineName')?.trim();
+        return (configName || this.config?.machineName || os.hostname()).trim();
+    }
+
     private applyWorkspaceSyncSettings(): void {
         const wsConfig = vscode.workspace.getConfiguration(EXT_NAME);
         const autoSync = wsConfig.get<boolean>('sync.autoSync');
         const syncInterval = wsConfig.get<number>('sync.syncInterval');
         const showStatusBar = wsConfig.get<boolean>('sync.showStatusBar');
+        const machineNameSetting = wsConfig.get<string>('sync.machineName')?.trim();
 
         if (this.config) {
             if (typeof autoSync === 'boolean') this.config.autoSync = autoSync;
             if (typeof syncInterval === 'number' && syncInterval > 0) this.config.syncInterval = syncInterval;
             if (typeof showStatusBar === 'boolean') this.config.showStatusBar = showStatusBar;
+            if (machineNameSetting && this.config.machineName !== machineNameSetting) {
+                this.config.machineName = machineNameSetting;
+                void this.saveConfig();
+            }
         }
 
         if (this.config?.enabled && this.config?.autoSync && this.isReady() && this.isSyncEnabled) {
@@ -274,9 +288,14 @@ export class SyncManager implements vscode.Disposable {
             const autoSync = wsConfig.get<boolean>('sync.autoSync');
             const syncInterval = wsConfig.get<number>('sync.syncInterval');
             const showStatusBar = wsConfig.get<boolean>('sync.showStatusBar');
+            const machineNameSetting = wsConfig.get<string>('sync.machineName')?.trim();
             if (typeof autoSync === 'boolean') this.config.autoSync = autoSync;
             if (typeof syncInterval === 'number' && syncInterval > 0) this.config.syncInterval = syncInterval;
             if (typeof showStatusBar === 'boolean') this.config.showStatusBar = showStatusBar;
+            if (machineNameSetting && this.config.machineName !== machineNameSetting) {
+                this.config.machineName = machineNameSetting;
+                await this.saveConfig();
+            }
         }
 
         // Load master password from secrets
@@ -491,15 +510,19 @@ export class SyncManager implements vscode.Disposable {
                 this.reportProgress(progress, lm.t('Scanning local conversations...'));
                 const localConversations = await this.getLocalConversationsAsync();
 
+                // Collect archived conversation IDs (excluded from all sync operations)
+                const archivedIds = this.getArchivedConversationIds(remoteManifest);
+
                 // Determine which conversations to sync (always copy array, never mutate config!)
-                const toSync = this.config!.selectedConversations === 'all'
+                const rawToSync = this.config!.selectedConversations === 'all'
                     ? localConversations.map(c => c.id)
                     : [...this.config!.selectedConversations];
+                const toSync = rawToSync.filter(id => !archivedIds.has(id));
 
-                // Include new remote conversations only in 'all' mode (respect selective sync)
+                // Include new remote conversations only in 'all' mode (respect selective sync & archive)
                 if (this.config!.selectedConversations === 'all') {
                     for (const remote of remoteManifest.conversations) {
-                        if (!toSync.includes(remote.id)) {
+                        if (!archivedIds.has(remote.id) && !toSync.includes(remote.id)) {
                             const local = localConversations.find(c => c.id === remote.id);
                             if (!local) {
                                 toSync.push(remote.id);
@@ -537,10 +560,41 @@ export class SyncManager implements vscode.Disposable {
 
                 if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
-                // Exclude conflicted and failed conversations from overwriting lastSyncedHash
+                // Exclude conflicted, failed, and archived conversations from overwriting lastSyncedHash
                 const excludedIds = new Set<string>(failedConvIds);
                 for (const c of result.conflicts) {
                     excludedIds.add(c.conversationId);
+                }
+                for (const archivedId of archivedIds) {
+                    excludedIds.add(archivedId);
+                }
+
+                const effectiveMachineName = this.getEffectiveMachineName();
+                if (this.config!.machineName !== effectiveMachineName) {
+                    this.config!.machineName = effectiveMachineName;
+                }
+
+                // Ensure remote manifest carries the current effective machine name
+                const manifestMachine = remoteManifest.machines?.find(m => m.id === this.config!.machineId);
+                if (!manifestMachine || manifestMachine.name !== effectiveMachineName) {
+                    await this.enqueueManifestUpdate((manifest) => {
+                        if (!manifest.machines) manifest.machines = [];
+                        const nowIso = new Date().toISOString();
+                        const idx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
+                        const existing = idx >= 0 ? manifest.machines[idx] : null;
+                        const updated: Machine = {
+                            id: this.config!.machineId,
+                            name: effectiveMachineName,
+                            lastSync: nowIso,
+                            createdAt: existing?.createdAt || nowIso
+                        };
+                        if (idx >= 0) {
+                            manifest.machines[idx] = updated;
+                        } else {
+                            manifest.machines.push(updated);
+                        }
+                        return true;
+                    });
                 }
 
                 this.config!.lastSync = new Date().toISOString();
@@ -1784,9 +1838,14 @@ export class SyncManager implements vscode.Disposable {
         }
 
         const local = await this.getLocalConversationsAsync();
+        const archivedIds = this.getArchivedConversationIds(manifest);
 
         // 1. Local conversations
         for (const l of local) {
+            if (archivedIds.has(l.id)) {
+                statuses.set(l.id, { status: lm.t('Archived'), icon: '📦' });
+                continue;
+            }
             const remote = manifest?.conversations.find(c => c.id === l.id);
             if (!remote) {
                 statuses.set(l.id, { status: lm.t('Local Only'), icon: '🏠' });
@@ -1804,7 +1863,11 @@ export class SyncManager implements vscode.Disposable {
         if (manifest) {
             for (const r of manifest.conversations) {
                 if (!local.some(l => l.id === r.id)) {
-                    statuses.set(r.id, { status: lm.t('Remote Only'), icon: '☁️' });
+                    if (archivedIds.has(r.id)) {
+                        statuses.set(r.id, { status: lm.t('Archived'), icon: '📦' });
+                    } else {
+                        statuses.set(r.id, { status: lm.t('Remote Only'), icon: '☁️' });
+                    }
                 }
             }
         }
@@ -1894,7 +1957,7 @@ export class SyncManager implements vscode.Disposable {
                     size: size,
                     createdAt: existing?.createdAt || now,
                     createdBy: existing?.createdBy || this.config!.machineId,
-                    createdByName: existing?.createdByName || this.config!.machineName
+                    createdByName: existing?.createdByName || this.getEffectiveMachineName()
                 };
 
                 if (existingIdx >= 0) {
@@ -1908,12 +1971,13 @@ export class SyncManager implements vscode.Disposable {
                     delete manifest.deletedConversations[conversationId];
                 }
 
+                const currentMachineName = this.getEffectiveMachineName();
                 if (!manifest.machines) manifest.machines = [];
                 const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
                 const existingMachine = machineIdx >= 0 ? manifest.machines[machineIdx] : null;
                 const machineInfo: Machine = {
                     id: this.config!.machineId,
-                    name: this.config!.machineName,
+                    name: currentMachineName,
                     lastSync: now,
                     createdAt: existingMachine?.createdAt || now
                 };
@@ -1966,7 +2030,7 @@ export class SyncManager implements vscode.Disposable {
                     version: 2,
                     createdAt: existing?.createdAt || now,
                     createdBy: existing?.createdBy || this.config!.machineId,
-                    createdByName: existing?.createdByName || this.config!.machineName
+                    createdByName: existing?.createdByName || this.getEffectiveMachineName()
                 };
 
                 if (existingIdx >= 0) {
@@ -1980,12 +2044,13 @@ export class SyncManager implements vscode.Disposable {
                     delete manifest.deletedConversations[conversationId];
                 }
 
+                const currentMachineName = this.getEffectiveMachineName();
                 if (!manifest.machines) manifest.machines = [];
                 const machineIdx = manifest.machines.findIndex(m => m.id === this.config!.machineId);
                 const existingMachine = machineIdx >= 0 ? manifest.machines[machineIdx] : null;
                 const machineInfo: Machine = {
                     id: this.config!.machineId,
-                    name: this.config!.machineName,
+                    name: currentMachineName,
                     lastSync: now,
                     createdAt: existingMachine?.createdAt || now
                 };
@@ -2016,8 +2081,10 @@ export class SyncManager implements vscode.Disposable {
     ): Promise<void> {
         if (!this.config || !this.masterPassword) return;
 
-        const configName = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.machineName');
-        const machineName = (configName || this.config.machineName || os.hostname()).trim();
+        const machineName = this.getEffectiveMachineName();
+        if (this.config.machineName !== machineName) {
+            this.config.machineName = machineName;
+        }
 
         const quota = await this.driveService.getStorageInfo();
         const accountQuota = this.quotaManager?.getLatestSnapshot();
@@ -2953,6 +3020,11 @@ export class SyncManager implements vscode.Disposable {
     ): Promise<void> {
         if (token?.isCancellationRequested) throw new vscode.CancellationError();
 
+        // Never sync archived conversations (even during force sync)
+        if (this.isConversationArchived(convId, remoteManifest)) {
+            return;
+        }
+
         const lm = LocalizationManager.getInstance();
         const local = localConversations.find(c => c.id === convId);
         const remote = remoteManifest.conversations.find(c => c.id === convId);
@@ -3453,6 +3525,9 @@ export class SyncManager implements vscode.Disposable {
             await this.driveService.deleteConversation(id);
             await this.enqueueManifestUpdate((manifest) => {
                 manifest.conversations = manifest.conversations.filter(c => c.id !== id);
+                if (manifest.archivedConversations?.[id]) {
+                    delete manifest.archivedConversations[id];
+                }
                 if (!manifest.deletedConversations) {
                     manifest.deletedConversations = {};
                 }
@@ -3463,9 +3538,276 @@ export class SyncManager implements vscode.Disposable {
                 return true;
             });
 
+            // Also remove from local archived list if present
+            const localArchived = this.getLocalArchivedConversationIds();
+            if (localArchived.delete(id)) {
+                await this.saveLocalArchivedConversationIds(localArchived);
+            }
+
             vscode.window.showInformationMessage(lm.t('Conversation deleted.'));
         } catch (e: any) {
             vscode.window.showErrorMessage(lm.t('Error deleting: {0}', e.message));
+        }
+    }
+
+    /**
+     * Get locally stored archived conversation IDs (used when offline or before sync is configured).
+     */
+    private getLocalArchivedConversationIds(): Set<string> {
+        const result = new Set<string>();
+        const fromConfig = this.config?.archivedConversations;
+        if (Array.isArray(fromConfig)) {
+            for (const id of fromConfig) {
+                if (typeof id === 'string' && id.trim()) result.add(id.trim());
+            }
+        }
+        const fromGlobal = this.context.globalState.get<string[]>(ARCHIVED_CONVERSATIONS_KEY, []);
+        if (Array.isArray(fromGlobal)) {
+            for (const id of fromGlobal) {
+                if (typeof id === 'string' && id.trim()) result.add(id.trim());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Persist local archived conversation IDs to both config (if initialized) and globalState.
+     */
+    private async saveLocalArchivedConversationIds(ids: Set<string>): Promise<void> {
+        const list = Array.from(ids).sort();
+        await this.context.globalState.update(ARCHIVED_CONVERSATIONS_KEY, list);
+        if (this.config) {
+            this.config.archivedConversations = list;
+            await this.saveConfig();
+        }
+    }
+
+    /**
+     * Get the effective set of archived conversation IDs (union of remote manifest and local fallback).
+     */
+    public getArchivedConversationIds(manifest?: SyncManifest | null): Set<string> {
+        const archived = this.getLocalArchivedConversationIds();
+        const effectiveManifest = manifest !== undefined ? manifest : this.cachedManifest;
+        if (effectiveManifest?.archivedConversations) {
+            for (const id of Object.keys(effectiveManifest.archivedConversations)) {
+                if (effectiveManifest.archivedConversations[id]) {
+                    archived.add(id);
+                }
+            }
+        }
+        return archived;
+    }
+
+    /**
+     * Check whether a conversation is archived (and therefore excluded from sync).
+     */
+    public isConversationArchived(conversationId: string, manifest?: SyncManifest | null): boolean {
+        return this.getArchivedConversationIds(manifest).has(conversationId);
+    }
+
+    /**
+     * Archive one or more conversations so they no longer participate in synchronization.
+     * Files stay untouched locally and remotely; only the archive state is persisted.
+     */
+    public async archiveConversations(ids: string[]): Promise<number> {
+        const uniqueIds = Array.from(new Set(ids.map(id => (id || '').trim()).filter(Boolean)));
+        if (uniqueIds.length === 0) return 0;
+
+        let persistedToManifest = false;
+        if (this.isReady()) {
+            try {
+                const now = new Date().toISOString();
+                const archivedBy = this.config?.machineId || 'unknown';
+                await this.enqueueManifestUpdate((manifest) => {
+                    if (!manifest.archivedConversations) {
+                        manifest.archivedConversations = {};
+                    }
+                    let changed = false;
+                    for (const id of uniqueIds) {
+                        if (!manifest.archivedConversations[id]) {
+                            manifest.archivedConversations[id] = { archivedAt: now, archivedBy };
+                            changed = true;
+                        }
+                    }
+                    return changed;
+                });
+                persistedToManifest = true;
+            } catch (e) {
+                console.warn('[SyncManager] Failed to persist archived state to remote manifest, falling back to local storage:', e);
+            }
+        }
+
+        const localArchived = this.getLocalArchivedConversationIds();
+        if (persistedToManifest) {
+            // Keep manifest as the single source of truth so another device can unarchive cleanly
+            let localChanged = false;
+            for (const id of uniqueIds) {
+                if (localArchived.delete(id)) localChanged = true;
+            }
+            if (localChanged) {
+                await this.saveLocalArchivedConversationIds(localArchived);
+            }
+        } else {
+            for (const id of uniqueIds) {
+                localArchived.add(id);
+            }
+            await this.saveLocalArchivedConversationIds(localArchived);
+        }
+
+        return uniqueIds.length;
+    }
+
+    /**
+     * Unarchive one or more conversations so they participate in synchronization again.
+     */
+    public async unarchiveConversations(ids: string[]): Promise<number> {
+        const uniqueIds = Array.from(new Set(ids.map(id => (id || '').trim()).filter(Boolean)));
+        if (uniqueIds.length === 0) return 0;
+
+        const localArchived = this.getLocalArchivedConversationIds();
+        let localChanged = false;
+        for (const id of uniqueIds) {
+            if (localArchived.delete(id)) localChanged = true;
+        }
+        if (localChanged) {
+            await this.saveLocalArchivedConversationIds(localArchived);
+        }
+
+        if (this.isReady()) {
+            await this.enqueueManifestUpdate((manifest) => {
+                if (!manifest.archivedConversations) return false;
+                let changed = false;
+                for (const id of uniqueIds) {
+                    if (manifest.archivedConversations[id]) {
+                        delete manifest.archivedConversations[id];
+                        changed = true;
+                    }
+                }
+                return changed;
+            });
+        }
+
+        return uniqueIds.length;
+    }
+
+    public async archiveConversation(id: string): Promise<void> {
+        await this.archiveConversations([id]);
+    }
+
+    public async unarchiveConversation(id: string): Promise<void> {
+        await this.unarchiveConversations([id]);
+    }
+
+    /**
+     * Interactive multi-select command to archive active conversations.
+     */
+    public async archiveConversationsInteractive(): Promise<void> {
+        const lm = LocalizationManager.getInstance();
+        const [localConversations, remoteManifest] = await Promise.all([
+            this.getLocalConversationsAsync({ skipHashes: true }),
+            this.isReady() ? this.getDecryptedManifest().catch(() => null) : Promise.resolve(null)
+        ]);
+        const archivedIds = this.getArchivedConversationIds(remoteManifest);
+
+        const allMap = new Map<string, { id: string; title: string; lastModified: string; source: string }>();
+        for (const c of localConversations) {
+            if (archivedIds.has(c.id)) continue;
+            allMap.set(c.id, { id: c.id, title: c.title || c.id, lastModified: c.lastModified, source: lm.t('Local Only') });
+        }
+        if (remoteManifest?.conversations) {
+            for (const r of remoteManifest.conversations) {
+                if (archivedIds.has(r.id)) continue;
+                const existing = allMap.get(r.id);
+                const remoteTitle = r.title && r.title !== r.id ? r.title : undefined;
+                if (existing) {
+                    existing.title = remoteTitle || existing.title;
+                    existing.source = lm.t('Synced');
+                } else {
+                    allMap.set(r.id, { id: r.id, title: r.title || r.id, lastModified: r.lastModified, source: lm.t('Cloud Only') });
+                }
+            }
+        }
+
+        const items = Array.from(allMap.values())
+            .sort((a, b) => new Date(b.lastModified || 0).getTime() - new Date(a.lastModified || 0).getTime())
+            .map(c => ({
+                label: c.title,
+                description: c.source,
+                detail: c.id,
+                id: c.id
+            }));
+
+        if (items.length === 0) {
+            vscode.window.showInformationMessage(lm.t('No active conversations available to archive.'));
+            return;
+        }
+
+        const selected = await vscode.window.showQuickPick(items, {
+            canPickMany: true,
+            title: lm.t('Archive Conversations'),
+            placeHolder: lm.t('Select conversations to archive (excluded from sync)')
+        });
+
+        if (!selected || selected.length === 0) return;
+
+        try {
+            const count = await this.archiveConversations(selected.map(s => s.id));
+            vscode.window.showInformationMessage(lm.t('Archived {0} conversation(s). They will be excluded from sync.', count));
+            if (SyncStatsWebview.isVisible()) {
+                this.refreshStatistics(true, false, true);
+            }
+        } catch (e: any) {
+            vscode.window.showErrorMessage(lm.t('Failed to archive conversation: {0}', e.message));
+        }
+    }
+
+    /**
+     * Interactive multi-select command to unarchive archived conversations.
+     */
+    public async unarchiveConversationsInteractive(): Promise<void> {
+        const lm = LocalizationManager.getInstance();
+        const [localConversations, remoteManifest] = await Promise.all([
+            this.getLocalConversationsAsync({ skipHashes: true }),
+            this.isReady() ? this.getDecryptedManifest().catch(() => null) : Promise.resolve(null)
+        ]);
+        const archivedIds = this.getArchivedConversationIds(remoteManifest);
+
+        if (archivedIds.size === 0) {
+            vscode.window.showInformationMessage(lm.t('No archived conversations.'));
+            return;
+        }
+
+        const items = Array.from(archivedIds).map(id => {
+            const local = localConversations.find(c => c.id === id);
+            const remote = remoteManifest?.conversations.find(c => c.id === id);
+            const remoteTitle = remote?.title && remote.title !== id ? remote.title : null;
+            const localTitle = local?.title && local.title !== id ? local.title : null;
+            const title = remoteTitle || localTitle || remote?.title || local?.title || id;
+            const archivedAt = remoteManifest?.archivedConversations?.[id]?.archivedAt;
+            return {
+                label: title,
+                description: archivedAt ? lm.formatDateTime(archivedAt) : lm.t('Archived'),
+                detail: id,
+                id
+            };
+        });
+
+        const selected = await vscode.window.showQuickPick(items, {
+            canPickMany: true,
+            title: lm.t('Unarchive Conversations'),
+            placeHolder: lm.t('Select conversations to unarchive (restore to sync)')
+        });
+
+        if (!selected || selected.length === 0) return;
+
+        try {
+            const count = await this.unarchiveConversations(selected.map(s => s.id));
+            vscode.window.showInformationMessage(lm.t('Unarchived {0} conversation(s). They will participate in sync again.', count));
+            if (SyncStatsWebview.isVisible()) {
+                this.refreshStatistics(true, false, true);
+            }
+        } catch (e: any) {
+            vscode.window.showErrorMessage(lm.t('Failed to unarchive conversation: {0}', e.message));
         }
     }
 
@@ -3692,8 +4034,7 @@ export class SyncManager implements vscode.Disposable {
                });
                */
 
-                const configName = vscode.workspace.getConfiguration(EXT_NAME).get<string>('sync.machineName');
-                const currentMachineName = (configName || this.config?.machineName || os.hostname()).trim();
+                const currentMachineName = this.getEffectiveMachineName();
 
                 // Get machine states with limited concurrency (lazy factories)
                 const machineConcurrency = vscode.workspace.getConfiguration(EXT_NAME).get<number>('sync.concurrency', 3);
@@ -3708,11 +4049,11 @@ export class SyncManager implements vscode.Disposable {
                     try {
                         // Check if this file corresponds to the current machine
                         if (machineId === this.config!.machineId) {
-                            const localMachine = {
-                                name: this.config!.machineName,
+                            return {
+                                name: currentMachineName,
                                 id: machineId,
                                 fileId: 'current', // Not deletable
-                                lastSync: lastSync, // This is file modified time, might be old config.lastSync is better?
+                                lastSync: lastSync,
                                 isCurrent: true,
                                 syncCount: this.syncCount,
                                 uploadCount: this.uploadCount,
@@ -3721,40 +4062,6 @@ export class SyncManager implements vscode.Disposable {
                                 accountQuota: this.quotaManager?.getLatestSnapshot(),
                                 conversationStates: localConversations.map(c => ({ id: c.id }))
                             };
-
-                            // CHECK FOR REMOTE CONFLICT (Shared Session)
-                            // If the remote file has a different name, it means another machine is using this ID.
-                            try {
-                                const contentValues = await this.driveService.getMachineState(machineId);
-                                if (contentValues) {
-                                    const decrypted = crypto.decrypt(contentValues, this.masterPassword!);
-                                    const state: MachineState = JSON.parse(decrypted.toString());
-
-                                    // If names differ, or if the remote lastSync is significantly newer than our lastSync (implies concurrency), 
-                                    // treat it as a ghost/other device.
-                                    // Simplest check: Name difference.
-                                    if (state.machineName && state.machineName !== currentMachineName) {
-                                        const remoteGhost = {
-                                            name: state.machineName, // Shows the OTHER name
-                                            id: machineId,
-                                            fileId: file.id,
-                                            lastSync: state.lastSync,
-                                            isCurrent: false, // It's NOT us, even if ID matches
-                                            syncCount: state.syncCount || 0,
-                                            uploadCount: state.uploadCount || 0,
-                                            downloadCount: state.downloadCount || 0,
-                                            quota: state.quota,
-                                            accountQuota: state.accountQuota,
-                                            conversationStates: state.conversationStates || []
-                                        };
-                                        return [localMachine, remoteGhost];
-                                    }
-                                }
-                            } catch (e) {
-                                console.error('Failed to check remote state for current machine ghosting', e);
-                            }
-
-                            return localMachine;
                         }
 
                         const contentValues = await this.driveService.getMachineState(machineId);
@@ -3854,34 +4161,24 @@ export class SyncManager implements vscode.Disposable {
                     });
                 }
 
-                // Merge machines from manifest (for shared session scenarios where one device overwrote the state file)
+                // Merge machines from manifest (deduplicating strictly by machine ID to avoid ghost duplicates on rename)
                 if (remoteManifest?.machines) {
                     for (const manifestMachine of remoteManifest.machines) {
-                        // Check if this machine is already in the list (by id + name combination)
-                        const existsWithSameName = machines.some(m =>
-                            m.id === manifestMachine.id && m.name === manifestMachine.name
-                        );
-
-                        if (!existsWithSameName) {
-                            // Check if this machine shares the ID with current machine but has different name
-                            const isSameIdDifferentName = manifestMachine.id === this.config!.machineId &&
-                                manifestMachine.name !== currentMachineName;
-
-                            if (isSameIdDifferentName || !machines.some(m => m.id === manifestMachine.id)) {
-                                machines.push({
-                                    name: manifestMachine.name,
-                                    id: manifestMachine.id,
-                                    fileId: '', // No direct file for this entry
-                                    lastSync: manifestMachine.lastSync,
-                                    isCurrent: false,
-                                    syncCount: 0,
-                                    uploadCount: manifestMachine.uploadCount || 0,
-                                    downloadCount: manifestMachine.downloadCount || 0,
-                                    quota: undefined,
-                                    accountQuota: undefined, // Manifest doesn't store full quota snapshot
-                                    conversationStates: []
-                                });
-                            }
+                        const alreadyListed = machines.some(m => !m.isVirtualProfile && m.id === manifestMachine.id);
+                        if (!alreadyListed) {
+                            machines.push({
+                                name: manifestMachine.name,
+                                id: manifestMachine.id,
+                                fileId: '', // No direct file for this entry
+                                lastSync: manifestMachine.lastSync,
+                                isCurrent: false,
+                                syncCount: 0,
+                                uploadCount: manifestMachine.uploadCount || 0,
+                                downloadCount: manifestMachine.downloadCount || 0,
+                                quota: undefined,
+                                accountQuota: undefined, // Manifest doesn't store full quota snapshot
+                                conversationStates: []
+                            });
                         }
                     }
                 }
@@ -3933,6 +4230,7 @@ export class SyncManager implements vscode.Disposable {
                 const statsData: SyncStatsData = {
                     localConversations,
                     remoteManifest: remoteManifest || { conversations: [] } as any,
+                    archivedIds: Array.from(this.getArchivedConversationIds(remoteManifest)),
                     localCount: localConversations.length,
                     remoteCount: remoteManifest?.conversations.length || 0,
                     lastSync: this.config!.lastSync || 'Never',
@@ -4023,6 +4321,52 @@ export class SyncManager implements vscode.Disposable {
                     SyncStatsWebview.update(this.lastStatsData);
                 } else {
                     this.refreshStatistics();
+                }
+                break;
+            }
+            case 'filterConversations': {
+                const filter = message.filter;
+                if (filter === 'active' || filter === 'archived' || filter === 'all') {
+                    SyncStatsWebview.setConversationsFilter(filter);
+                    if (this.lastStatsData) {
+                        SyncStatsWebview.update(this.lastStatsData);
+                    } else {
+                        this.refreshStatistics();
+                    }
+                }
+                break;
+            }
+            case 'archiveConversation': {
+                try {
+                    await this.archiveConversation(message.id);
+                    if (this.lastStatsData) {
+                        const archivedSet = new Set<string>(this.lastStatsData.archivedIds || []);
+                        archivedSet.add(message.id);
+                        this.lastStatsData.archivedIds = Array.from(archivedSet);
+                        SyncStatsWebview.update(this.lastStatsData);
+                    } else {
+                        this.refreshStatistics(true, false, true);
+                    }
+                    vscode.window.showInformationMessage(lm.t('Conversation archived.'));
+                } catch (e: any) {
+                    vscode.window.showErrorMessage(lm.t('Failed to archive conversation: {0}', e.message));
+                }
+                break;
+            }
+            case 'unarchiveConversation': {
+                try {
+                    await this.unarchiveConversation(message.id);
+                    if (this.lastStatsData) {
+                        const archivedSet = new Set<string>(this.lastStatsData.archivedIds || []);
+                        archivedSet.delete(message.id);
+                        this.lastStatsData.archivedIds = Array.from(archivedSet);
+                        SyncStatsWebview.update(this.lastStatsData);
+                    } else {
+                        this.refreshStatistics(true, false, true);
+                    }
+                    vscode.window.showInformationMessage(lm.t('Conversation unarchived.'));
+                } catch (e: any) {
+                    vscode.window.showErrorMessage(lm.t('Failed to unarchive conversation: {0}', e.message));
                 }
                 break;
             }
@@ -4560,17 +4904,18 @@ export class SyncManager implements vscode.Disposable {
             const machinesMap = new Map<string, { name: string, lastSync?: string, createdAt?: string }>();
 
             // Add current machine
+            const currentMachineName = this.getEffectiveMachineName() || lm.t('Current Machine');
             machinesMap.set(this.config.machineId, {
-                name: this.config.machineName || lm.t('Current Machine'),
+                name: currentMachineName,
                 lastSync: new Date().toISOString(), // Assume active
                 createdAt: undefined // Unknown start for current without manifest lookup, but acceptable
             });
 
-            // Add from manifest machines (rich info)
+            // Add from manifest machines (rich info, keeping effective name for current machine)
             if (manifest.machines) {
                 for (const m of manifest.machines) {
                     machinesMap.set(m.id, {
-                        name: m.name,
+                        name: m.id === this.config.machineId ? currentMachineName : m.name,
                         lastSync: m.lastSync,
                         createdAt: m.createdAt
                     });

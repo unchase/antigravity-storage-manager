@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "Sempre substituir a versão local pela remota",
     "antigravity.config.conflictResolution.keepNewer": "Manter a versão modificada mais recentemente (Last-Write-Wins)",
     "antigravity.config.conflictResolution.keepLarger": "Manter a versão com maior tamanho de arquivo",
-    "antigravity.config.storagePath": "Caminho personalizado para o diretório de armazenamento de dados do Antigravity (contendo as pastas brain e conversations). Deixe em branco para detecção automática."
+    "antigravity.config.storagePath": "Caminho personalizado para o diretório de armazenamento de dados do Antigravity (contendo as pastas brain e conversations). Deixe em branco para detecção automática.",
+    "antigravity.command.archiveConversations": "Arquivar conversas",
+    "antigravity.command.unarchiveConversations": "Desarquivar conversas"
 }

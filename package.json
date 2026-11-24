@@ -2,7 +2,7 @@
     "name": "antigravity-storage-manager",
     "displayName": "Antigravity Storage Manager",
     "description": "Securely sync Antigravity Conversations with Google Drive. Features Telegram Bot notifications, Multi-Account Profile Switching, Real-time Quota Monitoring, MCP Server, Proxy support, and advanced backup tools.",
-    "version": "0.15.5",
+    "version": "0.16.0",
     "publisher": "unchase",
     "author": {
         "name": "unchase"
@@ -220,6 +220,18 @@
                 "title": "%antigravity.command.exportAsMarkdown%",
                 "icon": "$(markdown)",
                 "category": "%antigravity.submenu.label%"
+            },
+            {
+                "command": "antigravity-storage-manager.archiveConversations",
+                "title": "%antigravity.command.archiveConversations%",
+                "icon": "$(archive)",
+                "category": "%antigravity.submenu.label%"
+            },
+            {
+                "command": "antigravity-storage-manager.unarchiveConversations",
+                "title": "%antigravity.command.unarchiveConversations%",
+                "icon": "$(inbox)",
+                "category": "%antigravity.submenu.label%"
             }
         ],
         "submenus": [
@@ -274,6 +286,12 @@
                 },
                 {
                     "command": "antigravity-storage-manager.exportAsMarkdown"
+                },
+                {
+                    "command": "antigravity-storage-manager.archiveConversations"
+                },
+                {
+                    "command": "antigravity-storage-manager.unarchiveConversations"
                 }
             ],
             "antigravity-storage-manager.submenu": [
@@ -292,6 +310,14 @@
                 {
                     "command": "antigravity-storage-manager.rename",
                     "group": "2_manage@1"
+                },
+                {
+                    "command": "antigravity-storage-manager.archiveConversations",
+                    "group": "2_manage@2"
+                },
+                {
+                    "command": "antigravity-storage-manager.unarchiveConversations",
+                    "group": "2_manage@3"
                 },
                 {
                     "command": "antigravity-storage-manager.syncSetup",

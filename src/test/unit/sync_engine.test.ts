@@ -9,6 +9,8 @@ jest.mock('vscode', () => ({
         t: (str: string, ...args: any[]) => str.replace(/\{(\d+)\}/g, (_, i) => args[i] ?? '')
     },
     window: {
+        activeTextEditor: undefined,
+        visibleTextEditors: [],
         showInformationMessage: jest.fn(),
         showWarningMessage: jest.fn(),
         showErrorMessage: jest.fn(),
@@ -494,5 +496,227 @@ describe('SyncManager Core Engine & Webview Security', () => {
         const conflictState = savedState.conversationStates.find((s: any) => s.id === convConflicted);
         expect(okState.localHash).toBe('new-ok-hash');
         expect(conflictState.localHash).toBe('base-before-conflict-hash');
+    });
+
+    test('refreshStatistics does not duplicate current machine when sync.machineName differs from remote state or manifest', async () => {
+        const myId = '7eabb307-aaaa-bbbb-cccc-111111111111';
+        const otherId = '99999999-aaaa-bbbb-cccc-222222222222';
+        const manifestOnlyId = '88888888-aaaa-bbbb-cccc-333333333333';
+
+        mockConfig['sync.machineName'] = 'PC';
+        (syncManager as any).config.machineId = myId;
+        (syncManager as any).config.machineName = 'UNCHASE-GM';
+
+        const remoteManifest: SyncManifest = {
+            version: 1,
+            createdAt: '2026-01-01T00:00:00Z',
+            lastModified: '2026-11-25T01:57:00Z',
+            passwordVerificationSalt: 's',
+            passwordVerificationHash: 'h',
+            conversations: [],
+            machines: [
+                { id: myId, name: 'UNCHASE-GM', lastSync: '2026-11-25T01:57:00Z', createdAt: '2026-01-01T00:00:00Z' },
+                { id: manifestOnlyId, name: 'MacBook', lastSync: '2026-11-24T12:00:00Z', createdAt: '2026-01-01T00:00:00Z' }
+            ]
+        };
+
+        const myOldStateEnc = crypto.encrypt(Buffer.from(JSON.stringify({
+            machineId: myId,
+            machineName: 'UNCHASE-GM',
+            lastSync: '2026-11-25T01:57:00Z',
+            syncCount: 0,
+            uploadCount: 0,
+            downloadCount: 0,
+            conversationStates: []
+        })), PASSWORD, true);
+
+        const otherStateEnc = crypto.encrypt(Buffer.from(JSON.stringify({
+            machineId: otherId,
+            machineName: 'Work Laptop',
+            lastSync: '2026-11-25T01:50:00Z',
+            syncCount: 3,
+            uploadCount: 5,
+            downloadCount: 2,
+            conversationStates: []
+        })), PASSWORD, true);
+
+        mockDriveService.getManifest.mockResolvedValue(crypto.encrypt(Buffer.from(JSON.stringify(remoteManifest)), PASSWORD, true));
+        mockDriveService.listMachineStates.mockResolvedValue([
+            { id: 'f-my', name: `${myId}.json.enc`, modifiedTime: '2026-11-25T01:58:00Z' },
+            { id: 'f-other', name: `${otherId}.json.enc`, modifiedTime: '2026-11-25T01:50:00Z' }
+        ]);
+        mockDriveService.getMachineState.mockImplementation(async (id: string) => {
+            if (id === myId) return myOldStateEnc;
+            if (id === otherId) return otherStateEnc;
+            return null;
+        });
+        mockDriveService.getUserInfo = jest.fn().mockResolvedValue(null);
+        (syncManager as any).getServerLatestTrajectoryId = jest.fn().mockResolvedValue(null);
+        (syncManager as any).getMcpServerStates = jest.fn().mockResolvedValue([]);
+
+        await (syncManager as any).refreshStatistics(true, false, true);
+
+        const statsData = (syncManager as any).lastStatsData;
+        expect(statsData).toBeDefined();
+
+        const myEntries = statsData.machines.filter((m: any) => m.id === myId);
+        expect(myEntries).toHaveLength(1);
+        expect(myEntries[0].name).toBe('PC');
+        expect(myEntries[0].isCurrent).toBe(true);
+
+        // Other distinct machines remain intact
+        expect(statsData.machines.find((m: any) => m.id === otherId)?.name).toBe('Work Laptop');
+        expect(statsData.machines.find((m: any) => m.id === manifestOnlyId)?.name).toBe('MacBook');
+    });
+
+    test('syncNow updates stale machine name in remote manifest and machine state even with no conversation changes', async () => {
+        mockConfig['sync.machineName'] = 'PC';
+        (syncManager as any).config.machineName = 'UNCHASE-GM';
+
+        const initialManifest: SyncManifest = {
+            version: 1,
+            createdAt: '2026-01-01T00:00:00Z',
+            lastModified: '2026-11-25T01:00:00Z',
+            passwordVerificationSalt: 's',
+            passwordVerificationHash: 'h',
+            conversations: [],
+            machines: [
+                { id: 'machine-A', name: 'UNCHASE-GM', lastSync: '2026-11-25T01:00:00Z', createdAt: '2026-01-01T00:00:00Z' }
+            ]
+        };
+        let storedManifestBuf = crypto.encrypt(Buffer.from(JSON.stringify(initialManifest)), PASSWORD, true);
+        let savedMachineState: any = null;
+
+        mockDriveService.getManifest.mockImplementation(async () => storedManifestBuf);
+        mockDriveService.updateManifest.mockImplementation(async (buf: Buffer) => {
+            storedManifestBuf = buf;
+        });
+        mockDriveService.updateMachineState.mockImplementation(async (_id: string, buf: Buffer) => {
+            savedMachineState = JSON.parse(crypto.decrypt(buf, PASSWORD).toString('utf8'));
+        });
+
+        const result = await syncManager.syncNow();
+        expect(result.success).toBe(true);
+
+        const updatedManifest: SyncManifest = JSON.parse(crypto.decrypt(storedManifestBuf, PASSWORD).toString('utf8'));
+        const updatedEntry = updatedManifest.machines?.find(m => m.id === 'machine-A');
+        expect(updatedEntry?.name).toBe('PC');
+        expect(savedMachineState?.machineName).toBe('PC');
+        expect((syncManager as any).config.machineName).toBe('PC');
+    });
+
+    test('archiveConversations persists to manifest when ready, skips archived items in syncNow (even with force), and unarchive restores sync', async () => {
+        const archivedConvId = 'aaaa1111-1111-1111-1111-111111111111';
+        const activeConvId = 'bbbb2222-2222-2222-2222-222222222222';
+        const remoteOnlyArchivedId = 'cccc3333-3333-3333-3333-333333333333';
+
+        // Create local files for both archived and active conversations
+        fs.mkdirSync(path.join(brainDir, archivedConvId), { recursive: true });
+        fs.writeFileSync(path.join(brainDir, archivedConvId, 'task.md'), '# Archived Task');
+        fs.mkdirSync(path.join(brainDir, activeConvId), { recursive: true });
+        fs.writeFileSync(path.join(brainDir, activeConvId, 'task.md'), '# Active Task');
+
+        const initialManifest: SyncManifest = {
+            version: 1,
+            createdAt: '2026-01-01T00:00:00Z',
+            lastModified: '2026-11-25T01:00:00Z',
+            passwordVerificationSalt: 's',
+            passwordVerificationHash: 'h',
+            conversations: [
+                {
+                    id: remoteOnlyArchivedId,
+                    title: 'Remote Archived',
+                    lastModified: '2026-11-25T01:00:00Z',
+                    hash: 'remote-hash',
+                    modifiedBy: 'machine-B',
+                    version: 2,
+                    fileHashes: { 'brain/task.md': { hash: 'h1', size: 10, lastModified: '2026-11-25T01:00:00Z' } }
+                }
+            ],
+            machines: [
+                { id: 'machine-A', name: 'SharedName', lastSync: '2026-11-25T01:00:00Z', createdAt: '2026-01-01T00:00:00Z' }
+            ]
+        };
+
+        let storedManifestBuf = crypto.encrypt(Buffer.from(JSON.stringify(initialManifest)), PASSWORD, true);
+        let savedMachineState: any = null;
+        mockDriveService.getManifest.mockImplementation(async () => storedManifestBuf);
+        mockDriveService.updateManifest.mockImplementation(async (buf: Buffer) => {
+            storedManifestBuf = buf;
+        });
+        mockDriveService.updateMachineState.mockImplementation(async (_id: string, buf: Buffer) => {
+            savedMachineState = JSON.parse(crypto.decrypt(buf, PASSWORD).toString('utf8'));
+        });
+        mockDriveService.getMachineState.mockResolvedValue(crypto.encrypt(Buffer.from(JSON.stringify({
+            machineId: 'machine-A',
+            machineName: 'SharedName',
+            lastSync: '2026-11-25T00:00:00Z',
+            conversationStates: [
+                { id: archivedConvId, localHash: 'base-archived-hash', lastSynced: '2026-11-25T00:00:00Z' }
+            ]
+        })), PASSWORD, true));
+
+        // 1. Archive both local and remote-only conversations
+        await syncManager.archiveConversations([archivedConvId, remoteOnlyArchivedId]);
+        const manifestAfterArchive: SyncManifest = JSON.parse(crypto.decrypt(storedManifestBuf, PASSWORD).toString('utf8'));
+        expect(manifestAfterArchive.archivedConversations?.[archivedConvId]).toBeDefined();
+        expect(manifestAfterArchive.archivedConversations?.[remoteOnlyArchivedId]).toBeDefined();
+
+        // 2. Run syncNow (even with force=true): archived ones must NOT be pushed or pulled
+        const pullSpy = jest.spyOn(syncManager as any, 'pullConversation').mockResolvedValue(undefined);
+        const pushSpy = jest.spyOn(syncManager as any, 'pushConversation').mockResolvedValue(undefined);
+
+        const syncRes = await syncManager.syncNow(undefined, undefined, true);
+        expect(syncRes.success).toBe(true);
+        expect(pushSpy).toHaveBeenCalledWith(activeConvId, undefined, undefined);
+        expect(pushSpy).not.toHaveBeenCalledWith(archivedConvId, expect.anything(), expect.anything());
+        expect(pullSpy).not.toHaveBeenCalledWith(remoteOnlyArchivedId, expect.anything(), expect.anything(), expect.anything());
+
+        // Archived conversation's previous lastSyncedHash must be preserved in machineState
+        const archivedStateEntry = savedMachineState?.conversationStates?.find((s: any) => s.id === archivedConvId);
+        expect(archivedStateEntry?.localHash).toBe('base-archived-hash');
+
+        // 3. Direct processSyncItem call on archived item also exits early
+        const directRes: SyncResult = { success: true, pushed: [], pulled: [], conflicts: [], errors: [] };
+        await (syncManager as any).processSyncItem(
+            archivedConvId,
+            [{ id: archivedConvId, title: 'Archived Task', lastModified: '2026-11-25T02:00:00Z', hash: 'new-hash', size: 15 }],
+            manifestAfterArchive,
+            new Map(),
+            directRes,
+            undefined,
+            undefined,
+            true
+        );
+        expect(directRes.pushed).toHaveLength(0);
+        expect(directRes.pulled).toHaveLength(0);
+
+        // 4. Unarchive restores participation in sync
+        await syncManager.unarchiveConversation(archivedConvId);
+        const manifestAfterUnarchive: SyncManifest = JSON.parse(crypto.decrypt(storedManifestBuf, PASSWORD).toString('utf8'));
+        expect(manifestAfterUnarchive.archivedConversations?.[archivedConvId]).toBeUndefined();
+        expect(manifestAfterUnarchive.archivedConversations?.[remoteOnlyArchivedId]).toBeDefined();
+
+        pushSpy.mockClear();
+        const syncRes2 = await syncManager.syncNow();
+        expect(syncRes2.success).toBe(true);
+        expect(pushSpy).toHaveBeenCalledWith(archivedConvId, undefined, undefined);
+    });
+
+    test('archiveConversation falls back to local globalState when sync is not ready and unarchive clears it', async () => {
+        const stateStore = new Map<string, any>();
+        mockContext.globalState.get = jest.fn((key: string, def?: any) => (stateStore.has(key) ? stateStore.get(key) : def));
+        mockContext.globalState.update = jest.fn(async (key: string, val: any) => { stateStore.set(key, val); });
+
+        // Simulate unconfigured / offline sync
+        (syncManager as any).masterPassword = null;
+        expect(syncManager.isReady()).toBe(false);
+
+        const localOnlyId = 'dddd4444-4444-4444-4444-444444444444';
+        await syncManager.archiveConversation(localOnlyId);
+        expect(syncManager.isConversationArchived(localOnlyId, null)).toBe(true);
+
+        await syncManager.unarchiveConversation(localOnlyId);
+        expect(syncManager.isConversationArchived(localOnlyId, null)).toBe(false);
     });
 });

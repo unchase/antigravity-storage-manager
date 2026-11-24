@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "一律以遠端版本覆寫本機版本",
     "antigravity.config.conflictResolution.keepNewer": "保留較新修改的版本 (最後寫入者獲勝)",
     "antigravity.config.conflictResolution.keepLarger": "保留檔案大小較大的版本",
-    "antigravity.config.storagePath": "Antigravity 資料儲存目錄（包含 brain 和 conversations 資料夾）的自訂路徑。留空以自動偵測。"
+    "antigravity.config.storagePath": "Antigravity 資料儲存目錄（包含 brain 和 conversations 資料夾）的自訂路徑。留空以自動偵測。",
+    "antigravity.command.archiveConversations": "封存對話",
+    "antigravity.command.unarchiveConversations": "取消封存對話"
 }

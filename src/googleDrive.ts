@@ -28,6 +28,11 @@ export interface DeletedConversationEntry {
     deletedBy: string;
 }
 
+export interface ArchivedConversationEntry {
+    archivedAt: string;
+    archivedBy: string;
+}
+
 export interface SyncManifest {
     version: number;
     createdAt: string;
@@ -37,6 +42,7 @@ export interface SyncManifest {
     conversations: SyncedConversation[];
     machines?: Machine[];
     deletedConversations?: { [id: string]: DeletedConversationEntry };
+    archivedConversations?: { [id: string]: ArchivedConversationEntry };
 }
 
 export interface Machine {

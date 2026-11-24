@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "항상 로컬 버전을 원격 버전으로 덮어쓰기",
     "antigravity.config.conflictResolution.keepNewer": "더 최근에 수정된 버전 유지 (Last-Write-Wins)",
     "antigravity.config.conflictResolution.keepLarger": "파일 크기가 더 큰 버전 유지",
-    "antigravity.config.storagePath": "Antigravity 데이터 저장소 디렉터리(brain 및 conversations 폴더 포함)의 사용자 지정 경로입니다. 자동 감지를 사용하려면 비워 두세요."
+    "antigravity.config.storagePath": "Antigravity 데이터 저장소 디렉터리(brain 및 conversations 폴더 포함)의 사용자 지정 경로입니다. 자동 감지를 사용하려면 비워 두세요.",
+    "antigravity.command.archiveConversations": "대화 보관",
+    "antigravity.command.unarchiveConversations": "대화 보관 해제"
 }

@@ -19,6 +19,7 @@ export interface ActiveTransfer {
 export interface SyncStatsData {
     localConversations: any[];
     remoteManifest: SyncManifest;
+    archivedIds?: string[];
     localCount: number;
     remoteCount: number;
     lastSync: string;
@@ -56,6 +57,7 @@ export class SyncStatsWebview {
     private static readonly viewType = 'syncStats';
     private static devicesSort = { col: 'lastSync', dir: 'desc' as 'asc' | 'desc' };
     private static convsSort = { col: 'modified', dir: 'desc' as 'asc' | 'desc' };
+    private static convsFilter: 'active' | 'archived' | 'all' = 'active';
     private static isSearching = false;
     private static md: any;
 
@@ -202,6 +204,14 @@ export class SyncStatsWebview {
             sort.col = col;
             sort.dir = 'asc';
         }
+    }
+
+    public static setConversationsFilter(filter: 'active' | 'archived' | 'all'): void {
+        SyncStatsWebview.convsFilter = filter;
+    }
+
+    public static getConversationsFilter(): 'active' | 'archived' | 'all' {
+        return SyncStatsWebview.convsFilter;
     }
 
     public static isVisible(): boolean {
@@ -572,6 +582,13 @@ export class SyncStatsWebview {
                 .badge.success { background: var(--success); color: #fff; }
                 .badge.warning { background: var(--warning); color: #000; }
                 .badge.accent { background: var(--accent); color: var(--accent-fg); }
+                .badge.archived { background: rgba(156, 163, 175, 0.25); color: var(--fg); border: 1px solid rgba(156, 163, 175, 0.4); }
+                tr.archived-conversation td { opacity: 0.72; }
+                tr.archived-conversation:hover td { opacity: 0.95; }
+                .filter-tabs { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 6px; padding: 2px; margin-left: 16px; }
+                .filter-tab { background: none; border: none; color: var(--fg); opacity: 0.65; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; font-family: inherit; transition: all 0.15s; }
+                .filter-tab:hover { opacity: 1; background: rgba(255,255,255,0.06); }
+                .filter-tab.active { opacity: 1; background: var(--accent); color: var(--accent-fg); }
 
                 /* Buttons */
                 .btn {
@@ -1149,6 +1166,7 @@ export class SyncStatsWebview {
                                         const nearestReset = groupModels
                                             .filter((mdl: any) => mdl.resetTime)
                                             .map((mdl: any) => new Date(mdl.resetTime))
+                                            .filter((d: Date) => !isNaN(d.getTime()) && d.getTime() > 0)
                                             .sort((a: Date, b: Date) => a.getTime() - b.getTime())[0];
                                         if (nearestReset) {
                                             resetSuffix = ` (${formatResetTime(nearestReset)})`;
@@ -1166,7 +1184,9 @@ export class SyncStatsWebview {
                                     let resetSuffix = '';
                                     if (pctVal === 0 && mdl.resetTime) {
                                         const resetDate = new Date(mdl.resetTime);
-                                        resetSuffix = ` (${formatResetTime(resetDate)})`;
+                                        if (!isNaN(resetDate.getTime()) && resetDate.getTime() > 0) {
+                                            resetSuffix = ` (${formatResetTime(resetDate)})`;
+                                        }
                                     }
                                     miniParts.push(`<span style="white-space:nowrap;">${icon} ${abbrev}: ${pctVal.toFixed(0)}%${resetSuffix}</span>`);
                                 }
@@ -1261,7 +1281,10 @@ export class SyncStatsWebview {
                                             if (pct < 5) color = 'var(--error)';
                                             else if (pct < 30) color = 'var(--warning)';
 
-                                            const resetTimeStr = primary.resetTime ? formatResetTime(new Date(primary.resetTime)) : '';
+                                            const resetDate = primary.resetTime ? new Date(primary.resetTime) : null;
+                                            const resetTimeStr = resetDate && !isNaN(resetDate.getTime()) && resetDate.getTime() > 0
+                                                ? formatResetTime(resetDate)
+                                                : '';
 
                                             // Circular Chart
                                             const radius = 28;
@@ -1327,7 +1350,7 @@ export class SyncStatsWebview {
                                                             if (isToday && d.usage > 0) barColor = 'var(--fg)';
 
                                                             const dateStr = new Date(d.date).toLocaleDateString(lm.getLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
-                                                            const resetStr = primary.resetTime ? formatResetTime(new Date(primary.resetTime)) : '';
+                                                            const resetStr = resetTimeStr;
 
                                                             return `<div 
                                                                 onmouseenter="showTooltip(event, '${dateStr}', '${d.usage.toFixed(1)}', '${resetStr}', '', '')"
@@ -1514,8 +1537,30 @@ export class SyncStatsWebview {
                     </table>
                 </div>
 
-                <div class="section-title" style="display: flex; align-items: center; justify-content: space-between;">
-                    ${lm.t('Conversations')}
+                ${(() => {
+                const archivedSet = new Set<string>(data.archivedIds || Object.keys(data.remoteManifest?.archivedConversations || {}));
+                const allIds = new Set([
+                    ...data.localConversations.map(c => c.id),
+                    ...data.remoteManifest.conversations.map(c => c.id)
+                ]);
+                let activeConvsCount = 0;
+                let archivedConvsCount = 0;
+                for (const id of allIds) {
+                    if (archivedSet.has(id)) archivedConvsCount++;
+                    else activeConvsCount++;
+                }
+                const totalConvsCount = allIds.size;
+                const currentFilter = SyncStatsWebview.convsFilter;
+                return `
+                <div class="section-title" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; align-items: center; flex-wrap: wrap;">
+                        <span>${lm.t('Conversations')}</span>
+                        <div class="filter-tabs" role="tablist">
+                            <button class="filter-tab ${currentFilter === 'active' ? 'active' : ''}" onclick="postCommand('filterConversations', {filter:'active'})">${lm.t('Active')} (${activeConvsCount})</button>
+                            <button class="filter-tab ${currentFilter === 'archived' ? 'active' : ''}" onclick="postCommand('filterConversations', {filter:'archived'})">📦 ${lm.t('Archived')} (${archivedConvsCount})</button>
+                            <button class="filter-tab ${currentFilter === 'all' ? 'active' : ''}" onclick="postCommand('filterConversations', {filter:'all'})">${lm.t('All')} (${totalConvsCount})</button>
+                        </div>
+                    </div>
                     <div class="search-box" style="position: relative; margin-left: auto; display: flex; align-items: center; gap: 8px;">
                         <div style="position: relative;">
                             <input type="text" id="pbSearchInput" placeholder="${lm.t('Search .pb history...')}" 
@@ -1543,23 +1588,19 @@ export class SyncStatsWebview {
                                 <th class="sortable ${SyncStatsWebview.convsSort.col === 'status' ? 'sort-active' : ''}" style="width: 15%" onclick="postCommand('sort', {table:'conversations', col:'status'})">
                                     ${lm.t('Status')} ${SyncStatsWebview.convsSort.col === 'status' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
                                 </th>
-                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'modified' ? 'sort-active' : ''}" style="width: 20%" onclick="postCommand('sort', {table:'conversations', col:'modified'})">
+                                <th class="sortable ${SyncStatsWebview.convsSort.col === 'modified' ? 'sort-active' : ''}" style="width: 17%" onclick="postCommand('sort', {table:'conversations', col:'modified'})">
                                     ${lm.t('Modified')} ${SyncStatsWebview.convsSort.col === 'modified' ? `<span class="sort-indicator">${SyncStatsWebview.convsSort.dir === 'asc' ? '▲' : '▼'}</span>` : ''}
                                 </th>
                                 <th style="width: 15%">${lm.t('Source')}</th>
-                                <th style="text-align:right; width: 10%">${lm.t('Actions')}</th>
+                                <th style="text-align:right; width: 13%">${lm.t('Actions')}</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${(() => {
-                const allIds = new Set([
-                    ...data.localConversations.map(c => c.id),
-                    ...data.remoteManifest.conversations.map(c => c.id)
-                ]);
-
                 const convList = Array.from(allIds).map(id => {
                     const local = data.localConversations.find(c => c.id === id);
                     const remote = data.remoteManifest.conversations.find(c => c.id === id);
+                    const isArchived = archivedSet.has(id);
 
                     // Prefer actual title over GUID. If remote title equals ID, try local title
                     const remoteTitle = remote?.title && remote.title !== id ? remote.title : null;
@@ -1567,10 +1608,15 @@ export class SyncStatsWebview {
                     const title = remoteTitle || localTitle || remote?.title || local?.title || id;
 
                     let statusType = 0; // Synced
-                    if (!remote) statusType = 1; // Local Only
+                    if (isArchived) statusType = 3; // Archived
+                    else if (!remote) statusType = 1; // Local Only
                     else if (!local) statusType = 2; // Cloud Only
 
-                    return { id, local, remote, title, statusType };
+                    return { id, local, remote, title, statusType, isArchived };
+                }).filter(c => {
+                    if (currentFilter === 'active') return !c.isArchived;
+                    if (currentFilter === 'archived') return c.isArchived;
+                    return true;
                 });
 
                 // Filter by search results if query exists
@@ -1604,9 +1650,17 @@ export class SyncStatsWebview {
                     return 0;
                 });
 
-                return convList.map(({ id, local, remote, title, statusType }) => {
+                if (convList.length === 0) {
+                    const emptyText = currentFilter === 'archived'
+                        ? lm.t('No archived conversations.')
+                        : lm.t('No conversations match this filter.');
+                    return `<tr><td colspan="5" style="text-align:center; padding: 32px; opacity: 0.6;">${emptyText}</td></tr>`;
+                }
+
+                return convList.map(({ id, local, remote, title, statusType, isArchived }) => {
                     let statusBadge = '';
-                    if (statusType === 0) statusBadge = `<span class="badge success">${lm.t('Synced')}</span>`;
+                    if (isArchived) statusBadge = `<span class="badge archived" title="${lm.t('Excluded from sync')}">📦 ${lm.t('Archived')}</span>`;
+                    else if (statusType === 0) statusBadge = `<span class="badge success">${lm.t('Synced')}</span>`;
                     else if (statusType === 2) statusBadge = `<span class="badge warning">${lm.t('Cloud Only')}</span>`;
                     else statusBadge = `<span class="badge accent">${lm.t('Local Only')}</span>`;
 
@@ -1672,8 +1726,13 @@ export class SyncStatsWebview {
                         }
                     }
 
+                    const rowClasses = [
+                        id === data.activeConversationId ? 'active-conversation' : '',
+                        isArchived ? 'archived-conversation' : ''
+                    ].filter(Boolean).join(' ');
+
                     return `
-                                        <tr class="${id === data.activeConversationId ? 'active-conversation' : ''}" onclick="toggleFiles('${id}')" style="cursor: pointer">
+                                        <tr class="${rowClasses}" onclick="toggleFiles('${id}')" style="cursor: pointer">
                                             <td>
                                                 <div class="link" onclick="event.stopPropagation(); postCommand('openConversation', {id:'${id}'})" title="${title}">${shortenTitle(title)}</div>
                                                 <div title="${id}" style="font-size:11px; opacity:0.5; font-family:monospace; display: inline-block;">
@@ -1684,10 +1743,14 @@ export class SyncStatsWebview {
                                             <td>${statusBadge}</td>
                                             <td>${modDate ? lm.formatDateTime(modDate) : '-'}</td>
                                             <td><span title="${machineId}" style="cursor:help; border-bottom:1px dotted rgba(255,255,255,0.3)">${sourceName}</span></td>
-                                            <td style="text-align:right">
+                                            <td style="text-align:right; white-space:nowrap;">
                                                 <button class="btn-icon" onclick="event.stopPropagation(); postCommand('renameConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Rename')}">✏️</button>
-                                                ${!remote ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pushConversation', {id:'${id}'})" title="${lm.t('Upload')}">⬆️</button>` : ''}
-                                                ${!local ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pullConversation', {id:'${id}'})" title="${lm.t('Download')}">⬇️</button>` : ''}
+                                                ${isArchived
+                                                    ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('unarchiveConversation', {id:'${id}'})" title="${lm.t('Unarchive')}">📤</button>`
+                                                    : `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('archiveConversation', {id:'${id}'})" title="${lm.t('Archive')}">📦</button>`
+                                                }
+                                                ${!isArchived && !remote ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pushConversation', {id:'${id}'})" title="${lm.t('Upload')}">⬆️</button>` : ''}
+                                                ${!isArchived && !local ? `<button class="btn-icon" onclick="event.stopPropagation(); postCommand('pullConversation', {id:'${id}'})" title="${lm.t('Download')}">⬇️</button>` : ''}
                                                 <button class="btn-icon danger" onclick="event.stopPropagation(); postCommand('deleteConversation', {id:'${id}', title:'${title.replace(/'/g, "\\'")}'})" title="${lm.t('Delete')}">🗑️</button>
                                             </td>
                                         </tr>
@@ -1706,6 +1769,8 @@ export class SyncStatsWebview {
                         </tbody>
                     </table>
                 </div>
+                `;
+                })()}
             </div>
             
             <div id="tooltip" class="custom-tooltip"></div>

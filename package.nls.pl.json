@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "Zawsze nadpisuj wersję lokalną wersją zdalną",
     "antigravity.config.conflictResolution.keepNewer": "Zachowaj wersję zmodyfikowaną później (Last-Write-Wins)",
     "antigravity.config.conflictResolution.keepLarger": "Zachowaj wersję o większym rozmiarze pliku",
-    "antigravity.config.storagePath": "Niestandardowa ścieżka do katalogu przechowywania danych Antigravity (zawierającego foldery brain i conversations). Pozostaw puste dla automatycznego wykrywania."
+    "antigravity.config.storagePath": "Niestandardowa ścieżka do katalogu przechowywania danych Antigravity (zawierającego foldery brain i conversations). Pozostaw puste dla automatycznego wykrywania.",
+    "antigravity.command.archiveConversations": "Archiwizuj konwersacje",
+    "antigravity.command.unarchiveConversations": "Przywróć konwersacje z archiwum"
 }

@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "Always overwrite local with remote version",
     "antigravity.config.conflictResolution.keepNewer": "Keep whichever version was modified more recently (Last-Write-Wins)",
     "antigravity.config.conflictResolution.keepLarger": "Keep whichever version has the larger file size",
-    "antigravity.config.storagePath": "Custom path to Antigravity data storage directory (containing brain and conversations folders). Leave empty for automatic detection."
+    "antigravity.config.storagePath": "Custom path to Antigravity data storage directory (containing brain and conversations folders). Leave empty for automatic detection.",
+    "antigravity.command.archiveConversations": "Archive Conversations",
+    "antigravity.command.unarchiveConversations": "Unarchive Conversations"
 }

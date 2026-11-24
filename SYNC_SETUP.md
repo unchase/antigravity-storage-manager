@@ -107,6 +107,14 @@ Now, set up synchronization on your second computer (e.g., your home laptop).
 - **Remote Manifest Safety**: If a network error occurs or an incorrect Master Password is entered, the extension aborts rather than overwriting an existing remote manifest with an empty one.
 - **Local / Network Folder Provider**: When `sync.storageProvider` is set to `local`, synchronization runs completely without Google OAuth and uses atomic exclusive (`wx`) lock files with a 5-minute TTL.
 
+## Archiving Conversations
+
+You can freeze old or large conversations so they no longer participate in synchronization without deleting or moving their files:
+
+- **In the Sync Statistics Dashboard**: Click **`📦`** (**Archive**) on any row to archive it, or switch to the **`📦 Archived`** tab and click **`📤`** (**Unarchive**) to restore it to sync.
+- **Bulk Archive / Unarchive**: Run `Antigravity Storage: Archive Conversations` or `Antigravity Storage: Unarchive Conversations` from the Command Palette or the **AG Sync** menu to select multiple conversations at once.
+- **How it Works**: Archived IDs are stored in the remote sync manifest (with a local fallback when offline), so all your devices skip archived conversations during auto-sync, manual sync, and Force Sync while keeping files readable on disk.
+
 ## Managing Conflicts
 
 The sync engine runs a **3-way merge** first so clean single-side edits never trigger false conflicts. If you edit the same conversation on multiple computers while offline, a **Conflict** is detected and resolved according to `antigravity-storage-manager.sync.conflictResolution`:

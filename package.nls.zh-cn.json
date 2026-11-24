@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "始终用远程版本覆盖本地版本",
     "antigravity.config.conflictResolution.keepNewer": "保留最近修改的版本 (最后写入优先)",
     "antigravity.config.conflictResolution.keepLarger": "保留文件大小较大的版本",
-    "antigravity.config.storagePath": "Antigravity 数据存储目录（包含 brain 和 conversations 文件夹）的自定义路径。留空以自动检测。"
+    "antigravity.config.storagePath": "Antigravity 数据存储目录（包含 brain 和 conversations 文件夹）的自定义路径。留空以自动检测。",
+    "antigravity.command.archiveConversations": "归档对话",
+    "antigravity.command.unarchiveConversations": "取消归档对话"
 }

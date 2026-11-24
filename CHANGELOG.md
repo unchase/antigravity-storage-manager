@@ -5,6 +5,21 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-11-25
+### Conversation Archiving
+- **Archive & Unarchive Conversations**: Added non-destructive conversation archiving so older chats can be frozen without moving or deleting files. Archived conversations are completely excluded from `syncNow`, auto-sync, conflict detection, and `forceSync`, while preserving their previous `lastSyncedHash` in machine state until restored.
+- **Cross-Device & Offline Persistence**: Added `archivedConversations` to `SyncManifest` so every connected device respects archived items automatically, with a local fallback (`SyncConfig` / `globalState`) when offline or before sync is configured. Deleting a conversation automatically cleans up its archive entry.
+- **Dashboard Filter Tabs & Quick Actions**: Added **`Active`**, **`📦 Archived`**, and **`All`** filter tabs with live counts to the **Conversations** section in the **Sync Statistics** dashboard, plus **`📦 Archive`** / **`📤 Unarchive`** row buttons, an **`Archived`** status badge (`Excluded from sync`), and hidden Upload/Download buttons for archived entries.
+- **Bulk Commands & Menu Integration**: Added `Antigravity Storage: Archive Conversations` and `Antigravity Storage: Unarchive Conversations` multi-select commands in the Command Palette, submenu, and **AG Sync** menu.
+
+### Sync Statistics & Dashboard Fixes
+- **Eliminated Duplicate Machine Entries on Rename**: Added a unified `getEffectiveMachineName()` helper across manifest updates, machine state updates, statistics, and authorized-machine management; synced `sync.machineName` into `SyncConfig` on startup and config changes; updated stale machine names in `remoteManifest.machines` during `syncNow()` even when no conversations changed; and deduplicated dashboard machine entries strictly by `machineId` instead of spawning ghost duplicates.
+- **Hidden Epoch Reset Timestamps in Dashboard**: Guarded `resetTime` formatting in `SyncStatsWebview` (quota cards, history tooltips, and mini-summary) with `getTime() > 0` so zero epoch dates (`1970-01-01T00:00:00Z`) no longer appear as `Reset at Jan 1, 03:00 AM`.
+
+### Localization & Unit Tests
+- **16-Language Localization**: Added 2 new command titles across all 16 `package.nls*.json` files and 20 new runtime strings across all 16 `l10n/bundle.l10n.*.json` bundles (`npm run test:localization`: 38/38 passed).
+- **Unit Tests (26 suites / 225 tests)**: Added 6 new unit tests in `sync_engine.test.ts` and `sync_stats.test.ts` covering conversation archiving/unarchiving (manifest + offline fallback), sync exclusion even under `forceSync`, dashboard filter tabs/actions, machine deduplication on rename, manifest machine-name updates, and epoch reset timestamp suppression.
+
 ## [0.15.5] - 2026-11-25
 ### Sync Engine Reliability & Data Integrity
 - **Remote Manifest Protection**: Replaced nullable manifest reads with a structured `ManifestFetchResult` (`ok` / `not_found` / `error`) so transient network failures or wrong master passwords never overwrite an existing remote manifest with an empty one.

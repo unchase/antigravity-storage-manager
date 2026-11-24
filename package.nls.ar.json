@@ -96,5 +96,7 @@
     "antigravity.config.conflictResolution.keepRemote": "استبدال الإصدار المحلي دائمًا بالإصدار البعيد",
     "antigravity.config.conflictResolution.keepNewer": "الاحتفاظ بالإصدار المعدل مؤخرًا (فوز الكتابة الأخيرة)",
     "antigravity.config.conflictResolution.keepLarger": "الاحتفاظ بالإصدار ذي الحجم الأكبر",
-    "antigravity.config.storagePath": "مسار مخصص لدليل تخزين بيانات Antigravity (الذي يحتوي على مجلدي brain و conversations). اتركه فارغًا للكشف التلقائي."
+    "antigravity.config.storagePath": "مسار مخصص لدليل تخزين بيانات Antigravity (الذي يحتوي على مجلدي brain و conversations). اتركه فارغًا للكشف التلقائي.",
+    "antigravity.command.archiveConversations": "أرشفة المحادثات",
+    "antigravity.command.unarchiveConversations": "إلغاء أرشفة المحادثات"
 }
