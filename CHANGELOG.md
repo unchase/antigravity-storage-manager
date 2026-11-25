@@ -5,6 +5,13 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.4] - 2026-11-25
+### Conversation Viewer (`.db` / `transcript_full.jsonl`) Polish
+- **Prefer Full Untruncated Transcript (`transcript_full.jsonl`)**: Updated `getLocalConversationData` to load `transcript_full.jsonl` (up to 50 MB) before falling back to compact `transcript.jsonl`, eliminating mid-response `<truncated ... bytes>` cutoffs in long AI answers.
+- **Clean Empty `<USER_REQUEST>` & IDE Action Tails**: Updated `cleanUserPrompt` so empty `<USER_REQUEST>` blocks (e.g., image-only prompts) never fall back to dumping raw `<ADDITIONAL_METADATA>`, and stripped trailing `The USER performed the following action:...` IDE file dumps from user messages.
+- **Clickable `file:///` Markdown Links & Clean Code Blocks**: Converted local `[label](file:///...)` Markdown links outside code blocks into safe clickable file badges (`[NAV_BADGE:...]`, guarded by `isSafeLocalFsPath`, with optional `#L...` line fragments) and added a `.markdown-body pre code` CSS reset to remove per-line inline-code borders and backgrounds inside fenced code blocks.
+- **Unit Tests (26 suites / 229 tests)**: Added a unit test in `sync_engine.test.ts` covering `transcript_full.jsonl` priority, empty `<USER_REQUEST>` filtering, IDE action tail removal, clickable `file:///` badge conversion, and `.markdown-body pre code` styling.
+
 ## [0.16.3] - 2026-11-25
 ### Conversation Viewer (`.db` / `transcript.jsonl`) Polish
 - **Typed Tool Results Folded Properly**: Extended `parseTranscriptJsonl` to treat all `source: "MODEL"` tool-result step types (`LIST_DIRECTORY`, `VIEW_FILE`, `RUN_COMMAND`, `GREP_SEARCH`, etc., in addition to `GENERIC`) as tool outputs attached to their pending `tool_calls` (or folded inside `thought-box` when orphaned) instead of rendering raw file/directory/command dumps inside open AI response bubbles.

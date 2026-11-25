@@ -5487,18 +5487,21 @@ export class SyncManager implements vscode.Disposable {
 
         const cleanUserPrompt = (raw: string): string => {
             if (!raw) return '';
+            const stripIdeActionTail = (s: string) =>
+                s.replace(/\r?\n*The USER performed the following action:[\s\S]*$/i, '').trim();
+
             const reqMatch = raw.match(/<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/i);
-            if (reqMatch && reqMatch[1].trim()) {
-                return reqMatch[1].trim();
+            if (reqMatch) {
+                // If <USER_REQUEST> tag exists (even if empty, e.g. image-only prompt), never fall back to raw metadata
+                return stripIdeActionTail(reqMatch[1]);
             }
             const stripped = raw
                 .replace(/<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>/gi, '')
                 .replace(/<USER_SETTINGS_CHANGE>[\s\S]*?<\/USER_SETTINGS_CHANGE>/gi, '')
                 .replace(/<CONTEXT_SUMMARY>[\s\S]*?<\/CONTEXT_SUMMARY>/gi, '')
                 .replace(/<SYSTEM_MESSAGE>[\s\S]*?<\/SYSTEM_MESSAGE>/gi, '')
-                .replace(/<\/?USER_REQUEST>/gi, '')
-                .trim();
-            return stripped || raw.trim();
+                .replace(/<\/?USER_REQUEST>/gi, '');
+            return stripIdeActionTail(stripped);
         };
 
         const unwrapTranscriptArgs = (rawArgs: any): Record<string, any> => {
@@ -5769,8 +5772,25 @@ export class SyncManager implements vscode.Disposable {
      * when language server is unavailable.
      */
     private async getLocalConversationData(id: string): Promise<{ steps: any[]; metadata: any[] } | null> {
-        const transcriptPath = path.join(getBrainDir(), id, '.system_generated', 'logs', 'transcript.jsonl');
-        if (fs.existsSync(transcriptPath)) {
+        const logsDir = path.join(getBrainDir(), id, '.system_generated', 'logs');
+        const fullTranscriptPath = path.join(logsDir, 'transcript_full.jsonl');
+        const compactTranscriptPath = path.join(logsDir, 'transcript.jsonl');
+        const MAX_FULL_TRANSCRIPT_BYTES = 50 * 1024 * 1024; // 50 MB safety cap
+
+        let transcriptPath: string | null = null;
+        if (fs.existsSync(fullTranscriptPath)) {
+            try {
+                const stat = await fs.promises.stat(fullTranscriptPath);
+                if (stat.size <= MAX_FULL_TRANSCRIPT_BYTES) {
+                    transcriptPath = fullTranscriptPath;
+                }
+            } catch { /* ignore */ }
+        }
+        if (!transcriptPath && fs.existsSync(compactTranscriptPath)) {
+            transcriptPath = compactTranscriptPath;
+        }
+
+        if (transcriptPath) {
             try {
                 const content = await fs.promises.readFile(transcriptPath, 'utf8');
                 const parsed = this.parseTranscriptJsonl(content);
@@ -6263,6 +6283,26 @@ export class SyncManager implements vscode.Disposable {
                         });
                     }
 
+                    // Post-process: Convert local markdown file:/// links (outside code blocks) to clickable NAV_BADGE
+                    if (stepRendered.includes('file:///')) {
+                        const htmlSegments = stepRendered.split(/(<pre[\s\S]*?<\/pre>|<code[\s\S]*?<\/code>)/gi);
+                        stepRendered = htmlSegments.map((seg, idx) => {
+                            if (idx % 2 === 1) return seg; // keep <pre>/<code> untouched
+                            return seg.replace(/\[([^\]]+)\]\(file:\/\/\/([^)\s]+)\)/g, (orig, label, rawUriPath) => {
+                                try {
+                                    const decoded = decodeURIComponent(rawUriPath);
+                                    const hashIdx = decoded.indexOf('#');
+                                    const fsPath = hashIdx >= 0 ? decoded.slice(0, hashIdx) : decoded;
+                                    const lineInfo = hashIdx >= 0 ? decoded.slice(hashIdx) : '';
+                                    if (!isSafeLocalFsPath(fsPath)) return orig;
+                                    return `[NAV_BADGE:${fsPath}|${lineInfo}|${label}]`;
+                                } catch {
+                                    return orig;
+                                }
+                            });
+                        }).join('');
+                    }
+
                     // Post-process: File badges
                     stepRendered = stepRendered.replace(/`([^`\s]+\.[a-z]{1,5})`/g, (match, pathStr) => {
                         const iconSvg = getFileIconSvg(pathStr);
@@ -6522,6 +6562,7 @@ export class SyncManager implements vscode.Disposable {
             .markdown-body p:last-child { margin-bottom: 0; }
             .markdown-body pre { background: var(--vscode-textCodeBlock-background); border: 1px solid var(--vscode-widget-border); padding: 12px; border-radius: 8px; overflow-x: auto; margin: 12px 0; max-width: 100%; box-sizing: border-box; }
             .markdown-body code { font-family: var(--vscode-editor-font-family); background: rgba(127,127,127,0.1); padding: 2px 4px; border-radius: 4px; border: 1px solid rgba(127,127,127,0.2); word-break: break-all; overflow-wrap: anywhere; }
+            .markdown-body pre code { background: transparent; border: none; padding: 0; border-radius: 0; word-break: normal; overflow-wrap: normal; }
 
             .thought-box { margin-bottom: 16px; border: 1px solid var(--vscode-widget-border); border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.01); }
             .thought-box.error-style { border-color: rgba(255, 0, 0, 0.3); background: rgba(255, 0, 0, 0.02); }
@@ -7662,11 +7703,12 @@ export class SyncManager implements vscode.Disposable {
                 ${argsBox}
                 ${extraStuff}
             `;
-        }).replace(/\[NAV_BADGE:([^|\]]+)\|([^|\]]+)\|([^\]]*)\]/g, (match, filePath, lineInfo, label) => {
+        }).replace(/\[NAV_BADGE:([^|\]]+)\|([^|\]]*)\|([^\]]*)\]/g, (match, filePath, lineInfo, label) => {
             const exists = isSafeLocalFsPath(filePath) && fs.existsSync(filePath);
             const iconSvg = getFileIconSvg(filePath);
+            const targetPath = lineInfo ? `${filePath}${lineInfo}` : filePath;
             return `
-                <span class="file-badge mini ${!exists ? 'missing' : ''}" title="${!exists ? escapeHtml(lm.t('File not found locally')) : ''}" data-action="open-file" data-path="${escapeHtml(`${filePath}${lineInfo}`)}">
+                <span class="file-badge mini ${!exists ? 'missing' : ''}" title="${!exists ? escapeHtml(lm.t('File not found locally')) : escapeHtml(targetPath)}" data-action="open-file" data-path="${escapeHtml(targetPath)}">
                     <span class="icon">${exists ? iconSvg : '🚫'}</span>
                     <span class="path">${escapeHtml(label)}</span>
                 </span>

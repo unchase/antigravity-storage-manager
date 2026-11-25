@@ -912,4 +912,65 @@ describe('SyncManager Core Engine & Webview Security', () => {
         // No model bubble should be mislabeled as User
         expect(html).not.toMatch(/class="message model"[\s\S]{0,400}<span class="sender">User<\/span>/);
     });
+
+    test('parseTranscriptJsonl strips empty USER_REQUEST + IDE action dumps, prefers transcript_full.jsonl, and renders clickable file:/// links', async () => {
+        const convId = '7777aaaa-1111-1111-1111-111111111111';
+        const logsDir = path.join(brainDir, convId, '.system_generated', 'logs');
+        fs.mkdirSync(logsDir, { recursive: true });
+
+        const compactLine = JSON.stringify({
+            step_index: 0,
+            source: 'MODEL',
+            type: 'PLANNER_RESPONSE',
+            content: 'Compact <truncated 999 bytes>'
+        });
+        const fullLines = [
+            // Empty <USER_REQUEST> with ADDITIONAL_METADATA and IDE file dump -> must be dropped cleanly
+            JSON.stringify({
+                step_index: 0,
+                source: 'USER_EXPLICIT',
+                type: 'USER_INPUT',
+                content: '<USER_REQUEST>\n\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nActive Document: commit_msg.txt\n</ADDITIONAL_METADATA>\nThe USER performed the following action:\nShow the contents of file Cards.json'
+            }),
+            // Plain user prompt followed by IDE action tail -> only user prompt kept
+            JSON.stringify({
+                step_index: 1,
+                source: 'USER_EXPLICIT',
+                type: 'USER_INPUT',
+                content: 'закоммить правки на английском\n\nThe USER performed the following action:\nShow the contents of file Cards.json from lines 1 to 66'
+            }),
+            // Full AI answer with file:/// markdown link
+            JSON.stringify({
+                step_index: 2,
+                source: 'MODEL',
+                type: 'PLANNER_RESPONSE',
+                content: 'Предлагаемый код для [ScoringService.cs](file:///e:/project/ScoringService.cs#L10-L20): full untruncated response.'
+            })
+        ].join('\n');
+
+        fs.writeFileSync(path.join(logsDir, 'transcript.jsonl'), compactLine);
+        fs.writeFileSync(path.join(logsDir, 'transcript_full.jsonl'), fullLines);
+
+        const data = await (syncManager as any).getLocalConversationData(convId);
+        expect(data).not.toBeNull();
+        // Empty USER_REQUEST step skipped; only 1 clean user step + 1 full model step remain
+        const userSteps = data.steps.filter((s: any) => s.type === 'CORTEX_STEP_TYPE_USER_INPUT');
+        expect(userSteps).toHaveLength(1);
+        expect(userSteps[0].userInput.userResponse).toBe('закоммить правки на английском');
+
+        const html: string = (syncManager as any).getChatHtml('conv.db', data.steps, data.metadata);
+        expect(html).toContain('full untruncated response.');
+        expect(html).not.toContain('Compact <truncated 999 bytes>');
+        expect(html).not.toContain('Show the contents of file Cards.json');
+        expect(html).not.toContain('Active Document: commit_msg.txt');
+        // file:/// markdown link converted to clickable file-badge inside rendered step-content
+        const stepContentMatches = html.match(/<div class="step-content">[\s\S]*?<\/div>\s*<\/div>/g) || [];
+        const renderedBody = stepContentMatches.join('\n');
+        expect(renderedBody).toContain('data-action="open-file"');
+        expect(renderedBody).toContain('data-path="e:/project/ScoringService.cs#L10-L20"');
+        expect(renderedBody).toContain('ScoringService.cs');
+        expect(renderedBody).not.toContain('[ScoringService.cs](file:///');
+        // Clean pre code CSS reset present
+        expect(html).toContain('.markdown-body pre code');
+    });
 });
