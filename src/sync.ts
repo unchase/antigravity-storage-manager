@@ -5657,8 +5657,16 @@ export class SyncManager implements vscode.Disposable {
                 continue;
             }
 
-            // 5. Tool outputs (MODEL | GENERIC) -> attach to pending tool calls from previous PLANNER_RESPONSE
-            if (type === 'GENERIC') {
+            // 5. Tool outputs (MODEL | GENERIC, VIEW_FILE, LIST_DIRECTORY, RUN_COMMAND, GREP_SEARCH, etc.)
+            // Any MODEL step whose type is not PLANNER_RESPONSE / MODEL_RESPONSE / NOTIFY_USER is a tool result.
+            const isToolResultType = type === 'GENERIC' || (
+                source === 'MODEL' &&
+                type !== '' &&
+                type !== 'PLANNER_RESPONSE' &&
+                type !== 'MODEL_RESPONSE' &&
+                !type.includes('NOTIFY_USER')
+            );
+            if (isToolResultType) {
                 const rawOut = parsed.error
                     ? `Error: ${parsed.error}`
                     : (typeof parsed.content === 'string' ? parsed.content : (parsed.content !== undefined ? JSON.stringify(parsed.content) : ''));
@@ -5674,7 +5682,7 @@ export class SyncManager implements vscode.Disposable {
                     continue;
                 }
 
-                // Orphaned tool result without preceding tool_call
+                // Orphaned tool result without preceding tool_call -> keep folded inside thought-box
                 if (parsed.error) {
                     steps.push({
                         type: 'CORTEX_STEP_TYPE_ERROR_MESSAGE',
@@ -5685,7 +5693,7 @@ export class SyncManager implements vscode.Disposable {
                     steps.push({
                         type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE',
                         plannerResponse: {
-                            thinking: `**[Tool Output]**\n\n\`\`\`\n${trimmedOut.slice(0, 2000)}\n\`\`\``
+                            thinking: `**[Tool Output: ${type}]**\n\n\`\`\`\n${trimmedOut.slice(0, 2000)}\n\`\`\``
                         },
                         timestamp: validTs
                     });
@@ -5694,7 +5702,7 @@ export class SyncManager implements vscode.Disposable {
             }
 
             // 6. Model planner response (thinking, tool_calls, and/or visible response content)
-            if (type === 'PLANNER_RESPONSE' || type === 'MODEL_RESPONSE' || source === 'MODEL') {
+            if (type === 'PLANNER_RESPONSE' || type === 'MODEL_RESPONSE' || type.includes('NOTIFY_USER') || source === 'MODEL') {
                 pendingToolCalls = [];
                 const thinking = typeof parsed.thinking === 'string' ? parsed.thinking.trim() : '';
                 const visibleContent = typeof parsed.content === 'string' ? parsed.content.trim() : '';
@@ -6013,8 +6021,8 @@ export class SyncManager implements vscode.Disposable {
                             type: 'THINKING_GROUP',
                             content: [...currentThinkingBlock],
                             isModel: true,
-                            isError: details.isError,
-                            sender: details.sender,
+                            isError: false,
+                            sender: lm.t('AI'),
                             timestamp: currentThinkingStartTime || step.timestamp || step.header?.timestamp,
                             endTime: currentThinkingEndTime,
                             usage: { ...currentThinkingUsage }

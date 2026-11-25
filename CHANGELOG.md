@@ -5,6 +5,12 @@ All notable changes to the **Antigravity Storage Manager** extension will be doc
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.3] - 2026-11-25
+### Conversation Viewer (`.db` / `transcript.jsonl`) Polish
+- **Typed Tool Results Folded Properly**: Extended `parseTranscriptJsonl` to treat all `source: "MODEL"` tool-result step types (`LIST_DIRECTORY`, `VIEW_FILE`, `RUN_COMMAND`, `GREP_SEARCH`, etc., in addition to `GENERIC`) as tool outputs attached to their pending `tool_calls` (or folded inside `thought-box` when orphaned) instead of rendering raw file/directory/command dumps inside open AI response bubbles.
+- **Fixed `User` Sender Label on Collapsed AI Thinking Blocks**: Fixed `THINKING_GROUP` flushing in `getChatHtml` to always assign `sender: AI` and `isError: false` instead of inheriting `details.sender` from the next step when a collapsed thinking block precedes another `USER_INPUT`.
+- **Unit Tests**: Expanded `sync_engine.test.ts` to verify `LIST_DIRECTORY`, `VIEW_FILE`, and `THINKING_GROUP` immediately followed by `USER_INPUT`.
+
 ## [0.16.2] - 2026-11-25
 ### Antigravity 2.0 Conversation Viewer (`.db` / `transcript.jsonl`) Fixes
 - **Structured `transcript.jsonl` Parsing**: Rewrote local conversation fallback (`parseTranscriptJsonl` / `getLocalConversationData`) to match the Antigravity 2.0 transcript schema instead of dumping raw JSON and `{}` placeholders:

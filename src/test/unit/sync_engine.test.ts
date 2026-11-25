@@ -834,11 +834,47 @@ describe('SyncManager Core Engine & Webview Security', () => {
                 status: 'ERROR',
                 created_at: '2026-10-26T23:25:36Z',
                 error: 'Rate limit exceeded'
+            }),
+            JSON.stringify({
+                step_index: 6,
+                source: 'MODEL',
+                type: 'PLANNER_RESPONSE',
+                status: 'DONE',
+                created_at: '2026-10-26T23:26:00Z',
+                thinking: 'Inspecting directory and file before next prompt.',
+                tool_calls: [
+                    { name: 'list_dir', args: { DirectoryPath: '"e:/project"' } },
+                    { name: 'view_file', args: { AbsolutePath: '"e:/project/README.md"' } }
+                ]
+            }),
+            JSON.stringify({
+                step_index: 7,
+                source: 'MODEL',
+                type: 'LIST_DIRECTORY',
+                status: 'DONE',
+                created_at: '2026-10-26T23:26:01Z',
+                content: 'Created At: 2026-10-27\n{"name":".agents","isDir":true}'
+            }),
+            JSON.stringify({
+                step_index: 8,
+                source: 'MODEL',
+                type: 'VIEW_FILE',
+                status: 'DONE',
+                created_at: '2026-10-26T23:26:02Z',
+                content: 'Created At: 2026-10-27\nShowing lines 1 to 10\n1: # Secret File Dump'
+            }),
+            JSON.stringify({
+                step_index: 9,
+                source: 'USER_EXPLICIT',
+                type: 'USER_INPUT',
+                status: 'DONE',
+                created_at: '2026-10-26T23:26:10Z',
+                content: '<USER_REQUEST>\nповторный запрос пользователя\n</USER_REQUEST>'
             })
         ].join('\n');
 
         const parsed = (syncManager as any).parseTranscriptJsonl(transcriptLines);
-        expect(parsed.steps.length).toBeGreaterThanOrEqual(4);
+        expect(parsed.steps.length).toBeGreaterThanOrEqual(6);
         expect(parsed.metadata.length).toBe(2);
 
         // User message is stripped of internal XML wrappers
@@ -852,13 +888,16 @@ describe('SyncManager Core Engine & Webview Security', () => {
         expect(parsed.steps[1].plannerResponse.toolCalls[0].arguments.CommandLine).toBe('git status');
         expect(parsed.steps[1].plannerResponse.toolCalls[0].output).toContain('On branch master');
 
-        // Visible AI reply is an open MODEL_RESPONSE
-        const modelReply = parsed.steps.find((s: any) => s.type === 'CORTEX_STEP_TYPE_MODEL_RESPONSE');
-        expect(modelReply?.modelResponse.text).toBe('Аудит завершён: найдено 3 проблемы.');
+        // Typed tool results (LIST_DIRECTORY, VIEW_FILE) are attached to pending toolCalls, NOT emitted as open MODEL_RESPONSE
+        const modelResponses = parsed.steps.filter((s: any) => s.type === 'CORTEX_STEP_TYPE_MODEL_RESPONSE');
+        expect(modelResponses).toHaveLength(1);
+        expect(modelResponses[0].modelResponse.text).toBe('Аудит завершён: найдено 3 проблемы.');
 
-        // Render via getChatHtml: no empty `{}` JSON dumps, no raw XML tags, clean user/AI text, folded thought-box
+        // Render via getChatHtml: no empty `{}` JSON dumps, no raw XML tags, no raw LIST_DIRECTORY/VIEW_FILE dumps,
+        // and THINKING_GROUP before a USER_INPUT is labeled AI (not User)
         const html: string = (syncManager as any).getChatHtml('audit.db', parsed.steps, parsed.metadata);
         expect(html).toContain('проведи аудит приложения');
+        expect(html).toContain('повторный запрос пользователя');
         expect(html).toContain('Аудит завершён: найдено 3 проблемы.');
         expect(html).toContain('thought-box');
         expect(html).toContain('run_command');
@@ -868,5 +907,9 @@ describe('SyncManager Core Engine & Webview Security', () => {
         expect(html).not.toContain('USER_SETTINGS_CHANGE');
         expect(html).not.toContain('Reminder: work efficiently');
         expect(html).not.toContain('<code class="language-json">{}\n</code>');
+        expect(html).not.toContain('{"name":".agents","isDir":true}');
+        expect(html).not.toContain('# Secret File Dump');
+        // No model bubble should be mislabeled as User
+        expect(html).not.toMatch(/class="message model"[\s\S]{0,400}<span class="sender">User<\/span>/);
     });
 });
